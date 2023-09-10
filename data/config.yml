@@ -1,0 +1,15 @@
+---
+host: "test.com"
+additional_headers:
+  test: "test"
+  test2: "test2"
+  User-Agent: "test-agent"
+formats:
+  - markdown
+  - html
+  - pdf
+  - plaintext
+outputs:
+  - local
+  - minio
+output_path: "/opt/bkps/"
