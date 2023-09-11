@@ -26,7 +26,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('-c',
                     '--config-file',
                     type=str,
-                    default="",
+                    default="data/config.yml",
                     help='Provide a configuration file (full or relative path). See README for more details')
     parser.add_argument('-v',
                     '--log-level',

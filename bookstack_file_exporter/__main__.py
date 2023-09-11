@@ -3,7 +3,6 @@ import logging
 from typing import Dict, List, Union
 
 from bookstack_file_exporter import run
-from bookstack_file_exporter import pre_check
 from bookstack_file_exporter import run_args
 
 # # (formatName, fileExtension)
@@ -25,18 +24,15 @@ from bookstack_file_exporter import run_args
 # FORBIDDEN_CHARS: List[str] = ["/", "#"]
 
 TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
-TOKEN_KEY_FIELD='BOOKSTACK_TOKEN_KEY'
+TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
 def main():
-    # fail fast if credentials aren't there and exit quickly
-    pre_check.ensure_credentials(TOKEN_FIELD, TOKEN_KEY_FIELD)
-
     args: argparse.Namespace = run_args.get_args()
 
     logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s',
                     level=run_args.get_log_level(args.log_level), datefmt='%Y-%m-%d %H:%M:%S')
     
-    run.test(args, TOKEN_FIELD, TOKEN_KEY_FIELD)
+    run.test(args, TOKEN_FIELD, TOKEN_SECRET_FIELD)
 
 
 if __name__ == '__main__':

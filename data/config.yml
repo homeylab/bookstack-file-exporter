@@ -13,3 +13,4 @@ outputs:
   - local
   - minio
 output_path: "/opt/bkps/"
+export_meta: true
