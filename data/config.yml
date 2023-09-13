@@ -1,0 +1,20 @@
+---
+# if http/https not specified, defaults to https
+host: "https://test.com"
+# tls verify, default = true
+# additional headers to add, examples below
+additional_headers:
+  test: "test"
+  test2: "test2"
+  User-Agent: "test-agent"
+# supported formats from bookstack below
+formats:
+  - markdown
+  - html
+  - pdf
+  - plaintext
+outputs:
+  - local
+  - minio
+output_path: "bkps/"
+export_meta: true
