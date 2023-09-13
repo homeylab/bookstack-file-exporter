@@ -40,10 +40,4 @@ def get_child_meta(url: str, headers: Dict[str, str], parent_nodes: Dict[int, No
     return child_nodes
 
 def generate_root_folder(destination: str) -> str:
-    pass 
-
-# def create_mapping(entries: List[Dict[str, Union[str, int]]]) -> List[Dict[int, node]]:
-#     items = {}
-#     for entry in entries:
-#         item[entry['id']] = Node(entry)
-    
+    pass

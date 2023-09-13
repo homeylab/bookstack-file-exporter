@@ -4,7 +4,7 @@ import argparse
 import yaml
 import logging
 from typing import Dict, Literal, List, Optional
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
 
@@ -44,19 +44,16 @@ class ConfigNode:
         ValueError: if improper arguments are given from user
     """
     def __init__(self, args: argparse.Namespace):
-        # user inputs
-        # self._user_inputs: Dict[str, Union[List, str, bool]] = {}
         self.user_inputs = {}
         self._headers = {}
         self._urls = {}
         self._token_secret = ""
         self._token_id = ""
-        # self._token_auth = ""
         self._initialize(args)
 
     
     def _initialize(self, args: argparse.Namespace):
-        ## Check to see if config_file is provided
+        # Check to see if config_file is provided
         if args.config_file:
             self._validate_config(args.config_file)
         # generate headers
@@ -87,7 +84,7 @@ class ConfigNode:
             if key not in self.user_inputs.additional_headers:
                 self._headers[key] = value
         
-        # add additional_headers and let it override defaults
+        # add additional_headers provided by user
         if self.user_inputs.additional_headers:
             for key, value in self.user_inputs.additional_headers.items():
                 self._headers[key] = value
@@ -122,8 +119,8 @@ class ConfigNode:
         if not value:
             raise ValueError("BOOKSTACK_TOKEN_SECRET is not specified in env")
         self._token_secret = value
-        # update auth in header
-        self._add_auth_header()
+        # # update auth in header
+        # self._add_auth_header()
 
     @property
     def token_id(self) -> str:

@@ -1,6 +1,6 @@
 ---
 # if http/https not specified, defaults to https
-host: "test.com"
+host: "https://test.com"
 # tls verify, default = true
 # additional headers to add, examples below
 additional_headers:
