@@ -20,9 +20,12 @@ DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
 }
 
-# LEVELS = ['pages', 'chapters', 'books']
-
-# FORBIDDEN_CHARS = ["/"]
+API_PATHS = {
+    "shelves": "api/shelves",
+    "books": "api/books",
+    "chapters": "api/chapters",
+    "pages": "api/pages"
+}
 
 ## Normalize config from cli or from config file
 class ConfigNode:
@@ -45,14 +48,10 @@ class ConfigNode:
         # self._user_inputs: Dict[str, Union[List, str, bool]] = {}
         self.user_inputs = {}
         self._headers = {}
-        self.url = ""
-
-        self.fs_path = ""
-        self.api_prefix = ""
-        
+        self._urls = {}
         self._token_secret = ""
         self._token_id = ""
-        self._token_auth = ""
+        # self._token_auth = ""
         self._initialize(args)
 
     
@@ -63,15 +62,7 @@ class ConfigNode:
         # generate headers
         self._default_headers()
         # generate url for requests
-
-    # def _intake_file(self, config_file: str):
-    #     ## To do add a schema check for yaml conf file
-    #     with open(config_file, "r") as yaml_stream:
-    #         try:
-    #             yaml_input = yaml.safe_load(yaml_stream) # dict type
-    #         except yaml.YAMLError as yaml_err:
-    #             raise yaml_err
-        
+        self._generate_urls()
 
     def _validate_config(self, config_file: str):
         if not os.path.isfile(config_file):
@@ -101,26 +92,25 @@ class ConfigNode:
             for key, value in self.user_inputs.additional_headers.items():
                 self._headers[key] = value
 
+    def _generate_urls(self):
+        # remove trailing slash
+        host = self.user_inputs.host
+        if host[-1] == '/':
+            host = host[:-1]
+        # check to see if http protocol is defined
+        if "http" not in self.user_inputs.host:
+            # use https by default
+            url_prefix = "https://"
+        else:
+            url_prefix = ""
+        for key, value in API_PATHS.items():
+            self._urls[key] = url_prefix + self.user_inputs.host + '/' + value
+
     # used to add/update token key
     def _add_auth_header(self):
         # do not override user provided one
         if 'Authorization' not in self._headers:
-            self._headers['Authorization'] = f"Token {self._token_auth}"
-
-    @property
-    def token_auth(self) -> str:
-        return self._token_auth
-    
-    @token_auth.setter
-    def token_auth(self, token_id: str, token_secret: str):
-        # just a check to ensure it has some value
-        if not token_id:
-            raise ValueError("BOOKSTACK_TOKEN_ID is not specified in env")
-        if not token_secret:
-            raise ValueError("BOOKSTACK_TOKEN_SECRET is not specified in env")
-        # update auth in header
-        self._token_auth = f"{token_id}:{token_secret}"
-        self._add_auth_header()
+            self._headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
 
     @property
     def token_secret(self) -> str:
@@ -131,9 +121,9 @@ class ConfigNode:
         # just a check to ensure it has some value
         if not value:
             raise ValueError("BOOKSTACK_TOKEN_SECRET is not specified in env")
-        # update auth in header
-        self._add_auth_header(value)
         self._token_secret = value
+        # update auth in header
+        self._add_auth_header()
 
     @property
     def token_id(self) -> str:
@@ -148,4 +138,9 @@ class ConfigNode:
     
     @property
     def headers(self) -> Dict[str, str]:
+        self._add_auth_header()
         return self._headers
+
+    @property
+    def urls(self) -> Dict[str, str]:
+        return self._urls

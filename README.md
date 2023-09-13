@@ -36,6 +36,8 @@ Shelves --> Books --> Chapters --> Pages
 kafka
 ---> controller
     ---> settings
+        ---> optional
+        ---> main
     ---> deploy
 ---> broker
     ---> settings
@@ -44,3 +46,5 @@ kafka
     ---> protobuf
     ---> settings
 ```
+
+Books without a shelf will be put in a shelve folder named `unassigned`

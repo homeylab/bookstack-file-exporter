@@ -5,24 +5,6 @@ from typing import Dict, List, Union
 from bookstack_file_exporter import run
 from bookstack_file_exporter import run_args
 
-# # (formatName, fileExtension)
-# FORMATS: Dict['str', 'str'] = {
-#     'markdown': 'md',
-#     'plaintext': 'txt',
-#     'pdf': 'pdf',
-#     'html': 'html'
-# }
-
-# LOG_LEVEL: Dict = {
-#     'debug': logging.DEBUG,
-#     'info': logging.INFO,
-#     'warning': logging.WARNING,
-#     'error': logging.ERROR
-# }
-
-# # Characters in filenames to be replaced with "_"
-# FORBIDDEN_CHARS: List[str] = ["/", "#"]
-
 TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
