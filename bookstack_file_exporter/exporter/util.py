@@ -24,7 +24,8 @@ def get_parent_meta(url: str, headers: Dict[str, str], parent_ids: List[int],
                      path_prefix: Union[str, None] = None) -> Dict[int, Node]:
     parent_nodes = {}
     for parent_id in parent_ids:
-        parent_url = url + "/" + str(parent_id)
+        parent_url = f"{url}/{parent_id}"
+        # parent_url = url + "/" + str(parent_id)
         parent_data = get_json_response(url=parent_url, headers=headers)
         parent_nodes[parent_id] = Node(parent_data, path_prefix=path_prefix)
     return parent_nodes
@@ -33,7 +34,8 @@ def get_chapter_meta(url: str, headers: Dict[str, str], chapters: List[int],
                      books:Dict[int, Node], path_prefix: Union[str, None] = None) -> Dict[int, Node]:
     chapter_nodes = {}
     for chapter_id in chapters:
-        chapter_url = url + "/" + str(chapter_id)
+        chapter_url = f"{url}/{chapter_id}"
+        # chapter_url = url + "/" + str(chapter_id)
         chapter_data = get_json_response(url=chapter_url, headers=headers)
         book_id = chapter_data['book_id']
         chapter_nodes[chapter_id] = Node(chapter_data, books[book_id], path_prefix=path_prefix)
@@ -46,7 +48,8 @@ def get_child_meta(url: str, headers: Dict[str, str], parent_nodes: Dict[int, No
         if parent.children:
             for child in parent.children:
                 child_id = child['id']
-                child_url = url + "/" + str(child_id)
+                child_url = f"{url}/{child_id}"
+                # child_url = url + "/" + str(child_id)
                 child_data = get_json_response(url=child_url, headers=headers)
                 child_node = Node(child_data, parent, path_prefix=path_prefix)
                 if filter_empty:
