@@ -5,7 +5,7 @@ import json
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
 
-_META_FILE_prefix = "meta_"
+_META_FILE_SUFFIX = "_meta"
 
 _EXPORT_API_PATH = "export"
 
@@ -29,7 +29,7 @@ class Archiver:
     
     # convert to bytes to be agnostic to end destination
     def archive(self, archive_type: str, page_node: Node, export_format: str):
-        raw_data = self._get_data_format(page_node.meta['id'], export_format)
+        raw_data = self._get_data_format(page_node.id, export_format)
         # meta_data = self._get_meta(page_node)
         self._export_map[archive_type](page_node.file_path, raw_data, export_format)
         # if meta_data:

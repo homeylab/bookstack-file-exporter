@@ -3,17 +3,17 @@ from typing import Dict, Union, List
 # shelves --> 'books'
 # books --> 'content'
 # chapters --> 'pages'
-CHILD_KEYS = ['books', 'contents', 'pages']
+_CHILD_KEYS = ['books', 'contents', 'pages']
 
-NULL_PAGE_NAME = "New Page"
+_NULL_PAGE_NAME = "New Page"
 
 class Node():
     def __init__(self, meta: Dict[str, Union[str, int]], parent: Union['Node', None] = None, path_prefix: Union[str, None] = ""):
         self.meta = meta
         self.__parent = parent
         self._path_prefix = path_prefix
-        self.name = ""
-        self.id = 0
+        self.name: str = ""
+        self.id: int = 0
         self._children: Union[List[Dict[str, Union[str, int]]], None] = None
         self._file_path = ""
         self._display_name = ""
@@ -38,13 +38,13 @@ class Node():
     
     def _get_children(self):
         # find first match
-        for match in CHILD_KEYS:
+        for match in _CHILD_KEYS:
             if match in self.meta:
                 self._children = self.meta[match]
                 break
     
     def _check_empty(self):
-        if not self.name and self._display_name == NULL_PAGE_NAME:
+        if not self.name and self._display_name == _NULL_PAGE_NAME:
             self._is_empty = True
     
     @property
