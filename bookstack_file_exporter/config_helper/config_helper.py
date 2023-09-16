@@ -16,16 +16,20 @@ class UserInput(BaseModel):
     output_path: Optional[str] = None
     export_meta: Optional[bool] = True # set a default
 
-DEFAULT_HEADERS = {
+_DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
 }
 
-API_PATHS = {
+_API_PATHS = {
     "shelves": "api/shelves",
     "books": "api/books",
     "chapters": "api/chapters",
     "pages": "api/pages"
 }
+
+_UNASSIGNED_BOOKS_DIR = "unassigned/"
+
+_BASE_DIR_NAME = "bookstack_export"
 
 ## Normalize config from cli or from config file
 class ConfigNode:
@@ -45,6 +49,8 @@ class ConfigNode:
     """
     def __init__(self, args: argparse.Namespace):
         self.user_inputs = {}
+        self.unassigned_book_dir = _UNASSIGNED_BOOKS_DIR
+        self._base_dir_name = ""
         self._headers = {}
         self._urls = {}
         self._token_secret = ""
@@ -60,6 +66,8 @@ class ConfigNode:
         self._default_headers()
         # generate url for requests
         self._generate_urls()
+        # set base dir for exports
+        self._set_base_dir()
 
     def _validate_config(self, config_file: str):
         if not os.path.isfile(config_file):
@@ -80,7 +88,7 @@ class ConfigNode:
 
     def _default_headers(self):
         # add default headers
-        for key, value in DEFAULT_HEADERS.items():
+        for key, value in _DEFAULT_HEADERS.items():
             if key not in self.user_inputs.additional_headers:
                 self._headers[key] = value
         
@@ -100,7 +108,7 @@ class ConfigNode:
             url_prefix = "https://"
         else:
             url_prefix = ""
-        for key, value in API_PATHS.items():
+        for key, value in _API_PATHS.items():
             self._urls[key] = url_prefix + self.user_inputs.host + '/' + value
 
     # used to add/update token key
@@ -108,6 +116,15 @@ class ConfigNode:
         # do not override user provided one
         if 'Authorization' not in self._headers:
             self._headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
+
+    def _set_base_dir(self):
+        # strip slash if present
+        output_dir = self.user_inputs.output_path
+        if output_dir[-1] == '/':
+            output_dir = output_dir[:-1]
+        print(output_dir)
+        self._base_dir_name = output_dir +  "/" + _BASE_DIR_NAME
+        
 
     @property
     def token_secret(self) -> str:
@@ -141,3 +158,7 @@ class ConfigNode:
     @property
     def urls(self) -> Dict[str, str]:
         return self._urls
+    
+    @property
+    def base_dir_name(self) -> str:
+        return self._base_dir_name
