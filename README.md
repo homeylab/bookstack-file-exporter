@@ -23,7 +23,7 @@ Backups are exported in `.tgz` format and generated based off timestamp. Files a
 
 ## Using This Application
 
-Note visibility of pages is based on user, so use a user that has access to pages you want to back up
+**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up
 
 ### Authentication
 Ref: [https://demo.bookstackapp.com/api/docs#authentication](https://demo.bookstackapp.com/api/docs#authentication)
@@ -56,7 +56,17 @@ kafka
     ---> settings
 ```
 
-Books without a shelf will be put in a shelve folder named `unassigned`
+Books without a shelf will be put in a shelve folder named `unassigned`.
+
+Empty/New Pages will be ignored since they have not been modified yet from creation and are empty but also do not have a valid slug. Example:
+```
+{
+    ...
+    "name": "New Page",
+    "slug": "",
+    ...
+}
+```
 
 ## Future Items
 1. Be able to pull media/photos locally and place in their respective page folders for a more complete file level backup.
