@@ -13,8 +13,7 @@ formats:
   - html
   - pdf
   - plaintext
-outputs:
-  - local
-  - minio
+# remote_targets:
+#   - minio
 output_path: "bkps/"
 export_meta: true

@@ -10,11 +10,11 @@ log = logging.getLogger(__name__)
 
 class UserInput(BaseModel):
     host: str
-    additional_headers: Optional[Dict[str, str]] = None
+    additional_headers: Optional[Dict[str, str]] = {}
     formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
-    outputs: List[Literal["local", "minio"]]
-    output_path: Optional[str] = None
-    export_meta: Optional[bool] = True # set a default
+    remote_targets: Optional[List[Literal["minio", "s3"]]] = []
+    output_path: Optional[str] = ""
+    export_meta: Optional[bool] = False # set a default
 
 _DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
@@ -34,7 +34,7 @@ _BASE_DIR_NAME = "bookstack_export"
 ## Normalize config from cli or from config file
 class ConfigNode:
     """
-    Get Run Configuration from CLI or file and normalize the data in an accessible object
+    Get Run Configuration from YAML file and normalize the data in an accessible object
 
     Args:
         Arg parse from user input
@@ -109,7 +109,7 @@ class ConfigNode:
         else:
             url_prefix = ""
         for key, value in _API_PATHS.items():
-            self._urls[key] = url_prefix + self.user_inputs.host + '/' + value
+            self._urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
 
     # used to add/update token key
     def _add_auth_header(self):
@@ -118,14 +118,19 @@ class ConfigNode:
             self._headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
 
     def _set_base_dir(self):
-        # strip slash if present
         output_dir = self.user_inputs.output_path
-        if output_dir[-1] == '/':
-            output_dir = output_dir[:-1]
-        print(output_dir)
-        self._base_dir_name = output_dir +  "/" + _BASE_DIR_NAME
+        # check if user provided an output path
+        if output_dir:
+            # detect trailing slash
+            if output_dir[-1] == '/':
+                base_dir = f"{output_dir}{_BASE_DIR_NAME}"
+            else:
+                base_dir = f"{output_dir}/{_BASE_DIR_NAME}"
+        else:
+            base_dir = _BASE_DIR_NAME
+        # use default base dir name if no output path provided
+        self._base_dir_name = base_dir
         
-
     @property
     def token_secret(self) -> str:
         return self._token_secret

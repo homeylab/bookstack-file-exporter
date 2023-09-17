@@ -1,6 +1,7 @@
 import argparse
 import os
 import logging
+from time import sleep
 from typing import Dict, Union, List
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
@@ -12,21 +13,31 @@ from bookstack_file_exporter.archiver.archiver import Archiver
 
 log = logging.getLogger(__name__)
 
+# def get_shelve_nodes(shelve_url: str, headers: Dict[str, str]) -> Dict[int, Node]:
+#     all_shelves: List[int] = util.get_all_ids(url=shelve_url, headers=headers)
+#     return util.get_parent_meta(url=shelve_url, headers=headers, parent_ids=all_shelves)
+
+
+# def get_chapters(chapter_url: str, headers: Dict[str, str]):
+#     pass
+
 def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
     config = ConfigNode(args)
     config.token_id= os.environ.get(token_id_env, "")
     config.token_secret = os.environ.get(token_secret_env, "")
 
+    ## convenience vars 
     bookstack_headers = config.headers
     export_formats = config.user_inputs.formats
-
-    ## urls
+    remote_targets = config.user_inputs.remote_targets
     shelve_base_url = config.urls['shelves']
     book_base_url = config.urls['books']
     chapter_base_url = config.urls['chapters']
     page_base_url = config.urls['pages']
 
     ## shelves
+    # shelve_nodes: Dict[int, Node] = get_shelve_nodes(shelve_base_url, bookstack_headers)
+    # need to implement pagination
     all_shelves: List[int] = util.get_all_ids(url=shelve_base_url, headers=bookstack_headers)
     shelve_nodes: Dict[int, Node] = util.get_parent_meta(url=shelve_base_url, headers=bookstack_headers,
                                                          parent_ids=all_shelves)
@@ -40,6 +51,8 @@ def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
 
 
     ## chapters
+    # get_chapters(chapter_base_url, bookstack_headers)
+
     all_chapters: List[int] = util.get_all_ids(url=chapter_base_url, headers=bookstack_headers)
     # check for chapters since they are optional
     if all_chapters:
@@ -47,13 +60,13 @@ def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
                                                             chapters=all_chapters, books=book_nodes)
         # add all pages in a chapter first
         page_chapter_nodes = util.get_child_meta(url=page_base_url, headers=bookstack_headers, parent_nodes=chapter_nodes, filter_empty=True)
-        for key, value in page_chapter_nodes.items():
-            # if key not in page_nodes: # don't think is needed
-            page_nodes[key] = value
+        if page_chapter_nodes:
+            for key, value in page_chapter_nodes.items():
+                page_nodes[key] = value
 
-    print(chapter_nodes)
-    for _, value in chapter_nodes.items():
-        print(value.children)
+    # print(chapter_nodes)
+    # for _, value in chapter_nodes.items():
+    #     print(value.children)
 
     ## get books with no shelf
     all_books: List[int] = util.get_all_ids(url=book_base_url, headers=bookstack_headers)
@@ -86,10 +99,20 @@ def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
 
     archive: Archiver = Archiver(base_dir_name, config.user_inputs.export_meta, page_base_url, bookstack_headers)
 
-    for _, page in page_nodes.items():
-        archive.archive('local', page, 'markdown')
+    # for _, page in page_nodes.items():
+    #     archive.archive(page, 'markdown')
     
+    # First create local archive and tar ball
     for _, page in page_nodes.items():
-        for output_type in config.user_inputs.outputs:
-            for format in config.user_inputs.formats:
-                archive.archive(output_type, page, format)
+        for format in export_formats:
+            # instead of sleep, implement back off retry in utils
+            sleep(2)
+            archive.gather(page, format)
+    
+    # create tar
+    archive.archive()
+    
+    # archive to remote targets
+    if remote_targets:
+        for target in remote_targets:
+            archive.archive_remote(target)
