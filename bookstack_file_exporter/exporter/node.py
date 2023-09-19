@@ -9,7 +9,7 @@ _NULL_PAGE_NAME = "New Page"
 
 class Node():
     """
-    Node class provides an interface to create and reference bookstack child/parent relationships for resources like pages, books, chapters, and shelves.
+    Node class provides an interface to create bookstack child/parent relationships for resources like pages, books, chapters, and shelves.
 
     Args:
         metadata: Dict[str, Union[str, int]] (required) = The metadata of the resource from bookstack api
@@ -23,7 +23,7 @@ class Node():
     """
     def __init__(self, meta: Dict[str, Union[str, int]], parent: Union['Node', None] = None, path_prefix: Union[str, None] = None):
         self.meta = meta
-        self.__parent = parent
+        self._parent = parent
         self._path_prefix = path_prefix
         self.name: str = ""
         self.id: int = 0
@@ -39,9 +39,8 @@ class Node():
         self.id = self.meta['id']
         self._display_name = self.meta['name']
         # get base file path from parent if it exists
-        if self.__parent:
-            self._file_path = f"{self.__parent.file_path}/{self.name}"
-            # self._file_path = self.__parent.file_path + '/' + self.name
+        if self._parent:
+            self._file_path = f"{self._parent.file_path}/{self.name}"
         # normalize path prefix if it does not exist
         if not self._path_prefix:
             self._path_prefix = ""

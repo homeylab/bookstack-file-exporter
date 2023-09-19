@@ -10,9 +10,6 @@ import tarfile
 
 log = logging.getLogger(__name__)
 
-def generate_root_folder(base_folder_name: str) -> str:
-    return base_folder_name + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
 def get_byte_response(url: str, headers: Dict[str, str]) -> bytes:
     try:
         response = requests.get(url=url, headers=headers)
