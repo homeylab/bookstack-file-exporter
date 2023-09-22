@@ -1,5 +1,6 @@
 ---
 # if http/https not specified, defaults to https
+# if you put http here, it will try verify=false, not to check certs
 host: "https://test.com"
 # tls verify, default = true
 # additional headers to add, examples below
@@ -13,7 +14,12 @@ formats:
   - html
   - pdf
   - plaintext
-# remote_targets:
-#   - minio
+minio_config:
+  host: ""
+  access_key: ""
+  secret_key: ""
+  region: ""
+  bucket: ""
+  path: ""
 output_path: "bkps/"
 export_meta: true

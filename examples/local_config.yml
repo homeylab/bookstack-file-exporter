@@ -1,0 +1,28 @@
+---
+# if http/https not specified, defaults to https
+# if you put http here, it will try verify=false, not to check certs
+host: "https://bookstack.mydomain.org"
+# You could optionally set the bookstack token_id and token_secret here instead of env
+credentials:
+    # set here or as env variable, BOOKSTACK_TOKEN_ID
+    # env var takes precedence over below
+    token_id: ""
+    # set here or as env variable, BOOKSTACK_TOKEN_SECRET
+    # env var takes precedence over below
+    token_secret: ""
+# additional headers to add, examples below
+additional_headers:
+  test: "test"
+  test2: "test2"
+  User-Agent: "test-agent"
+# supported formats from bookstack below
+# specify one or more
+formats:
+  - markdown
+  - html
+  - pdf
+  - plaintext
+# directory to export to
+# relative or full path
+output_path: "bkps/"
+export_meta: true

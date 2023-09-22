@@ -12,17 +12,14 @@ from bookstack_file_exporter.archiver.archiver import Archiver
 
 log = logging.getLogger(__name__)
 
-def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
+def exporter(args: argparse.Namespace):
     ## get configuration from helper
     config = ConfigNode(args)
-    config.token_id= os.environ.get(token_id_env, "")
-    config.token_secret = os.environ.get(token_secret_env, "")
 
     ## convenience vars 
     bookstack_headers = config.headers
     api_urls = config.urls
     export_formats = config.user_inputs.formats
-    remote_targets = config.user_inputs.remote_targets
     unassigned_dir = config.unassigned_book_dir
     page_base_url = config.urls['pages']
     base_export_dir = config.base_dir_name
@@ -74,10 +71,12 @@ def test(args: argparse.Namespace, token_id_env: str, token_secret_env: str):
                 page_nodes[key] = value
     
     ## start archive ##
-    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers)
+    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers, config.object_storage_config)
     
     # create tar
     archive.archive(page_nodes, export_formats)
     
     # archive to remote targets
-    archive.archive_remote(remote_targets)
+    archive.archive_remote(config.object_storage_config)
+
+    archive.clean_up(config.user_inputs.clean_up)

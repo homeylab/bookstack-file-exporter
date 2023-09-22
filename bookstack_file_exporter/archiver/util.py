@@ -1,27 +1,18 @@
-from typing import Dict, List, Union
-from datetime import datetime
+from typing import Dict, Union
 from pathlib import Path
 import json
-import requests
 import os
 import logging
 import tarfile
+import shutil
 
+from bookstack_file_exporter.common import util
 
 log = logging.getLogger(__name__)
 
 def get_byte_response(url: str, headers: Dict[str, str]) -> bytes:
-    try:
-        response = requests.get(url=url, headers=headers)
-        response.raise_for_status()
-    except Exception as req_err:
-        log.error(f"Failed to make request for {url}")
-        raise req_err
+    response = util.http_get_request(url=url, headers=headers)
     return response.content
-
-def get_json_format(data: Dict[str, Union[str, int]]) -> bytes:
-    # return json.dumps(data).encode('utf-8')
-    return json.dumps()
 
 def write_bytes(file_path: str, data: bytes):
     path_file = Path(file_path)
@@ -32,6 +23,13 @@ def write_bytes(file_path: str, data: bytes):
 def dump_json(file_name: str, data: Dict[str, Union[str, int]]):
     with open(file_name, 'w') as fp:
         json.dump(data, fp, indent=4)
+
+# set as function in case we want to do checks or final actions later
+def remove_dir(dir_path: str):
+    shutil.rmtree(dir_path)
+
+def remove_file(file_path: str):
+    os.remove(file_path)
 
 def create_tar(export_path: str, file_extension: str):
     # path of the export dir

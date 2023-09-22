@@ -3,18 +3,13 @@ import json
 import argparse
 import yaml
 import logging
-from typing import Dict, Literal, List, Optional
-from pydantic import BaseModel
+from typing import Dict, Tuple
+
+from bookstack_file_exporter.config_helper import models
+from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
-class UserInput(BaseModel):
-    host: str
-    additional_headers: Optional[Dict[str, str]] = {}
-    formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
-    remote_targets: Optional[List[Literal["minio", "s3"]]] = []
-    output_path: Optional[str] = ""
-    export_meta: Optional[bool] = False # set a default
 
 _DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
@@ -30,6 +25,11 @@ _API_PATHS = {
 _UNASSIGNED_BOOKS_DIR = "unassigned/"
 
 _BASE_DIR_NAME = "bookstack_export"
+
+_BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
+_BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
+_MINIO_ACCESS_KEY_FIELD='MINIO_ACCESS_KEY'
+_MINIO_SECRET_KEY_FIELD='MINIO_SECRET_KEY'
 
 ## Normalize config from cli or from config file
 class ConfigNode:
@@ -48,28 +48,17 @@ class ConfigNode:
         ValueError: if improper arguments are given from user
     """
     def __init__(self, args: argparse.Namespace):
-        self.user_inputs = {}
         self.unassigned_book_dir = _UNASSIGNED_BOOKS_DIR
-        self._base_dir_name = ""
-        self._headers = {}
-        self._urls = {}
-        self._token_secret = ""
-        self._token_id = ""
-        self._initialize(args)
+        self.user_inputs = self._generate_config(args.config_file)
+        self._base_dir_name = self._set_base_dir()
+        self._token_id, self._token_secret = self._generate_credentials()
+        self._headers = self._generate_headers()
+        self._urls = self._generate_urls()
+        self._minio_access_key = ""
+        self._minio_secret_key = ""
+        self._object_storage_config = self._generate_remote_config()
 
-    
-    def _initialize(self, args: argparse.Namespace):
-        # Check to see if config_file is provided
-        if args.config_file:
-            self._validate_config(args.config_file)
-        # generate headers
-        self._default_headers()
-        # generate url for requests
-        self._generate_urls()
-        # set base dir for exports
-        self._set_base_dir()
-
-    def _validate_config(self, config_file: str):
+    def _generate_config(self, config_file: str) -> models.UserInput:
         if not os.path.isfile(config_file):
             raise FileNotFoundError(config_file)
         with open(config_file, "r") as yaml_stream:
@@ -80,24 +69,59 @@ class ConfigNode:
                 log.error("Failed to load yaml configuration file")
                 raise load_err
         try:
-            self.user_inputs = UserInput(**yaml_input)
+            user_inputs = models.UserInput(**yaml_input)
         except Exception as err:
             # log here to make it easier to identify the issue
             log.error("Yaml configuration failed schema validation")
             raise err
-
-    def _default_headers(self):
-        # add default headers
-        for key, value in _DEFAULT_HEADERS.items():
-            if key not in self.user_inputs.additional_headers:
-                self._headers[key] = value
+        return user_inputs
+    
+    def _generate_credentials(self) -> Tuple[str, str]:
+        # if user provided credentials in config file, load them
+        token_id = ""
+        token_secret = ""
+        if self.user_inputs.credentials:
+            token_id = self.user_inputs.credentials.token_id
+            token_secret = self.user_inputs.credentials.token_secret
         
+        # check to see if env var is specified, if so, it takes precedence
+        token_id = self._check_var(_BOOKSTACK_TOKEN_FIELD, token_id)
+        token_secret = self._check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
+        return token_id, token_secret
+
+    def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
+        object_config = {}
+        # check for optional minio credentials if configuration is set in yaml configuration file
+        if self.user_inputs.minio_config:
+            minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD, self.user_inputs.minio_config.access_key)
+            minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD, self.user_inputs.minio_config.secret_key)
+            object_config["minio"] = StorageProviderConfig(minio_access_key,
+                                     minio_secret_key, self.user_inputs.minio_config.bucket, 
+                                     host=self.user_inputs.minio_config.host,
+                                     path=self.user_inputs.minio_config.path,
+                                     region=self.user_inputs.minio_config.region)
+        return object_config
+
+    def _generate_headers(self) -> Dict[str, str]:
+        headers = {}
         # add additional_headers provided by user
         if self.user_inputs.additional_headers:
             for key, value in self.user_inputs.additional_headers.items():
-                self._headers[key] = value
+                headers[key] = value
 
-    def _generate_urls(self):
+        # add default headers
+        for key, value in _DEFAULT_HEADERS.items():
+            # do not override if user added one already with same key
+            if key not in headers:
+                headers[key] = value
+        
+        # do not override user provided one
+        if 'Authorization' not in headers:
+            headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
+        return headers
+
+    def _generate_urls(self) -> Dict[str, str]:
+        urls = {}
         # remove trailing slash
         host = self.user_inputs.host
         if host[-1] == '/':
@@ -109,55 +133,25 @@ class ConfigNode:
         else:
             url_prefix = ""
         for key, value in _API_PATHS.items():
-            self._urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
+            urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
+        return urls
 
-    # used to add/update token key
-    def _add_auth_header(self):
-        # do not override user provided one
-        if 'Authorization' not in self._headers:
-            self._headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
-
-    def _set_base_dir(self):
+    def _set_base_dir(self) -> str:
         output_dir = self.user_inputs.output_path
         # check if user provided an output path
         if output_dir:
             # detect trailing slash
+            # normalize to no trailing slash for later consistency
             if output_dir[-1] == '/':
                 base_dir = f"{output_dir}{_BASE_DIR_NAME}"
             else:
                 base_dir = f"{output_dir}/{_BASE_DIR_NAME}"
         else:
             base_dir = _BASE_DIR_NAME
-        # use default base dir name if no output path provided
-        self._base_dir_name = base_dir
-        
-    @property
-    def token_secret(self) -> str:
-        return self._token_secret
-    
-    @token_secret.setter
-    def token_secret(self, value: str):
-        # just a check to ensure it has some value
-        if not value:
-            raise ValueError("BOOKSTACK_TOKEN_SECRET is not specified in env")
-        self._token_secret = value
-        # # update auth in header
-        # self._add_auth_header()
-
-    @property
-    def token_id(self) -> str:
-        return self._token_id
-    
-    @token_id.setter
-    def token_id(self, value: str):
-        # just a check to ensure it has some value
-        if not value:
-            raise ValueError("BOOKSTACK_TOKEN_ID is not specified in env")
-        self._token_id = value
+        return base_dir
     
     @property
     def headers(self) -> Dict[str, str]:
-        self._add_auth_header()
         return self._headers
 
     @property
@@ -167,3 +161,26 @@ class ConfigNode:
     @property
     def base_dir_name(self) -> str:
         return self._base_dir_name
+
+    @property
+    def object_storage_config(self) -> Dict[str, StorageProviderConfig]:
+        return self._object_storage_config
+    
+    @staticmethod
+    def _check_var(env_key: str, default_val: str) -> str:
+        """
+        :param: env_key = the environment variable to check
+        :param: default_val = the default value if any to set if env variable not set
+        
+        :return: env_key if present or default_val if not
+        :throws: ValueError if both parameters are empty.
+        """
+        env_value = os.environ.get(env_key, "")
+        # env value takes precedence
+        if env_value:
+            return env_value
+        # check for optional inputs, if env and input is missing
+        if not env_value and not default_val:
+            raise ValueError(f"{env_key} is not specified in env and is missing from configuration - at least one should be set")
+        # fall back to configuration file value if present
+        return default_val

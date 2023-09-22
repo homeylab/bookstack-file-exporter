@@ -21,45 +21,33 @@ class Node():
         Node instance to help create and reference bookstack child/parent relationships for resources like pages, books, chapters, and shelves.
 
     """
-    def __init__(self, meta: Dict[str, Union[str, int]], parent: Union['Node', None] = None, path_prefix: Union[str, None] = None):
+    def __init__(self, meta: Dict[str, Union[str, int]], parent: Union['Node', None] = None, path_prefix: str = ""):
         self.meta = meta
         self._parent = parent
         self._path_prefix = path_prefix
-        self.name: str = ""
-        self.id: int = 0
-        self._children: Union[List[Dict[str, Union[str, int]]], None] = None
-        self._file_path = ""
-        self._display_name = ""
-        self._is_empty = False
-        self._initialize()
-    
-    def _initialize(self):
         # for convenience/usage for exporter
-        self.name = self.meta['slug']
-        self.id = self.meta['id']
+        self.name: str = self.meta['slug']
+        self.id: int = self.meta['id']
         self._display_name = self.meta['name']
-        # get base file path from parent if it exists
-        if self._parent:
-            self._file_path = f"{self._parent.file_path}/{self.name}"
-        # normalize path prefix if it does not exist
-        if not self._path_prefix:
-            self._path_prefix = ""
-        # check for children
-        self._get_children()
-        # check empty - pages that were created but never touched by any user
-        self._check_empty()
+        # children
+        self._children = self._get_children()
+        # if parent
+        self._file_path = self._get_file_path()
     
-    def _get_children(self):
+
+    def _get_file_path(self) -> str:
+        if self._parent:
+            return f"{self._parent.file_path}/{self.name}"
+        return ""
+
+    def _get_children(self) -> List[Dict[str, Union[str, int]]]:
+        children = []
         # find first match
         for match in _CHILD_KEYS:
             if match in self.meta:
-                self._children = self.meta[match]
+                children = self.meta[match]
                 break
-    
-    def _check_empty(self):
-        # this is will tell us if page is empty
-        if not self.name and self._display_name == _NULL_PAGE_NAME:
-            self._is_empty = True
+        return children
     
     @property
     def file_path(self):
@@ -77,4 +65,6 @@ class Node():
     
     @property
     def empty(self):
-        return self._is_empty
+        if not self.name and self._display_name == _NULL_PAGE_NAME:
+            return True
+        return False

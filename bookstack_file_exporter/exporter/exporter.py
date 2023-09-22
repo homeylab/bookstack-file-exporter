@@ -34,7 +34,7 @@ class NodeExporter():
             raise ValueError(f"No resources returned from Bookstack api url: {base_url}")
         return self._get_parents(base_url, all_parents)
         
-    def _get_parents(self, base_url: str, parent_ids: List[int], path_prefix: Union[str, None] = None) -> Dict[int, Node]:
+    def _get_parents(self, base_url: str, parent_ids: List[int], path_prefix: str = "") -> Dict[int, Node]:
         parent_nodes = {}
         for parent_id in parent_ids:
             parent_url = f"{base_url}/{parent_id}"
