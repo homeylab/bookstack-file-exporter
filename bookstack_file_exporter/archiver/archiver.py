@@ -40,7 +40,7 @@ class Archiver:
         self.base_dir = base_dir
         self.add_meta = add_meta
         self.base_page_url = base_page_url
-        self.headers = headers
+        self._headers = headers
         self._object_storage_config = object_storage_config
         self._root_dir = self.generate_root_folder(self.base_dir)
         # the tar file will be name of parent export directory, bookstack-<timestamp>, and .tgz extension
@@ -100,7 +100,7 @@ class Archiver:
     # convert page data to bytes
     def _get_data_format(self, page_node_id: int, export_format: str) -> bytes:
         url = self._get_export_url(node_id=page_node_id, export_format=export_format)
-        return util.get_byte_response(url=url, headers=self.headers)
+        return util.get_byte_response(url=url, headers=self._headers)
     
     def _get_export_url(self, node_id: int, export_format: str) -> str:
         return f"{self.base_page_url}/{node_id}/{_EXPORT_API_PATH}/{export_format}"
