@@ -1,0 +1,57 @@
+---
+# if http/https not specified, defaults to https
+# if you put http here, it will try verify=false, not to check certs
+host: "https://bookstack.mydomain.org"
+# You could optionally set the bookstack token_id and token_secret here instead of env
+credentials:
+    # set here or as env variable, BOOKSTACK_TOKEN_ID
+    # env var takes precedence over below
+    token_id: ""
+    # set here or as env variable, BOOKSTACK_TOKEN_SECRET
+    # env var takes precedence over below
+    token_secret: ""
+# additional headers to add, examples below
+additional_headers:
+  test: "test"
+  test2: "test2"
+  User-Agent: "test-agent"
+# supported formats from bookstack below
+# specify one or more
+formats:
+  - markdown
+  - html
+  - pdf
+  - plaintext
+minio_config:
+  # a host/ip + port combination is also allowed
+  # example: "minio.yourdomain.com:8443"
+  host: "minio.yourdomain.com"
+  # set here or as env variable, MINIO_ACCESS_KEY
+  # env var takes precedence over below
+  access_key: ""
+  # set here or as env variable, MINIO_SECRET_KEY
+  # env var takes precedence over below
+  secret_key: ""
+  # required by minio
+  # if unsure, try "us-east-1"
+  region: "us-east-1"
+  # bucket to use
+  bucket: "bookstack-bkps"
+  # path to upload to
+  # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
+  path: "bookstack/backups/"
+# output directory for the exported archive
+# relative or full path
+# User who runs the command should have access to write and create sub folders in this directory
+# optional, if not provided, will use current run directory by default
+output_path: "/workspaces/bookstack-file-exporter/backups/"
+# optional export of metadata about the page in a json file
+# this metadata contains general information about the page
+# like: last update, owner, revision count, etc.
+# omit this or set to false if not needed
+export_meta: true
+# After uploading to object storage targets, choose to clean up local files
+# delete the archive from local filesystem
+# optional
+# default = false if omitted
+clean_up: true
