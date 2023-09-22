@@ -9,15 +9,6 @@ LOG_LEVEL = {
     'error': logging.ERROR
 }
 
-# Characters in filenames to be replaced with "_"
-
-class InvalidArgument(Exception):
-    """ Use this when an argument is not valid """
-    def __init__(self, message: str):
-        self.message = message
-        super().__init__(self.message)
-
-
 def get_log_level(log_level:str) -> int:
     return LOG_LEVEL.get(log_level)
 
