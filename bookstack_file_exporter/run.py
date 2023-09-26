@@ -32,6 +32,8 @@ def exporter(args: argparse.Namespace):
     ## shelves
     shelve_nodes: Dict[int, Node] = exportHelper.get_shelf_nodes()
     ## books
+    # book_nodes: Dict[int, Node] = exportHelper.get_all_books(shelve_nodes, unassigned_dir)
+
     book_nodes: Dict[int, Node] = exportHelper.get_child_nodes("books", shelve_nodes)
     # books with no shelve assignment
     # default will be put in "unassigned" directory relative to backup dir
@@ -59,6 +61,8 @@ def exporter(args: argparse.Namespace):
         chapter_nodes = {}
 
     ## pages
+    # page_nodes: Dict[int, Node] = exportHelper.get_all_pages(book_nodes)
+
     page_nodes: Dict[int, Node] = exportHelper.get_child_nodes("pages", book_nodes)
     # add chapter node pages
     # replace existing page node if found with proper chapter parent
@@ -79,4 +83,6 @@ def exporter(args: argparse.Namespace):
     # archive to remote targets
     archive.archive_remote(config.object_storage_config)
 
+    # if remote target is specified and clean is true
+    # clean up the .tgz archive since it is already uploaded
     archive.clean_up(config.user_inputs.clean_up)

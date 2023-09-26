@@ -1,8 +1,13 @@
 from typing import Dict, List, Union
+import logging
 
 import bookstack_file_exporter.exporter.util as util
 from bookstack_file_exporter.exporter.node import Node
 
+from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+
+
+log = logging.getLogger(__name__)
 
 # _API_SUFFIX_PATHS = {
 #     "shelves": "api/shelves",
@@ -65,7 +70,7 @@ class NodeExporter():
         base_url = self.api_urls[resource_type]
         return self._get_children(base_url, parent_nodes, filter_empty)
 
-    def _get_children(self, base_url: str, parent_nodes: Dict[int, Node], filter_empty: bool):
+    def _get_children(self, base_url: str, parent_nodes: Dict[int, Node], filter_empty: bool) -> Dict[int, Node]:
         child_nodes = {}
         for _, parent in parent_nodes.items():
             if parent.children:
@@ -93,3 +98,49 @@ class NodeExporter():
             raise ValueError(f"No unassigned resources found for type: {base_url}")
         # books with no shelf treated like a parent resource
         return self._get_parents(base_url, unassigned, path_prefix)
+
+    # convenience function
+    def get_all_books(self, shelve_nodes: Dict[int, Node], unassigned_dir: str):
+        # get books in shelves
+        book_nodes = self.get_child_nodes("books", shelve_nodes)
+        # books with no shelve assignment
+        # default will be put in "unassigned" directory relative to backup dir
+        # catch ValueError for Missing Response/Empty Data if no chapters exists
+        try:
+            books_no_shelf = self.get_unassigned_books(book_nodes, unassigned_dir)
+        except ValueError:
+            log.Info("No unassigned books found")
+            books_no_shelf = {}
+
+        # add new book nodes to map
+        # these should not already be present in map
+        # since we started with shelves first and then moved our way down.
+        if books_no_shelf:
+            for key, value in books_no_shelf.items():
+                book_nodes[key] = value
+
+        return book_nodes
+    
+    # convenience function
+    def get_all_pages(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
+        ## chapters (if exists)
+        # chapter nodes are treated a little differently
+        # are children under books
+        try:
+            chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
+        except ValueError:
+            log.Info("No chapter data was found")
+            chapter_nodes = {}
+
+        ## pages
+        page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes)
+        # add chapter node pages
+        # replace existing page node if found with proper chapter parent
+        if chapter_nodes:
+            page_chapter_nodes: Dict[int, Node] = self.get_child_nodes("pages", chapter_nodes)
+            ## since we filter empty, check if there is any content
+            ## add all chapter pages to existing page nodes
+            if page_chapter_nodes:
+                for key, value in page_chapter_nodes.items():
+                    page_nodes[key] = value
+        

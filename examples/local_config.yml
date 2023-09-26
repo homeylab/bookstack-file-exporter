@@ -3,6 +3,7 @@
 # if you put http here, it will try verify=false, not to check certs
 host: "https://bookstack.mydomain.org"
 # You could optionally set the bookstack token_id and token_secret here instead of env
+# If using env vars instead you can omit/comment out this section
 credentials:
     # set here or as env variable, BOOKSTACK_TOKEN_ID
     # env var takes precedence over below
@@ -11,6 +12,7 @@ credentials:
     # env var takes precedence over below
     token_secret: ""
 # additional headers to add, examples below
+# if not required, you can omit/comment out
 additional_headers:
   test: "test"
   test2: "test2"
@@ -25,4 +27,8 @@ formats:
 # directory to export to
 # relative or full path
 output_path: "bkps/"
+# optional export of metadata about the page in a json file
+# this metadata contains general information about the page
+# like: last update, owner, revision count, etc.
+# omit this or set to false if not needed
 export_meta: true
