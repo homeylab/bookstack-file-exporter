@@ -2,7 +2,7 @@ import argparse
 import os
 import logging
 from time import sleep
-from typing import Dict, Union, List
+from typing import Dict
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
@@ -30,59 +30,18 @@ def exporter(args: argparse.Namespace):
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     exportHelper = NodeExporter(api_urls, bookstack_headers)
     ## shelves
-    shelve_nodes: Dict[int, Node] = exportHelper.get_shelf_nodes()
+    shelve_nodes: Dict[int, Node] = exportHelper.get_all_shelves()
     ## books
-    # book_nodes: Dict[int, Node] = exportHelper.get_all_books(shelve_nodes, unassigned_dir)
-
-    book_nodes: Dict[int, Node] = exportHelper.get_child_nodes("books", shelve_nodes)
-    # books with no shelve assignment
-    # default will be put in "unassigned" directory relative to backup dir
-    # catch ValueError for Missing Response/Empty Data if no chapters exists
-    try:
-        books_no_shelf: Dict[int, Node] = exportHelper.get_unassigned_books(book_nodes, unassigned_dir)
-    except ValueError:
-        log.Info("No unassigned books found")
-        books_no_shelf = {}
-
-    # add new book nodes to map
-    # these should not already be present in map
-    # since we started with shelves first and then moved our way down.
-    if books_no_shelf:
-        for key, value in books_no_shelf.items():
-            book_nodes[key] = value
-
-    ## chapters (if exists)
-    # chapter nodes are treated a little differently
-    # are children under books
-    try:
-        chapter_nodes: Dict[int, Node] = exportHelper.get_chapter_nodes(book_nodes)
-    except ValueError:
-        log.Info("No chapter data was found")
-        chapter_nodes = {}
-
+    book_nodes: Dict[int, Node] = exportHelper.get_all_books(shelve_nodes, unassigned_dir)
     ## pages
-    # page_nodes: Dict[int, Node] = exportHelper.get_all_pages(book_nodes)
-
-    page_nodes: Dict[int, Node] = exportHelper.get_child_nodes("pages", book_nodes)
-    # add chapter node pages
-    # replace existing page node if found with proper chapter parent
-    if chapter_nodes:
-        page_chapter_nodes: Dict[int, Node] = exportHelper.get_child_nodes("pages", chapter_nodes)
-        ## since we filter empty, check if there is any content
-        ## add all chapter pages to existing page nodes
-        if page_chapter_nodes:
-            for key, value in page_chapter_nodes.items():
-                page_nodes[key] = value
+    page_nodes: Dict[int, Node] = exportHelper.get_all_pages(book_nodes)
     
     ## start archive ##
-    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers, config.object_storage_config)
-    
+    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers)
     # create tar
     archive.archive(page_nodes, export_formats)
-    
     # archive to remote targets
     archive.archive_remote(config.object_storage_config)
-
     # if remote target is specified and clean is true
     # clean up the .tgz archive since it is already uploaded
     archive.clean_up(config.user_inputs.clean_up)

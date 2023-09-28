@@ -19,6 +19,11 @@ def get_args() -> argparse.Namespace:
                     type=str,
                     default="data/config.yml",
                     help='Provide a configuration file (full or relative path). See README for more details')
+    parser.add_argument('-o',
+                    '--output-dir',
+                    type=str,
+                    default="",
+                    help='Optional, specify an output directory. This can also be specified in the config.yml file')
     parser.add_argument('-v',
                     '--log-level',
                     type=str.lower,

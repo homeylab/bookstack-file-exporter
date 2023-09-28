@@ -28,7 +28,7 @@ class NodeExporter():
         self.api_urls = api_urls
         self.headers = headers
 
-    def get_shelf_nodes(self) -> Dict[int, Node]:
+    def get_all_shelves(self) -> Dict[int, Node]:
         """
         Function to get all shelf Node instances 
         :returns: Dict[int, Node] for all shelf nodes
@@ -143,4 +143,5 @@ class NodeExporter():
             if page_chapter_nodes:
                 for key, value in page_chapter_nodes.items():
                     page_nodes[key] = value
+        return page_nodes
         

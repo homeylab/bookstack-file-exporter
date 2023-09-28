@@ -36,12 +36,11 @@ class Archiver:
     Returns:
         Archiver instance with attributes that are accessible for use for file level archival and backup.
     """
-    def __init__(self, base_dir: str, add_meta: Union[bool, None], base_page_url: str, headers: Dict[str, str], object_storage_config: Dict[str, StorageProviderConfig]):
+    def __init__(self, base_dir: str, add_meta: Union[bool, None], base_page_url: str, headers: Dict[str, str]):
         self.base_dir = base_dir
         self.add_meta = add_meta
         self.base_page_url = base_page_url
         self._headers = headers
-        self._object_storage_config = object_storage_config
         self._root_dir = self.generate_root_folder(self.base_dir)
         # the tar file will be name of parent export directory, bookstack-<timestamp>, and .tgz extension
         self._tar_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
