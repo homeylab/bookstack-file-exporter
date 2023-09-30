@@ -50,7 +50,7 @@ class ConfigNode:
     def __init__(self, args: argparse.Namespace):
         self.unassigned_book_dir = _UNASSIGNED_BOOKS_DIR
         self.user_inputs = self._generate_config(args.config_file)
-        self._base_dir_name = self._set_base_dir()
+        self._base_dir_name = self._set_base_dir(args.output_dir)
         self._token_id, self._token_secret = self._generate_credentials()
         self._headers = self._generate_headers()
         self._urls = self._generate_urls()
@@ -136,8 +136,12 @@ class ConfigNode:
             urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
         return urls
 
-    def _set_base_dir(self) -> str:
+    def _set_base_dir(self, cmd_output_dir: str) -> str:
         output_dir = self.user_inputs.output_path
+        # override if command line specified
+        if cmd_output_dir:
+            log.debug("Output directory overwritten by command line option")
+            output_dir = cmd_output_dir
         # check if user provided an output path
         if output_dir:
             # detect trailing slash
@@ -178,6 +182,7 @@ class ConfigNode:
         env_value = os.environ.get(env_key, "")
         # env value takes precedence
         if env_value:
+            log.debug(f"env key: {env_key} specified. Will override configuration file value if set.")
             return env_value
         # check for optional inputs, if env and input is missing
         if not env_value and not default_val:
