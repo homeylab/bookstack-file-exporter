@@ -36,7 +36,8 @@ class NodeExporter():
         base_url = self.api_urls["shelves"]
         all_parents: List[int] = util.get_all_ids(base_url, self.headers)
         if not all_parents:
-            raise ValueError(f"No resources returned from Bookstack api url: {base_url}")
+            log.warning("No shelves found in given Bookstack instance")
+            return {}
         return self._get_parents(base_url, all_parents)
         
     def _get_parents(self, base_url: str, parent_ids: List[int], path_prefix: str = "") -> Dict[int, Node]:
@@ -47,17 +48,18 @@ class NodeExporter():
             parent_nodes[parent_id] = Node(parent_data, path_prefix=path_prefix)
         return parent_nodes
     
-    def get_chapter_nodes(self, book_nodes: Dict[int, Node]):
+    def get_chapter_nodes(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
         # Chapters are treated a little differently
         # They are under books like pages but have their own children
         # i.e. not a terminal node
         base_url = self.api_urls["chapters"]
         all_chapters: List[int] = util.get_all_ids(base_url, self.headers)
         if not all_chapters:
-            raise ValueError(f"No resources returned from Bookstack api url: {base_url}")
+            log.debug("No chapters found in given Bookstack instance")
+            return {}
         return self._get_chapters(base_url, all_chapters, book_nodes)
 
-    def _get_chapters(self, base_url: str, all_chapters: List[int], book_nodes: Dict[int, Node]):
+    def _get_chapters(self, base_url: str, all_chapters: List[int], book_nodes: Dict[int, Node]) -> Dict[int, Node]:
         chapter_nodes = {}
         for chapter_id in all_chapters:
             chapter_url = f"{base_url}/{chapter_id}"
@@ -95,22 +97,19 @@ class NodeExporter():
             if resource_id not in existing_resources:
                 unassigned.append(resource_id)
         if not unassigned:
-            raise ValueError(f"No unassigned resources found for type: {base_url}")
+            return {}
         # books with no shelf treated like a parent resource
         return self._get_parents(base_url, unassigned, path_prefix)
 
     # convenience function
-    def get_all_books(self, shelve_nodes: Dict[int, Node], unassigned_dir: str):
+    def get_all_books(self, shelve_nodes: Dict[int, Node], unassigned_dir: str) -> Dict[int, Node]:
+        book_nodes = {}
         # get books in shelves
-        book_nodes = self.get_child_nodes("books", shelve_nodes)
+        if shelve_nodes:
+            book_nodes = self.get_child_nodes("books", shelve_nodes)
         # books with no shelve assignment
         # default will be put in "unassigned" directory relative to backup dir
-        # catch ValueError for Missing Response/Empty Data if no chapters exists
-        try:
-            books_no_shelf = self.get_unassigned_books(book_nodes, unassigned_dir)
-        except ValueError:
-            log.Info("No unassigned books found")
-            books_no_shelf = {}
+        books_no_shelf = self.get_unassigned_books(book_nodes, unassigned_dir)
 
         # add new book nodes to map
         # these should not already be present in map
@@ -125,15 +124,13 @@ class NodeExporter():
     def get_all_pages(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
         ## chapters (if exists)
         # chapter nodes are treated a little differently
-        # are children under books
-        try:
-            chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
-        except ValueError:
-            log.Info("No chapter data was found")
-            chapter_nodes = {}
+        # chapters are children under books
+        chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
 
         ## pages
-        page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes)
+        page_nodes = {}
+        if book_nodes:
+            page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes)
         # add chapter node pages
         # replace existing page node if found with proper chapter parent
         if chapter_nodes:

@@ -1,5 +1,5 @@
 import argparse
-import os
+import sys
 import logging
 from time import sleep
 from typing import Dict
@@ -35,6 +35,9 @@ def exporter(args: argparse.Namespace):
     book_nodes: Dict[int, Node] = exportHelper.get_all_books(shelve_nodes, unassigned_dir)
     ## pages
     page_nodes: Dict[int, Node] = exportHelper.get_all_pages(book_nodes)
+    if not page_nodes:
+        log.warning("No page data available from given Bookstack instance. Nothing to archive")
+        sys.exit(0)
     
     ## start archive ##
     archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers)

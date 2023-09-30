@@ -2,7 +2,7 @@
 BASE_IMAGE=python
 BASE_IMAGE_TAG=3.11-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
-IMAGE_TAG=0.0.1
+IMAGE_TAG=test
 DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
