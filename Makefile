@@ -25,6 +25,7 @@ docker_push:
 
 docker_test:
 	docker run \
+	-e LOG_LEVEL='debug' \
 	-v ${CURDIR}/local/config.yml:/export/config/config.yml:ro \
 	-v ${CURDIR}/bkps:/export/dump \
 	${IMAGE_NAME}:${IMAGE_TAG}

@@ -1,11 +1,14 @@
 from typing import List, Dict, Union
 from time import sleep
 from datetime import datetime
+import logging
 
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+
+log = logging.getLogger(__name__)
 
 _META_FILE_SUFFIX = "_meta"
 _TAR_GZ_SUFFIX = ".tgz"
@@ -57,6 +60,7 @@ class Archiver:
     # convert to bytes to be agnostic to end destination (future use case?)
     def _gather(self, page_node: Node, export_format: str):
         raw_data = self._get_data_format(page_node.id, export_format)
+        log.debug(f"Output directory for exports set to: {self._root_dir}")
         self._gather_local(page_node.file_path, raw_data, export_format, page_node.meta)
     
     def _gather_local(self, page_path: str, data: bytes, export_format: str, meta_data: Union[bytes, None]):

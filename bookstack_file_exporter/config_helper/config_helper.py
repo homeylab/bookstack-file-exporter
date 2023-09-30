@@ -140,6 +140,7 @@ class ConfigNode:
         output_dir = self.user_inputs.output_path
         # override if command line specified
         if cmd_output_dir:
+            log.debug("Output directory overwritten by command line option")
             output_dir = cmd_output_dir
         # check if user provided an output path
         if output_dir:
@@ -181,6 +182,7 @@ class ConfigNode:
         env_value = os.environ.get(env_key, "")
         # env value takes precedence
         if env_value:
+            log.debug(f"env key: {env_key} specified. Will override configuration file value if set.")
             return env_value
         # check for optional inputs, if env and input is missing
         if not env_value and not default_val:

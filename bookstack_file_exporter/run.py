@@ -26,6 +26,7 @@ def exporter(args: argparse.Namespace):
 
     #### Export Data #####
     # need to implement pagination for apis
+    log.info("Beginning export")
 
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     exportHelper = NodeExporter(api_urls, bookstack_headers)
@@ -39,6 +40,7 @@ def exporter(args: argparse.Namespace):
         log.warning("No page data available from given Bookstack instance. Nothing to archive")
         sys.exit(0)
     
+    log.info("Beginning archive")
     ## start archive ##
     archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta, page_base_url, bookstack_headers)
     # create tar
