@@ -1,4 +1,3 @@
-
 ARG BASE_IMAGE=python
 ARG BASE_IMAGE_TAG=3.11-slim-python
 

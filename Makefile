@@ -23,9 +23,11 @@ docker_build:
 docker_push:
 	docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
+# add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:
-	docker run \
+	docker run -i \
 	-e LOG_LEVEL='debug' \
+	--user 1000:1000 \
 	-v ${CURDIR}/local/config.yml:/export/config/config.yml:ro \
 	-v ${CURDIR}/bkps:/export/dump \
 	${IMAGE_NAME}:${IMAGE_TAG}
