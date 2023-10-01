@@ -1,5 +1,4 @@
 from typing import List, Dict, Union
-from time import sleep
 from datetime import datetime
 import logging
 
@@ -52,7 +51,7 @@ class Archiver:
         self._root_dir = self.generate_root_folder(self.base_dir)
         # the tar file will be name of
         # parent export directory, bookstack-<timestamp>, and .tgz extension
-        self._tar_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
+        self._archive_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
         # remote_system to function mapping
         self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
@@ -60,29 +59,35 @@ class Archiver:
     def archive(self, page_nodes: Dict[int, Node], export_formats: List[str]):
         """create a .tgz of all page content"""
         for _, page in page_nodes.items():
-            for format in export_formats:
-                self._gather(page, format)
-        self._tar_dir()
+            for ex_format in export_formats:
+                self._gather(page, ex_format)
+        # self._tar_dir()
+        self._gzip_tar()
 
     # convert to bytes to be agnostic to end destination (future use case?)
     def _gather(self, page_node: Node, export_format: str):
         raw_data = self._get_data_format(page_node.id, export_format)
-        log.debug(f"Output directory for exports set to: {self._root_dir}")
         self._gather_local(page_node.file_path, raw_data, export_format, page_node.meta)
 
     def _gather_local(self, page_path: str, data: bytes,
                       export_format: str, meta_data: Union[bytes, None]):
         # get path to page
-        file_path = f"{self._root_dir}/{page_path}"
-        # add extension to page path
-        file_full_name = f"{file_path}{_FILE_EXTENSION_MAP[export_format]}"
-        util.write_bytes(file_path=file_full_name, data=data)
-        if self.add_meta:
-            meta_file_name = f"{file_path}{_FILE_EXTENSION_MAP['meta']}"
-            util.dump_json(file_name=meta_file_name, data=meta_data)
+        # file_path = f"{self._root_dir}/{page_path}"
+        # # add extension to page path
+        # file_full_name = f"{file_path}{_FILE_EXTENSION_MAP[export_format]}"
+        # log.debug("Output directory for page export set to: %s", file_full_name)
+
+        page_file = f"{page_path}{_FILE_EXTENSION_MAP[export_format]}"
+        tar_file = f"{self._root_dir}.tar"
+        util.write_bytes(tar_file, file_path=page_file, data=data)
+
+        # if self.add_meta:
+        #     meta_file_name = f"{file_path}{_FILE_EXTENSION_MAP['meta']}"
+        #     util.dump_json(file_name=meta_file_name, data=meta_data)
 
     # send to remote systems
     def archive_remote(self, remote_targets: Dict[str, StorageProviderConfig]):
+        """for each target, do their respective tasks"""
         if remote_targets:
             for key, value in remote_targets.items():
                 self._remote_exports[key](value)
@@ -90,23 +95,28 @@ class Archiver:
     def _tar_dir(self):
         util.create_tar(self._root_dir, _FILE_EXTENSION_MAP['tar'])
 
+    def _gzip_tar(self):
+        tar_file = f"{self._root_dir}.tar"
+        util.create_gzip(tar_file, self._archive_file)
+
     def _archive_minio(self, config: StorageProviderConfig):
         minio_archiver = MinioArchiver(config)
-        minio_archiver.upload_backup(self._tar_file)
+        minio_archiver.upload_backup(self._archive_file)
 
     def _archive_s3(self, config: StorageProviderConfig):
         pass
 
     def clean_up(self, clean_up_archive: Union[bool, None]):
+        """remove archive after sending to remote target"""
         self._clean(clean_up_archive)
 
     def _clean(self, clean_up_archive: Union[bool, None]):
         # remove data root directory since we already have the .tgz file now
-        util.remove_dir(self._root_dir)
+        # util.remove_dir(self._root_dir)
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
         if clean_up_archive:
-            util.remove_file(self._tar_file)
+            util.remove_file(self._archive_file)
 
     # convert page data to bytes
     def _get_data_format(self, page_node_id: int, export_format: str) -> bytes:
@@ -118,4 +128,5 @@ class Archiver:
 
     @staticmethod
     def generate_root_folder(base_folder_name: str) -> str:
+        """return base archive name"""
         return base_folder_name + "_" + datetime.now().strftime(_DATE_STR_FORMAT)
