@@ -9,7 +9,8 @@ from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
-_META_FILE_SUFFIX = "_meta"
+_META_FILE_SUFFIX = "_meta.json"
+_TAR_SUFFIX = ".tar"
 _TAR_GZ_SUFFIX = ".tgz"
 
 _EXPORT_API_PATH = "export"
@@ -19,8 +20,9 @@ _FILE_EXTENSION_MAP = {
     "html": ".html",
     "pdf": ".pdf",
     "plaintext": ".txt",
-    "meta": f"{_META_FILE_SUFFIX}.json",
-    "tar": _TAR_GZ_SUFFIX
+    "meta": _META_FILE_SUFFIX,
+    "tar": _TAR_SUFFIX,
+    "tgz": _TAR_GZ_SUFFIX
 }
 
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
@@ -49,9 +51,13 @@ class Archiver:
         self.base_page_url = base_page_url
         self._headers = headers
         self._root_dir = self.generate_root_folder(self.base_dir)
-        # the tar file will be name of
+        # the tgz file will be name of
         # parent export directory, bookstack-<timestamp>, and .tgz extension
-        self._archive_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
+        self._archive_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tgz']}"
+        # name of intermediate tar file before gzip
+        self._tar_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
+        # name of the base folder to use within the tgz archive
+        self._archive_base_path = self._root_dir.split("/")[-1]
         # remote_system to function mapping
         self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
@@ -61,7 +67,6 @@ class Archiver:
         for _, page in page_nodes.items():
             for ex_format in export_formats:
                 self._gather(page, ex_format)
-        # self._tar_dir()
         self._gzip_tar()
 
     # convert to bytes to be agnostic to end destination (future use case?)
@@ -71,19 +76,12 @@ class Archiver:
 
     def _gather_local(self, page_path: str, data: bytes,
                       export_format: str, meta_data: Union[bytes, None]):
-        # get path to page
-        # file_path = f"{self._root_dir}/{page_path}"
-        # # add extension to page path
-        # file_full_name = f"{file_path}{_FILE_EXTENSION_MAP[export_format]}"
-        # log.debug("Output directory for page export set to: %s", file_full_name)
-
-        page_file = f"{page_path}{_FILE_EXTENSION_MAP[export_format]}"
-        tar_file = f"{self._root_dir}.tar"
-        util.write_bytes(tar_file, file_path=page_file, data=data)
-
-        # if self.add_meta:
-        #     meta_file_name = f"{file_path}{_FILE_EXTENSION_MAP['meta']}"
-        #     util.dump_json(file_name=meta_file_name, data=meta_data)
+        page_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP[export_format]}"
+        util.write_bytes(self._tar_file, file_path=page_file_name, data=data)
+        if self.add_meta:
+            meta_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
+            bytes_meta = util.get_json_bytes(meta_data)
+            util.write_bytes(self._tar_file, file_path=meta_file_name, data=bytes_meta)
 
     # send to remote systems
     def archive_remote(self, remote_targets: Dict[str, StorageProviderConfig]):
@@ -92,12 +90,8 @@ class Archiver:
             for key, value in remote_targets.items():
                 self._remote_exports[key](value)
 
-    def _tar_dir(self):
-        util.create_tar(self._root_dir, _FILE_EXTENSION_MAP['tar'])
-
     def _gzip_tar(self):
-        tar_file = f"{self._root_dir}.tar"
-        util.create_gzip(tar_file, self._archive_file)
+        util.create_gzip(self._tar_file, self._archive_file)
 
     def _archive_minio(self, config: StorageProviderConfig):
         minio_archiver = MinioArchiver(config)
@@ -111,8 +105,6 @@ class Archiver:
         self._clean(clean_up_archive)
 
     def _clean(self, clean_up_archive: Union[bool, None]):
-        # remove data root directory since we already have the .tgz file now
-        # util.remove_dir(self._root_dir)
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
         if clean_up_archive:
