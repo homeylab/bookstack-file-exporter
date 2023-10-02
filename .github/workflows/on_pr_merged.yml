@@ -1,0 +1,99 @@
+# needs: [tests]  # require tests to pass before deploy runs
+
+name: Build and Push
+
+# on:
+#   push:
+#     # Pattern matched against refs/tags
+#     tags:
+#       - '**' # Push events to every tag including hierarchical tags like v1.0/beta
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - master
+
+jobs:
+  docker_deploy:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Login to Dockerhub
+      run: docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build the Docker image
+      run: make docker_build
+    - name: Push Docker image
+      run: make docker_push
+  pypi_deploy:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.x'
+    - name: Set tag version
+      run: |
+        TAG=$(cat Makefile | grep -E  ^IMAGE_TAG=[0-9].[0-9].[0-9])
+        echo "VERSION=${TAG}" >> $GITHUB_ENV
+        echo "version from Makefile is: ${VERSION}"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+    - name: Update Release tag
+      run: sed -i 's/^version = [^ ]*/version = ${VERSION}/' setup.cfg
+    - name: Build package
+      run: make build
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+  create_tag:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    needs:
+      - docker_deploy
+      - pypi_deploy
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        fetch-depth: '0'
+    - name: Set tag version
+      run: |
+        TAG=$(cat Makefile | grep -E  ^IMAGE_TAG=[0-9].[0-9].[0-9])
+        echo "VERSION=${TAG}" >> $GITHUB_ENV
+        echo "version from Makefile is: ${VERSION}"
+    - name: Create tag
+      uses: anothrNick/github-tag-action@1.64.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        WITH_V: true
+        PRERELEASE: true
+        CUSTOM_TAG: ${VERSION}
+  create_release:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    needs:
+      - create_tag
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set tag version
+      run: |
+        TAG=$(cat Makefile | grep -E  ^IMAGE_TAG=[0-9].[0-9].[0-9])
+        echo "VERSION=${TAG}" >> $GITHUB_ENV
+        echo "version from Makefile is: ${VERSION}"
+    - uses: ncipollo/release-action@v1
+      with:
+        tag: ${VERSION}
+  # docker image tag latest
