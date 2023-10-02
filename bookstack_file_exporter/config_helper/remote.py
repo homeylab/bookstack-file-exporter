@@ -11,7 +11,7 @@ class StorageProviderConfig:
         access_key <str> = required token id
         secret_key <str> = required secret token
         bucket <str> = bucket to upload
-        host <str> (optionalgit) = if provider requires a host/url
+        host <str> (optional) = if provider requires a host/url
         path <str> (optional) = specify bucket path for upload
         region <str> (optional) = if provider requires region
 
