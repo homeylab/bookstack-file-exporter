@@ -8,10 +8,12 @@ on:
 jobs:
   docker_build:
     runs-on: ubuntu-latest
+    env:
+      DOCKER_REPO: ${{ vars.DOCKERHUB_REPO }}
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag $DOCKERHUB_REPO:${{ github.sha }}
+      run: docker build . --file Dockerfile --tag $DOCKER_REPO:${{ github.sha }}
   pip_build:
     runs-on: ubuntu-latest
     strategy:
