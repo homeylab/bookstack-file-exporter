@@ -1,0 +1,28 @@
+name: Test Builds
+
+on:
+  push:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docker_build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag ${{ vars.DOCKERHUB_REPO }}:${{ github.sha }}
+  pip_build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Test Install of Pip Module
+      run: |
+        pip install .
