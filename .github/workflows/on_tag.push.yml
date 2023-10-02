@@ -16,7 +16,7 @@ jobs:
     # Store the version, stripping any v-prefix
     - name: Write release version
       run: |
-        TAG=${{ github.event.release.tag_name }}
+        TAG=${{ github.ref_name }}
         echo "VERSION=${TAG#v}" >> $GITHUB_ENV
         echo Version: $VERSION
     - name: Login to Dockerhub
@@ -41,7 +41,7 @@ jobs:
         pip install build
     - name: Write release version
       run: |
-        TAG=${{ github.event.release.tag_name }}
+        TAG=${{ github.ref_name }}
         echo "VERSION=${TAG#v}" >> $GITHUB_ENV
         echo Version: $VERSION
     - name: Update Release tag
