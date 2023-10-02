@@ -69,7 +69,7 @@ Tokens and other options can be specified, example:
 ```bash
 # '-e' flag for env vars
 # --user flag to override the uid/gid for created files
-docker run -i \
+docker run \
 	-e LOG_LEVEL='debug' \
     -e BOOKSTACK_TOKEN_ID='xyz' \
     -e BOOKSTACK_TOKEN_SECRET='xyz' \
