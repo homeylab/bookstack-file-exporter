@@ -1,7 +1,6 @@
 name: Test Builds
 
 on:
-  push:
   pull_request:
     branches: [ "main" ]
 
@@ -10,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Prepare Makefile
+      run: sed -i 's/^IMAGE_TAG=[^ ]*/IMAGE_TAG=${{github.run_id}}/' Makefile
     - name: Build the Docker image
       run: make docker_build
   pip_build:

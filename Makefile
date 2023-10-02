@@ -2,6 +2,8 @@
 BASE_IMAGE=python
 BASE_IMAGE_TAG=3.11-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
+# keep this start sequence unique (IMAGE_TAG=)
+# github actions will replace this value for later use
 IMAGE_TAG=test
 DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
