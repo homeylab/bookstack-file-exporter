@@ -96,4 +96,5 @@ jobs:
     - uses: ncipollo/release-action@v1
       with:
         tag: ${VERSION}
+        generateReleaseNotes: true
   # docker image tag latest
