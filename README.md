@@ -1,12 +1,10 @@
 # bookstack-file-exporter
 
-**WIP** not yet complete. 
+_This is project is still under active development. Functionality is there and is relatively stable at this time._
 
-_This is project is still under active development but has made significant progress._
+This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations.
 
-This tool provides a way to export Bookstack pages in a folder-tree layout into object storage and/or locally.
-
-This small project was mainly created to run as a cronjob in k8s but also run locally if needed. This would allow me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
+This small project was mainly created to run as a cron job in k8s but works anywhere. This would allow me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
 The main use case is to backup all docs in a folder-tree format to cover the scenarios:
 
@@ -36,9 +34,22 @@ python -m bookstack_file_exporter -c <path_to_config_file>
 ## Using This Application
 
 ### Install via Pip
+Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) `3.11.X` versions.
+
 ```
 pip install bookstack-file-exporter
+
+# if you already have python bin directory in your path
+bookstack-file-exporter -c <path_to_config_file>
+
+# using pip
+python -m bookstack_file_exporter -c <path_to_config_file>
 ```
+Command line options:
+| option | required | description |
+| ------ | -------- | ----------- |
+|`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
+|`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
 ### Authentication
 **Note visibility of pages is based on user**, so use a user that has access to pages you want to back up
@@ -112,41 +123,6 @@ export_meta: true
 clean_up: true
 ```
 
-### Minio Backups
-When specifying `minio_config` in the configuration file, these fields are required in the file:
-```
-# a host/ip + port combination is also allowed
-# example: "minio.yourdomain.com:8443"
-host: "minio.yourdomain.com"
-
-# this is required since minio api appears to require it
-# set to the region your bucket resides in
-# if unsure, try "us-east-1" first
-region: "us-east-1"
-
-# bucket to upload to
-bucket "mybucket"
-```
-
-These fields are optional:
-```
-# access key for the minio instance
-# optionally set as env variable instead
-access_key: ""
-
-# secret key for the minio instance
-# optionally set as env variable instead
-secret_key: ""
-
-# the path of the backup
-# in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-path: "bookstack/backups"
-```
-
-As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
-
 ### Backup Behavior
 We will use slug names (from Bookstack API) by default, as such certain characters like `!`, `/` will be ignored and spaces replaced.
 
@@ -188,6 +164,41 @@ Empty/New Pages will be ignored since they have not been modified yet from creat
 ```
 
 You may notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
+
+### Minio Backups
+When specifying `minio_config` in the configuration file, these fields are required in the file:
+```
+# a host/ip + port combination is also allowed
+# example: "minio.yourdomain.com:8443"
+host: "minio.yourdomain.com"
+
+# this is required since minio api appears to require it
+# set to the region your bucket resides in
+# if unsure, try "us-east-1" first
+region: "us-east-1"
+
+# bucket to upload to
+bucket "mybucket"
+```
+
+These fields are optional:
+```
+# access key for the minio instance
+# optionally set as env variable instead
+access_key: ""
+
+# secret key for the minio instance
+# optionally set as env variable instead
+secret_key: ""
+
+# the path of the backup
+# in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
+path: "bookstack/backups"
+```
+
+As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
 
 ## Future Items
 1. Be able to pull media/photos locally and place in their respective page folders for a more complete file level backup.

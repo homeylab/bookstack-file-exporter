@@ -10,10 +10,22 @@ DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
 
 pip_build:
-	pip install .
+	python -m pip install .
 
 pip_local_dev:
-	pip install -e .
+	python -m pip install -e .
+
+build:
+	python -m pip install --upgrade build
+	python -m build
+
+upload_testpypi:
+	python -m pip install --upgrade twine
+	python -m twine upload --repository testpypi dist/*
+
+# extra-url is for dependencies using real pypi
+download_testpypi:
+	python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bookstack-file-exporter
 
 docker_build: 
 	docker buildx build \
