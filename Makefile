@@ -7,7 +7,10 @@ DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
 
-test_local:
+pip_build:
+	pip install .
+
+pip_local_dev:
 	pip install -e .
 
 docker_build: 
