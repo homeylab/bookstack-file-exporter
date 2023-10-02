@@ -11,7 +11,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ${{ env.DOCKERHUB_REPO }}:${{ GITHUB_RUN_ID }}
+      run: docker build . --file Dockerfile --tag ${{ env.DOCKERHUB_REPO }}:${{ github.run_id }}
   pip_build:
     runs-on: ubuntu-latest
     strategy:
