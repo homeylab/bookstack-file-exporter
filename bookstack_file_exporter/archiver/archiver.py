@@ -34,7 +34,7 @@ class Archiver:
 
     Args:
         :root_dir: str (required) = the base directory for 
-        which the files will be placed .
+        which the archive .tgz will be placed.
         :add_meta: bool (required) = whether or not to add 
         metadata json files for each page, book, chapter, and/or shelve.
         :base_page_url: str (required) = the full url and path to get page content.
@@ -71,12 +71,13 @@ class Archiver:
 
     # convert to bytes to be agnostic to end destination (future use case?)
     def _gather(self, page_node: Node, export_format: str):
-        raw_data = self._get_data_format(page_node.id, export_format)
+        raw_data = self._get_data_format(page_node.id_, export_format)
         self._gather_local(page_node.file_path, raw_data, export_format, page_node.meta)
 
     def _gather_local(self, page_path: str, data: bytes,
                       export_format: str, meta_data: Union[bytes, None]):
-        page_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP[export_format]}"
+        page_file_name = f"{self._archive_base_path}/" \
+        f"{page_path}{_FILE_EXTENSION_MAP[export_format]}"
         util.write_bytes(self._tar_file, file_path=page_file_name, data=data)
         if self.add_meta:
             meta_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"

@@ -123,15 +123,14 @@ class NodeExporter():
     # convenience function
     def get_all_pages(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
         """get all pages and their content"""
-        ## chapters (if exists)
-        # chapter nodes are treated a little differently
-        # chapters are children under books
-        chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
-
         ## pages
         page_nodes = {}
         if book_nodes:
             page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes)
+        ## chapters (if exists)
+        # chapter nodes are treated a little differently
+        # chapters are children under books
+        chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
         # add chapter node pages
         # replace existing page node if found with proper chapter parent
         if chapter_nodes:

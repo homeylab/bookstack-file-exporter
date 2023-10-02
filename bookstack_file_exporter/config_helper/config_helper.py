@@ -1,9 +1,9 @@
 import os
-import json
 import argparse
-import yaml
-import logging
 from typing import Dict, Tuple
+import logging
+
+import yaml
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
@@ -40,7 +40,8 @@ class ConfigNode:
         Arg parse from user input
 
     Returns:
-        ConfigNode object with attributes that are accessible for use for further downstream processes
+        ConfigNode object with attributes that are 
+        accessible for use for further downstream processes
 
     Raises:
         YAMLError: if provided configuration file is not valid YAML
@@ -61,7 +62,7 @@ class ConfigNode:
     def _generate_config(self, config_file: str) -> models.UserInput:
         if not os.path.isfile(config_file):
             raise FileNotFoundError(config_file)
-        with open(config_file, "r") as yaml_stream:
+        with open(config_file, "r", encoding="utf-8") as yaml_stream:
             try:
                 yaml_input = yaml.safe_load(yaml_stream)
             except Exception as load_err:
@@ -75,7 +76,7 @@ class ConfigNode:
             log.error("Yaml configuration failed schema validation")
             raise err
         return user_inputs
-    
+
     def _generate_credentials(self) -> Tuple[str, str]:
         # if user provided credentials in config file, load them
         token_id = ""
@@ -83,7 +84,7 @@ class ConfigNode:
         if self.user_inputs.credentials:
             token_id = self.user_inputs.credentials.token_id
             token_secret = self.user_inputs.credentials.token_secret
-        
+
         # check to see if env var is specified, if so, it takes precedence
         token_id = self._check_var(_BOOKSTACK_TOKEN_FIELD, token_id)
         token_secret = self._check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
@@ -93,10 +94,12 @@ class ConfigNode:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
         if self.user_inputs.minio_config:
-            minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD, self.user_inputs.minio_config.access_key)
-            minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD, self.user_inputs.minio_config.secret_key)
+            minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD,
+                                               self.user_inputs.minio_config.access_key)
+            minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
+                                               self.user_inputs.minio_config.secret_key)
             object_config["minio"] = StorageProviderConfig(minio_access_key,
-                                     minio_secret_key, self.user_inputs.minio_config.bucket, 
+                                     minio_secret_key, self.user_inputs.minio_config.bucket,
                                      host=self.user_inputs.minio_config.host,
                                      path=self.user_inputs.minio_config.path,
                                      region=self.user_inputs.minio_config.region)
@@ -114,7 +117,7 @@ class ConfigNode:
             # do not override if user added one already with same key
             if key not in headers:
                 headers[key] = value
-        
+
         # do not override user provided one
         if 'Authorization' not in headers:
             headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
@@ -153,23 +156,27 @@ class ConfigNode:
         else:
             base_dir = _BASE_DIR_NAME
         return base_dir
-    
+
     @property
     def headers(self) -> Dict[str, str]:
+        """get generated headers"""
         return self._headers
 
     @property
     def urls(self) -> Dict[str, str]:
+        """get generated urls"""
         return self._urls
-    
+
     @property
     def base_dir_name(self) -> str:
+        """get base dir of output target"""
         return self._base_dir_name
 
     @property
     def object_storage_config(self) -> Dict[str, StorageProviderConfig]:
+        """return remote storage configuration"""
         return self._object_storage_config
-    
+
     @staticmethod
     def _check_var(env_key: str, default_val: str) -> str:
         """
@@ -182,10 +189,12 @@ class ConfigNode:
         env_value = os.environ.get(env_key, "")
         # env value takes precedence
         if env_value:
-            log.debug(f"env key: {env_key} specified. Will override configuration file value if set.")
+            log.debug("""env key: %s specified.
+                       Will override configuration file value if set.""", env_key)
             return env_value
         # check for optional inputs, if env and input is missing
         if not env_value and not default_val:
-            raise ValueError(f"{env_key} is not specified in env and is missing from configuration - at least one should be set")
+            raise ValueError(f"""{env_key} is not specified in env and is
+                              missing from configuration - at least one should be set""")
         # fall back to configuration file value if present
         return default_val

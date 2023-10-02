@@ -1,5 +1,4 @@
 from typing import Dict, Union
-from pathlib import Path
 import json
 import os
 import logging
@@ -18,7 +17,7 @@ def get_byte_response(url: str, headers: Dict[str, str]) -> bytes:
     return response.content
 
 def write_bytes(base_tar_dir: str, file_path: str, data: bytes):
-    """write byte data to tar file"""
+    """append byte data to tar file"""
     with tarfile.open(base_tar_dir, "a") as tar:
         data_obj = BytesIO(data)
         tar_info = tarfile.TarInfo(name=file_path)
@@ -32,9 +31,11 @@ def get_json_bytes(data: Dict[str, Union[str, int]]) -> bytes:
 
 # set as function in case we want to do checks or final actions later
 def remove_file(file_path: str):
+    """remove a file"""
     os.remove(file_path)
 
 def create_gzip(tar_file: str, gzip_file: str, remove_old: bool = True):
+    """create a gzip of an existing tar file and remove it"""
     with open(tar_file, 'rb') as f_in:
         with gzip.open(gzip_file, 'wb') as f_out:
             shutil.copyfileobj(f_in, f_out)

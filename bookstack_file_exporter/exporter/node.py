@@ -34,7 +34,7 @@ class Node():
         self._path_prefix = path_prefix
         # for convenience/usage for exporter
         self.name: str = self.meta['slug']
-        self.id: int = self.meta['id']
+        self.id_: int = self.meta['id']
         self._display_name = self.meta['name']
         # children
         self._children = self._get_children()
