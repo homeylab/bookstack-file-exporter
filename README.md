@@ -33,11 +33,11 @@ python -m bookstack_file_exporter -c <path_to_config_file>
 
 ## Using This Application
 
-### Install via Pip
-Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) `3.11.X` versions.
+### Run via Pip
+Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version.
 
-```
-pip install bookstack-file-exporter
+```bash
+python -m pip install bookstack-file-exporter
 
 # if you already have python bin directory in your path
 bookstack-file-exporter -c <path_to_config_file>
@@ -50,6 +50,34 @@ Command line options:
 | ------ | -------- | ----------- |
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
+
+### Run Via Docker
+Example
+```bash
+docker run \
+    --user ${USER_ID}:${USER_GID} \
+	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+	-v $(pwd)/bkps:/export/dump \
+	bookstack-file-exporter:0.0.1
+```
+Required Options:
+| option | description |
+| `config.yml` file mount | Provide a valid configuration file. Specified in example as read only: `-v ${CURDIR}/local/config.yml:/export/config/config.yml:ro`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
+| `dump` file mount | Directory to place exports. Specified in example: `-v ${CURDIR}/bkps:/export/dump`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
+
+Tokens and other options can be specified, example:
+```bash
+# '-e' flag for env vars
+# --user flag to override the uid/gid for created files
+docker run -i \
+	-e LOG_LEVEL='debug' \
+    -e BOOKSTACK_TOKEN_ID='xyz' \
+    -e BOOKSTACK_TOKEN_SECRET='xyz' \
+	--user 1000:1000 \
+	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+	-v $(pwd):/export/dump \
+	bookstack-file-exporter:0.0.1
+```
 
 ### Authentication
 **Note visibility of pages is based on user**, so use a user that has access to pages you want to back up
