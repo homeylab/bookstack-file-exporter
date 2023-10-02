@@ -13,10 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    # Store the version, stripping any v-prefix
+    - name: Write release version
+      run: |
+        TAG=${{ github.event.release.tag_name }}
+        echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+        echo Version: $VERSION
     - name: Login to Dockerhub
       run: docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_TOKEN }}
     - name: Prepare Makefile
-      run: sed -i 's/^IMAGE_TAG=[^ ]*/IMAGE_TAG=${{github.ref_name}}/' Makefile
+      run: sed -i 's/^IMAGE_TAG=[^ ]*/IMAGE_TAG=${VERSION}/' Makefile
     - name: Build the Docker image
       run: make docker_build
     - name: Push Docker image
@@ -33,8 +39,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install build
+    - name: Write release version
+      run: |
+        TAG=${{ github.event.release.tag_name }}
+        echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+        echo Version: $VERSION
     - name: Update Release tag
-      run: sed -i 's/^version = [^ ]*/version = ${{github.ref_name}}/' setup.cfg
+      run: sed -i 's/^version = [^ ]*/version = ${VERSION}}/' setup.cfg
     - name: Build package
       run: make build
     - name: Publish package
