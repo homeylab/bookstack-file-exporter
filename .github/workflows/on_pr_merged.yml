@@ -22,10 +22,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Login to Dockerhub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      run: echo ${{ secrets.DOCKERHUB_PASSWORD }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
     - name: Build the Docker image
       run: make docker_build
     - name: Push Docker image
@@ -53,9 +50,8 @@ jobs:
     - name: Build package
       run: make build
     - name: Publish package
-      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
   create_tag:
     if: github.event.pull_request.merged
