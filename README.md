@@ -88,7 +88,7 @@ Provide a tokenId and a tokenSecret as environment variables or directly in the 
 - `BOOKSTACK_TOKEN_ID`
 - `BOOKSTACK_TOKEN_SECRET`
 
-Env variables for credentials will take precedence over configuration file options.
+Env variables for credentials will take precedence over configuration file options if both are set.
 
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
