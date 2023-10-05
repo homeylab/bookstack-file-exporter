@@ -2,9 +2,9 @@
 
 _This is project is still under active development. Functionality is there and is relatively stable at this time._
 
-This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized`
+This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
 
-This small project was mainly created to run as a cron job in k8s but works anywhere. This would allow me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
+This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
 The main use case is to backup all docs in a folder-tree format to cover the scenarios:
 
@@ -28,15 +28,6 @@ Supported backup formats are shown [here](https://demo.bookstackapp.com/api/docs
 4. plaintext
 
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
-
-This script can be run directly via cli as a pip module.
-```
-# if you already have python bin directory in your path
-bookstack-file-exporter -c <path_to_config_file>
-
-# using pip
-python -m bookstack_file_exporter -c <path_to_config_file>
-```
 
 ## Using This Application
 
@@ -69,15 +60,11 @@ docker run \
     bookstack-file-exporter:latest
 ```
 
-Required Bind Mounts (if storing locally):
-
-`{YOUR_LOCAL_PATH}:{STATIC_DOCKER_PATH}`
-- docker paths should also be static as it is built in the Docker Image
-
-| option | description |
-| ------ | ----------- |
-| `config` | Provide a valid configuration file. Example: `-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
-| `dump` | Directory to place exports. Example: `-v /local/yourpath/bkps:/export/dump` |
+Bind Mounts:
+| purpose | static docker path | description | example |
+| ------- | ------------------ | ----------- | ------- |
+| `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
+| `dump` | `/export/dump` | Directory to place exports | `-v /local/yourpath/bkps:/export/dump` |
 
 Tokens and other options can be specified, example:
 ```bash
