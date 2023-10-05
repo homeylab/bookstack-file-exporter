@@ -14,7 +14,7 @@ The main use case is to backup all docs in a folder-tree format to cover the sce
 4. Migrate to Markdown documenting for simplicity.
 5. Provide an easy way to do automated file backups locally, in docker, or kubernetes.
 
-Supported backup formats are
+Supported backup targets are:
 
 1. local
 2. minio
@@ -52,31 +52,37 @@ Command line options:
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
 ### Run Via Docker
-Example
+Example:
+
 ```bash
 docker run \
     --user ${USER_ID}:${USER_GID} \
-	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
-	-v $(pwd)/bkps:/export/dump \
-	bookstack-file-exporter:0.0.1
+    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+    -v $(pwd)/bkps:/export/dump \
+    bookstack-file-exporter:latest
 ```
-Required Options:
+
+Required Bind Mounts:
+
+`{YOUR_LOCAL_PATH}:{STATIC_DOCKER_PATH}`
+- docker paths should also be static as it is built in the Docker Image
 | option | description |
-| `config.yml` file mount | Provide a valid configuration file. Specified in example as read only: `-v ${CURDIR}/local/config.yml:/export/config/config.yml:ro`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
-| `dump` file mount | Directory to place exports. Specified in example: `-v ${CURDIR}/bkps:/export/dump`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
+| ------ | ----------- |
+| `config` | Provide a valid configuration file. Example: `-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
+| `dump` | Directory to place exports. Example: `-v /local/yourpath/bkps:/export/dump` |
 
 Tokens and other options can be specified, example:
 ```bash
 # '-e' flag for env vars
 # --user flag to override the uid/gid for created files
 docker run \
-	-e LOG_LEVEL='debug' \
+    -e LOG_LEVEL='debug' \
     -e BOOKSTACK_TOKEN_ID='xyz' \
     -e BOOKSTACK_TOKEN_SECRET='xyz' \
-	--user 1000:1000 \
-	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
-	-v $(pwd):/export/dump \
-	bookstack-file-exporter:0.0.1
+    --user 1000:1000 \
+    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+    -v $(pwd):/export/dump \
+    bookstack-file-exporter:latest
 ```
 
 ### Authentication
@@ -91,7 +97,7 @@ Provide a tokenId and a tokenSecret as environment variables or directly in the 
 For object storage authentication, find the relevant sections further down in this document.
 
 ### Configuration file
-See below for an example and explanation. Optionally, look at `examples/` folder for more. 
+See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
 
 Schema and values are checked so ensure proper settings are provided.
 ```

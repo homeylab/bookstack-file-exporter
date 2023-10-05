@@ -37,8 +37,21 @@ docker_build:
 	-t ${IMAGE_NAME}:${IMAGE_TAG} \
 	--no-cache .
 
+docker_build_latest:
+	docker buildx build \
+	--build-arg BASE_IMAGE=${BASE_IMAGE} \
+	--build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
+	--build-arg DOCKER_WORK_DIR=${DOCKER_WORK_DIR} \
+	--build-arg DOCKER_CONFIG_DIR=${DOCKER_CONFIG_DIR} \
+	--build-arg DOCKER_EXPORT_DIR=${DOCKER_EXPORT_DIR} \
+	-t ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest \
+	--no-cache .
+
 docker_push:
 	docker push ${IMAGE_NAME}:${IMAGE_TAG}
+
+docker_push_latest:
+	docker push ${IMAGE_NAME} --all-tags
 
 # add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:

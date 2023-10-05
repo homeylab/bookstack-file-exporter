@@ -21,18 +21,25 @@ jobs:
   docker_deploy:
     if: github.event.pull_request.merged
     runs-on: ubuntu-latest
+    # specify this to target the correct env/secrets to use
     environment: 'Dockerhub' 
     steps:
     - uses: actions/checkout@v3
-    - name: Login to Docker Hub
+    - name: Login to Dockerhub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     - name: Build the Docker image
-      run: make docker_build
+      run: make docker_build_latest
     - name: Push Docker image
-      run: make docker_push
+      run: make docker_push_latest
+    - name: Update Dockerhub Documentation
+      uses: peter-evans/dockerhub-description@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+        repository: homeylab/bookstack-file-exporter
   pypi_deploy:
     if: github.event.pull_request.merged
     runs-on: ubuntu-latest
@@ -105,4 +112,5 @@ jobs:
       with:
         tag: ${{ env.VERSION }}
         generateReleaseNotes: true
+        skipIfReleaseExists: true
   # docker image tag latest
