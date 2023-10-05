@@ -44,7 +44,8 @@ docker_build_latest:
 	--build-arg DOCKER_WORK_DIR=${DOCKER_WORK_DIR} \
 	--build-arg DOCKER_CONFIG_DIR=${DOCKER_CONFIG_DIR} \
 	--build-arg DOCKER_EXPORT_DIR=${DOCKER_EXPORT_DIR} \
-	-t ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest \
+	-t ${IMAGE_NAME}:${IMAGE_TAG} \
+	-t ${IMAGE_NAME}:latest \
 	--no-cache .
 
 docker_push:
