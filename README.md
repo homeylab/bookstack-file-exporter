@@ -2,9 +2,9 @@
 
 _This is project is still under active development. Functionality is there and is relatively stable at this time._
 
-This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations.
+This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
 
-This small project was mainly created to run as a cron job in k8s but works anywhere. This would allow me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
+This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
 The main use case is to backup all docs in a folder-tree format to cover the scenarios:
 
@@ -14,28 +14,24 @@ The main use case is to backup all docs in a folder-tree format to cover the sce
 4. Migrate to Markdown documenting for simplicity.
 5. Provide an easy way to do automated file backups locally, in docker, or kubernetes.
 
-Supported backup formats are
+Supported backup targets are:
 
 1. local
 2. minio
 3. s3 (Not Yet Implemented)
 
+Supported backup formats are shown [here](https://demo.bookstackapp.com/api/docs#pages-exportHtml) and below:
+
+1. html
+2. pdf
+3. markdown
+4. plaintext
+
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
-
-This script can be run directly via cli as a pip module.
-```
-# if you already have python bin directory in your path
-bookstack-file-exporter -c <path_to_config_file>
-
-# using pip
-python -m bookstack_file_exporter -c <path_to_config_file>
-```
 
 ## Using This Application
 
 ### Run via Pip
-Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version.
-
 ```bash
 python -m pip install bookstack-file-exporter
 
@@ -51,36 +47,40 @@ Command line options:
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
+_Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version._
 ### Run Via Docker
-Example
+Example:
+
 ```bash
 docker run \
     --user ${USER_ID}:${USER_GID} \
-	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
-	-v $(pwd)/bkps:/export/dump \
-	bookstack-file-exporter:0.0.1
+    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+    -v $(pwd)/bkps:/export/dump \
+    bookstack-file-exporter:latest
 ```
-Required Options:
-| option | description |
-| `config.yml` file mount | Provide a valid configuration file. Specified in example as read only: `-v ${CURDIR}/local/config.yml:/export/config/config.yml:ro`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
-| `dump` file mount | Directory to place exports. Specified in example: `-v ${CURDIR}/bkps:/export/dump`, `${USER_LOCAL_PATH}:${STATIC_DOCKER_PATH}` |
+
+Bind Mounts:
+| purpose | static docker path | description | example |
+| ------- | ------------------ | ----------- | ------- |
+| `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
+| `dump` | `/export/dump` | Directory to place exports | `-v /local/yourpath/bkps:/export/dump` |
 
 Tokens and other options can be specified, example:
 ```bash
 # '-e' flag for env vars
 # --user flag to override the uid/gid for created files
 docker run \
-	-e LOG_LEVEL='debug' \
+    -e LOG_LEVEL='debug' \
     -e BOOKSTACK_TOKEN_ID='xyz' \
     -e BOOKSTACK_TOKEN_SECRET='xyz' \
-	--user 1000:1000 \
-	-v $(pwd)/local/config.yml:/export/config/config.yml:ro \
-	-v $(pwd):/export/dump \
-	bookstack-file-exporter:0.0.1
+    --user 1000:1000 \
+    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+    -v $(pwd):/export/dump \
+    bookstack-file-exporter:latest
 ```
 
 ### Authentication
-**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up
+**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up.
 
 Ref: [https://demo.bookstackapp.com/api/docs#authentication](https://demo.bookstackapp.com/api/docs#authentication)
 
@@ -88,10 +88,12 @@ Provide a tokenId and a tokenSecret as environment variables or directly in the 
 - `BOOKSTACK_TOKEN_ID`
 - `BOOKSTACK_TOKEN_SECRET`
 
-For object storage authentication, find the relevant sections further down in this document.
+Env variables for credentials will take precedence over configuration file options if both are set.
+
+**For object storage authentication**, find the relevant sections further down in their respective sections.
 
 ### Configuration file
-See below for an example and explanation. Optionally, look at `examples/` folder for more. 
+See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
 
 Schema and values are checked so ensure proper settings are provided.
 ```
@@ -232,3 +234,4 @@ As mentioned you can optionally set access and secret key as env variables. If b
 1. Be able to pull media/photos locally and place in their respective page folders for a more complete file level backup.
 2. Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).
 3. Export S3 or more options.
+4. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
