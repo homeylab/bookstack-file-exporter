@@ -2,7 +2,7 @@
 
 _This is project is still under active development. Functionality is there and is relatively stable at this time._
 
-This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. `See Backup Behavior section for more details on how pages are organized`
+This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized`
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This would allow me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
@@ -69,10 +69,11 @@ docker run \
     bookstack-file-exporter:latest
 ```
 
-Required Bind Mounts:
+Required Bind Mounts (if storing locally):
 
 `{YOUR_LOCAL_PATH}:{STATIC_DOCKER_PATH}`
 - docker paths should also be static as it is built in the Docker Image
+
 | option | description |
 | ------ | ----------- |
 | `config` | Provide a valid configuration file. Example: `-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
@@ -93,7 +94,7 @@ docker run \
 ```
 
 ### Authentication
-**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up
+**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up,
 
 Ref: [https://demo.bookstackapp.com/api/docs#authentication](https://demo.bookstackapp.com/api/docs#authentication)
 
@@ -101,7 +102,7 @@ Provide a tokenId and a tokenSecret as environment variables or directly in the 
 - `BOOKSTACK_TOKEN_ID`
 - `BOOKSTACK_TOKEN_SECRET`
 
-For object storage authentication, find the relevant sections further down in this document.
+*For object storage authentication*, find the relevant sections further down in their respective sections.
 
 ### Configuration file
 See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
