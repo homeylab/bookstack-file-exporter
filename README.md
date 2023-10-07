@@ -1,6 +1,6 @@
 # bookstack-file-exporter
 
-_This is project is still under active development. Functionality is there and is relatively stable at this time._
+_Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
 This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
 
@@ -30,6 +30,7 @@ Supported backup formats are shown [here](https://demo.bookstackapp.com/api/docs
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
 
 ## Using This Application
+Ensure a valid configuration is provided when running this application. See `Configuration` section for more details.
 
 ### Run via Pip
 ```bash
@@ -48,22 +49,23 @@ Command line options:
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
 _Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version._
+
 ### Run Via Docker
 Example:
 
 ```bash
 docker run \
     --user ${USER_ID}:${USER_GID} \
-    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
+    -v $(pwd)/config.yml:/export/config/config.yml:ro \
     -v $(pwd)/bkps:/export/dump \
-    bookstack-file-exporter:latest
+    homeylab/bookstack-file-exporter:latest
 ```
-
-Bind Mounts:
-| purpose | static docker path | description | example |
-| ------- | ------------------ | ----------- | ------- |
-| `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
-| `dump` | `/export/dump` | Directory to place exports | `-v /local/yourpath/bkps:/export/dump` |
+Minimal example with object storage upload: 
+```bash
+docker run \
+    -v $(pwd)/config.yml:/export/config/config.yml:ro \
+    homeylab/bookstack-file-exporter:latest
+```
 
 Tokens and other options can be specified, example:
 ```bash
@@ -74,10 +76,15 @@ docker run \
     -e BOOKSTACK_TOKEN_ID='xyz' \
     -e BOOKSTACK_TOKEN_SECRET='xyz' \
     --user 1000:1000 \
-    -v $(pwd)/local/config.yml:/export/config/config.yml:ro \
-    -v $(pwd):/export/dump \
-    bookstack-file-exporter:latest
+    -v $(pwd)/config.yml:/export/config/config.yml:ro \
+    -v $(pwd)/bkps:/export/dump \
+    homeylab/bookstack-file-exporter:latest
 ```
+Bind Mounts:
+| purpose | static docker path | description | example |
+| ------- | ------------------ | ----------- | ------- |
+| `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
+| `dump` | `/export/dump` | Directory to place exports. **This is optional when using remote storage option(s)**. Omit if you don't need a local copy. | `-v /local/yourpath/bkps:/export/dump` |
 
 ### Authentication
 **Note visibility of pages is based on user**, so use a user that has access to pages you want to back up.
@@ -92,10 +99,10 @@ Env variables for credentials will take precedence over configuration file optio
 
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
-### Configuration file
+### Configuration
 See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
 
-Schema and values are checked so ensure proper settings are provided.
+Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
 ```
 # if http/https not specified, defaults to https
 # if you put http here, it will try verify=false, to not check certs
@@ -132,7 +139,7 @@ minio_config:
   secret_key: ""
   region: "us-east-1"
   bucket: "mybucket"
-  path: "bookstack/backups"
+  path: "bookstack/file_backups"
 
 # output directory for the exported archive
 # relative or full path
@@ -196,7 +203,8 @@ Empty/New Pages will be ignored since they have not been modified yet from creat
 You may notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
 
 ### Minio Backups
-When specifying `minio_config` in the configuration file, these fields are required in the file:
+Optionally, look at `examples/` folder of the github repo for more examples. 
+
 ```
 # a host/ip + port combination is also allowed
 # example: "minio.yourdomain.com:8443"
@@ -209,10 +217,7 @@ region: "us-east-1"
 
 # bucket to upload to
 bucket "mybucket"
-```
 
-These fields are optional:
-```
 # access key for the minio instance
 # optionally set as env variable instead
 access_key: ""
@@ -222,8 +227,9 @@ access_key: ""
 secret_key: ""
 
 # the path of the backup
+# optional, will use root bucket path if not set
 # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-path: "bookstack/backups"
+path: "bookstack/file_backups"
 ```
 
 As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.
