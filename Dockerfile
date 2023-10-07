@@ -8,6 +8,9 @@ RUN apt update -y && apt upgrade -y && \
     apt install dumb-init && \
     rm -rf /var/lib/apt/lists/*
 
+# create docker user
+RUN useradd -M -s /usr/sbin/nologin -u 33333 exporter
+
 ARG DOCKER_WORK_DIR
 ARG DOCKER_CONFIG_DIR
 ARG DOCKER_EXPORT_DIR
@@ -21,10 +24,10 @@ COPY . .
 
 RUN pip install .
 
-RUN mkdir -p ${DOCKER_CONFIG_DIR} && \
-    mkdir -p ${DOCKER_EXPORT_DIR}
+RUN install -d -m 0755 -o exporter -g exporter ${DOCKER_CONFIG_DIR} && \
+    install -d -m 0755 -o exporter -g exporter ${DOCKER_EXPORT_DIR}
 
-USER nobody
+USER exporter
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD [ "./entrypoint.sh" ]

@@ -40,8 +40,9 @@ minio_config:
   # bucket to use
   bucket: "bookstack-bkps"
   # path to upload to
-  # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-  path: "bookstack/backups/"
+  # optional, will use root bucket path if not set
+  # the exported archive will appear in: `<bucket_name>:<path>/bookstack_export_<timestamp>.tgz`
+  path: "bookstack/file_backups/"
 # output directory for the exported archive
 # relative or full path
 # User who runs the command should have access to write and create sub folders in this directory
