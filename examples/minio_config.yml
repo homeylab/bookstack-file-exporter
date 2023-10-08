@@ -43,6 +43,11 @@ minio_config:
   # optional, will use root bucket path if not set
   # the exported archive will appear in: `<bucket_name>:<path>/bookstack_export_<timestamp>.tgz`
   path: "bookstack/file_backups/"
+  # optional if specified exporter can delete older archives
+  # valid values are:
+  # set to 1+ if you want to retain a certain number of archives
+  # set to 0 or comment out section if you want no action done
+  keep_last: 5
 # output directory for the exported archive
 # relative or full path
 # User who runs the command should have access to write and create sub folders in this directory
@@ -58,3 +63,10 @@ export_meta: true
 # optional
 # default = false if omitted
 clean_up: true
+# optional if specified exporter can delete older archives
+# valid values are:
+# set to -1 if you want to delete all archives after each run
+# - this is useful if you only want to upload to object storage
+# set to 1+ if you want to retain a certain number of archives
+# set to 0 or comment out section if you want no action done
+keep_last: -1

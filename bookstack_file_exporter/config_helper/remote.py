@@ -20,10 +20,11 @@ class StorageProviderConfig:
     """
     def __init__(self, access_key: str, secret_key: str, bucket: str,
                  host: Union[str, None]=None, path: Union[str, None]=None,
-                 region: Union[str, None]=None):
+                 region: Union[str, None]=None, keep_last: Union[int, None] = None):
         self.host = host
         self.access_key = access_key
         self.secret_key = secret_key
         self.bucket = bucket
         self.path = path
         self.region = region
+        self.keep_last = keep_last

@@ -1,8 +1,8 @@
 from typing import Dict, Literal, List, Optional
+# pylint: disable=import-error
 from pydantic import BaseModel
 
-# pylint: disable=R0903
-
+# pylint: disable=too-few-public-methods
 class MinioConfig(BaseModel):
     """YAML schema for minio configuration"""
     host: str
@@ -11,12 +11,15 @@ class MinioConfig(BaseModel):
     bucket: str
     path: Optional[str] = None
     region: str
+    keep_last: Optional[int] = None
 
+# pylint: disable=too-few-public-methods
 class BookstackAccess(BaseModel):
     """YAML schema for bookstack access credentials"""
     token_id: str
     token_secret: str
 
+# pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
     host: str
@@ -26,4 +29,4 @@ class UserInput(BaseModel):
     output_path: Optional[str] = None
     export_meta: Optional[bool] = None
     minio_config: Optional[MinioConfig] = None
-    clean_up: Optional[bool] = None
+    keep_last: Optional[int] = None

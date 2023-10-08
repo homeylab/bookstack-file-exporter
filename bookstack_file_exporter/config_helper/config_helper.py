@@ -2,14 +2,13 @@ import os
 import argparse
 from typing import Dict, Tuple
 import logging
-
+# pylint: disable=import-error
 import yaml
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
-
 
 _DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
@@ -30,6 +29,8 @@ _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 _MINIO_ACCESS_KEY_FIELD='MINIO_ACCESS_KEY'
 _MINIO_SECRET_KEY_FIELD='MINIO_SECRET_KEY'
+
+# pylint: disable=too-many-instance-attributes
 
 ## Normalize config from cli or from config file
 class ConfigNode:
@@ -102,7 +103,8 @@ class ConfigNode:
                                      minio_secret_key, self.user_inputs.minio_config.bucket,
                                      host=self.user_inputs.minio_config.host,
                                      path=self.user_inputs.minio_config.path,
-                                     region=self.user_inputs.minio_config.region)
+                                     region=self.user_inputs.minio_config.region,
+                                     keep_last=self.user_inputs.minio_config.keep_last)
         return object_config
 
     def _generate_headers(self) -> Dict[str, str]:

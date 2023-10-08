@@ -32,3 +32,10 @@ output_path: "bkps/"
 # like: last update, owner, revision count, etc.
 # omit this or set to false if not needed
 export_meta: true
+# optional if specified exporter can delete older archives
+# valid values are:
+# set to -1 if you want to delete all archives after each run
+# - this is useful if you only want to upload to object storage
+# set to 1+ if you want to retain a certain number of archives
+# set to 0 or comment out section if you want no action done
+keep_last: 5
