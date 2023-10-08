@@ -108,7 +108,7 @@ For object storage configuration, find more information in their respective sect
 - [Minio](https://github.com/homeylab/bookstack-file-exporter#minio-backups)
 
 Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
-```
+```yaml
 # if http/https not specified, defaults to https
 # if you put http here, it will try verify=false, to not check certs
 host: "https://bookstack.yourdomain.com"
@@ -145,7 +145,7 @@ minio_config:
   region: "us-east-1"
   bucket: "mybucket"
   path: "bookstack/file_backups"
-  keep_last: 
+  keep_last: 5
 
 # output directory for the exported archive
 # relative or full path
@@ -213,37 +213,38 @@ You may notice some directories (books) and/or files (pages) in the archive have
 ### Minio Backups
 Optionally, look at `examples/` folder of the github repo for more examples. 
 
-```
-# a host/ip + port combination is also allowed
-# example: "minio.yourdomain.com:8443"
-host: "minio.yourdomain.com"
+```yaml
+minio_config:
+    # a host/ip + port combination is also allowed
+    # example: "minio.yourdomain.com:8443"
+    host: "minio.yourdomain.com"
 
-# this is required since minio api appears to require it
-# set to the region your bucket resides in
-# if unsure, try "us-east-1" first
-region: "us-east-1"
+    # this is required since minio api appears to require it
+    # set to the region your bucket resides in
+    # if unsure, try "us-east-1" first
+    region: "us-east-1"
 
-# bucket to upload to
-bucket "mybucket"
+    # bucket to upload to
+    bucket "mybucket"
 
-# access key for the minio instance
-# optionally set as env variable instead
-access_key: ""
+    # access key for the minio instance
+    # optionally set as env variable instead
+    access_key: ""
 
-# secret key for the minio instance
-# optionally set as env variable instead
-secret_key: ""
+    # secret key for the minio instance
+    # optionally set as env variable instead
+    secret_key: ""
 
-# the path of the backup
-# optional, will use root bucket path if not set
-# in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-path: "bookstack/file_backups"
+    # the path of the backup
+    # optional, will use root bucket path if not set
+    # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
+    path: "bookstack/file_backups"
 
-# optional if specified exporter can delete older archives
-# valid values are:
-# set to 1+ if you want to retain a certain number of archives
-# set to 0 or comment out section if you want no action done
-keep_last: 5
+    # optional if specified exporter can delete older archives
+    # valid values are:
+    # set to 1+ if you want to retain a certain number of archives
+    # set to 0 or comment out section if you want no action done
+    keep_last: 5
 ```
 
 As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.
