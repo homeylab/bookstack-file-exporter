@@ -1,6 +1,7 @@
 from typing import List, Dict, Union
 from datetime import datetime
 import logging
+import os
 
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
@@ -26,6 +27,8 @@ _FILE_EXTENSION_MAP = {
 }
 
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+# pylint: disable=too-many-instance-attributes
 
 class Archiver:
     """
@@ -97,19 +100,65 @@ class Archiver:
     def _archive_minio(self, config: StorageProviderConfig):
         minio_archiver = MinioArchiver(config)
         minio_archiver.upload_backup(self._archive_file)
+        minio_archiver.clean_up(config.keep_last, _FILE_EXTENSION_MAP['tgz'])
 
     def _archive_s3(self, config: StorageProviderConfig):
         pass
 
-    def clean_up(self, clean_up_archive: Union[bool, None]):
+    def clean_up(self, keep_last: Union[int, None]):
         """remove archive after sending to remote target"""
-        self._clean(clean_up_archive)
+        # this captures keep_last = 0
+        if not keep_last:
+            return
+        to_delete = self._get_stale_archives(keep_last)
+        if to_delete:
+            self._delete_files(to_delete)
 
-    def _clean(self, clean_up_archive: Union[bool, None]):
+    def _get_stale_archives(self, keep_last: int) -> List[str]:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
-        if clean_up_archive:
-            util.remove_file(self._archive_file)
+        archive_list: List[str] = util.scan_archives(self.base_dir, _FILE_EXTENSION_MAP['tgz'])
+        if not archive_list:
+            log.debug("No archive files found to clean up")
+            return []
+        # if negative number, we remove all local archives
+        # assume user is using remote storage and will upload there
+        if keep_last < 0:
+            log.debug("Local archive files will be deleted, keep_last: -1")
+            return archive_list
+        # keep_last > 0 condition
+        to_delete = []
+        if len(archive_list) > keep_last:
+            log.debug("Number of archives is greater than 'keep_last'")
+            log.debug("Running clean up of local archives")
+            to_delete = self._filter_archives(keep_last, archive_list)
+        return to_delete
+
+    def _filter_archives(self, keep_last: int, file_list: List[str]) -> List[str]:
+        """get older archives based on keep number"""
+        file_dict = {}
+        for file in file_list:
+            file_dict[file] = os.stat(file).st_ctime
+        # order dict by creation time
+        # ascending order
+        ordered_dict = dict(sorted(file_dict.items(), key=lambda item: item[1]))
+        # ordered_dict = {k: v for k, v in sorted(file_dict.items(),
+        #                                         key=lambda item: item[1])}
+
+        files_to_clean = []
+        # how many items we will have to delete to fulfill keep_last
+        to_delete = len(ordered_dict) - keep_last
+        for key in ordered_dict:
+            files_to_clean.append(key)
+            to_delete -= 1
+            if to_delete <= 0:
+                break
+        log.debug("%d local archives will be cleaned up", len(files_to_clean))
+        return files_to_clean
+
+    def _delete_files(self, file_list: List[str]):
+        for file in file_list:
+            util.remove_file(file)
 
     # convert page data to bytes
     def _get_data_format(self, page_node_id: int, export_format: str) -> bytes:

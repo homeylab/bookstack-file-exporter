@@ -1,5 +1,5 @@
 # bookstack-file-exporter
-
+## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
 This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
@@ -28,6 +28,8 @@ Supported backup formats are shown [here](https://demo.bookstackapp.com/api/docs
 4. plaintext
 
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
+
+The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the `Configuration` section. Object storage provider configurations include their own `keep_last` property for flexibility. 
 
 ## Using This Application
 Ensure a valid configuration is provided when running this application. See `Configuration` section for more details.
@@ -102,8 +104,11 @@ Env variables for credentials will take precedence over configuration file optio
 ### Configuration
 See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
 
+For object storage configuration, find more information in their respective sections
+- [Minio](https://github.com/homeylab/bookstack-file-exporter#minio-backups)
+
 Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
-```
+```yaml
 # if http/https not specified, defaults to https
 # if you put http here, it will try verify=false, to not check certs
 host: "https://bookstack.yourdomain.com"
@@ -140,6 +145,7 @@ minio_config:
   region: "us-east-1"
   bucket: "mybucket"
   path: "bookstack/file_backups"
+  keep_last: 5
 
 # output directory for the exported archive
 # relative or full path
@@ -153,11 +159,13 @@ output_path: "bkps/"
 # omit this or set to false if not needed
 export_meta: true
 
-# optional if using object storage targets
-# After uploading to object storage targets, choose to clean up local files
-# delete the archive from local filesystem
-# will not be cleaned up if set to false or omitted
-clean_up: true
+# optional if specified exporter can delete older archives
+# valid values are:
+# set to -1 if you want to delete all archives after each run
+# - this is useful if you only want to upload to object storage
+# set to 1+ if you want to retain a certain number of archives
+# set to 0 or comment out section if you want no action done
+keep_last: 5
 ```
 
 ### Backup Behavior
@@ -205,31 +213,38 @@ You may notice some directories (books) and/or files (pages) in the archive have
 ### Minio Backups
 Optionally, look at `examples/` folder of the github repo for more examples. 
 
-```
-# a host/ip + port combination is also allowed
-# example: "minio.yourdomain.com:8443"
-host: "minio.yourdomain.com"
+```yaml
+minio_config:
+    # a host/ip + port combination is also allowed
+    # example: "minio.yourdomain.com:8443"
+    host: "minio.yourdomain.com"
 
-# this is required since minio api appears to require it
-# set to the region your bucket resides in
-# if unsure, try "us-east-1" first
-region: "us-east-1"
+    # this is required since minio api appears to require it
+    # set to the region your bucket resides in
+    # if unsure, try "us-east-1" first
+    region: "us-east-1"
 
-# bucket to upload to
-bucket "mybucket"
+    # bucket to upload to
+    bucket "mybucket"
 
-# access key for the minio instance
-# optionally set as env variable instead
-access_key: ""
+    # access key for the minio instance
+    # optionally set as env variable instead
+    access_key: ""
 
-# secret key for the minio instance
-# optionally set as env variable instead
-secret_key: ""
+    # secret key for the minio instance
+    # optionally set as env variable instead
+    secret_key: ""
 
-# the path of the backup
-# optional, will use root bucket path if not set
-# in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-path: "bookstack/file_backups"
+    # the path of the backup
+    # optional, will use root bucket path if not set
+    # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
+    path: "bookstack/file_backups"
+
+    # optional if specified exporter can delete older archives
+    # valid values are:
+    # set to 1+ if you want to retain a certain number of archives
+    # set to 0 or comment out section if you want no action done
+    keep_last: 5
 ```
 
 As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.

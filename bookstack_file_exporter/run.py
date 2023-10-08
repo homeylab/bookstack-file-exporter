@@ -48,6 +48,6 @@ def exporter(args: argparse.Namespace):
     archive.archive_remote(config.object_storage_config)
     # if remote target is specified and clean is true
     # clean up the .tgz archive since it is already uploaded
-    archive.clean_up(config.user_inputs.clean_up)
+    archive.clean_up(config.user_inputs.keep_last)
 
     log.info("Completed run")

@@ -6,6 +6,7 @@ import tarfile
 import shutil
 from io import BytesIO
 import gzip
+import glob
 
 from bookstack_file_exporter.common import util
 
@@ -41,3 +42,8 @@ def create_gzip(tar_file: str, gzip_file: str, remove_old: bool = True):
             shutil.copyfileobj(f_in, f_out)
     if remove_old:
         remove_file(tar_file)
+
+def scan_archives(base_dir: str, extension: str) -> str:
+    """scan export directory for archives"""
+    file_pattern = f"{base_dir}_*{extension}"
+    return glob.glob(file_pattern)

@@ -7,6 +7,8 @@ _CHILD_KEYS = ['books', 'contents', 'pages']
 
 _NULL_PAGE_NAME = "New Page"
 
+# pylint: disable=too-many-instance-attributes
+
 class Node():
     """
     Node class provides an interface to create bookstack child/parent 

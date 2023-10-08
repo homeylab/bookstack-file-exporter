@@ -430,7 +430,7 @@ disable=raw-checker-failed,
         useless-suppression,
         deprecated-pragma,
         use-symbolic-message-instead,
-        missing-module-docstring
+        missing-module-docstring # added for lint warnings that don't seem necessary
         
 
 # Enable the message, report, category or checker with the given id(s). You can

@@ -1,6 +1,8 @@
 import logging
 from typing import Tuple, Dict
+# pylint: disable=import-error
 import requests
+# pylint: disable=import-error
 from requests.adapters import HTTPAdapter, Retry
 
 log = logging.getLogger(__name__)
