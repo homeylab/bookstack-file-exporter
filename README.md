@@ -1,5 +1,5 @@
 # bookstack-file-exporter
-
+## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
 This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
