@@ -20,6 +20,12 @@ class BookstackAccess(BaseModel):
     token_secret: str
 
 # pylint: disable=too-few-public-methods
+class Assets(BaseModel):
+    """YAML schema for bookstack markdown asset(images/attachments) configuration"""
+    export_images: Optional[bool] = None
+    modify_markdown: Optional[bool] = None
+
+# pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
     host: str
@@ -28,5 +34,7 @@ class UserInput(BaseModel):
     formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
     output_path: Optional[str] = None
     export_meta: Optional[bool] = None
+    assets: Optional[Assets] = None
+    # export_images: Optional[bool] = None
     minio_config: Optional[MinioConfig] = None
     keep_last: Optional[int] = None

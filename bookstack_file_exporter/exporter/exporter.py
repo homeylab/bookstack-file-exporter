@@ -141,4 +141,3 @@ class NodeExporter():
                 for key, value in page_chapter_nodes.items():
                     page_nodes[key] = value
         return page_nodes
-        

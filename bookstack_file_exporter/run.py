@@ -40,10 +40,18 @@ def exporter(args: argparse.Namespace):
         sys.exit(0)
     log.info("Beginning archive")
     ## start archive ##
-    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta,
-                                 page_base_url, bookstack_headers)
+    archive: Archiver = Archiver(base_export_dir, page_base_url,
+                                 bookstack_headers, config.user_inputs)
     # create tar
-    archive.archive(page_nodes, export_formats)
+    archive.get_bookstack_files(page_nodes, export_formats,
+                    config.user_inputs.export_meta)
+    
+    # get images if requested
+    archive.get_bookstack_images(page_nodes)
+    
+    # create tar if needed and gzip tar
+    archive.create_archive()
+
     # archive to remote targets
     archive.archive_remote(config.object_storage_config)
     # if remote target is specified and clean is true

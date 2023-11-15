@@ -18,7 +18,8 @@ _API_PATHS = {
     "shelves": "api/shelves",
     "books": "api/books",
     "chapters": "api/chapters",
-    "pages": "api/pages"
+    "pages": "api/pages",
+    "images": "api/image-gallery"
 }
 
 _UNASSIGNED_BOOKS_DIR = "unassigned/"
@@ -31,7 +32,6 @@ _MINIO_ACCESS_KEY_FIELD='MINIO_ACCESS_KEY'
 _MINIO_SECRET_KEY_FIELD='MINIO_SECRET_KEY'
 
 # pylint: disable=too-many-instance-attributes
-
 ## Normalize config from cli or from config file
 class ConfigNode:
     """

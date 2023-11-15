@@ -256,3 +256,4 @@ As mentioned you can optionally set access and secret key as env variables. If b
 2. Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).
 3. Export S3 or more options.
 4. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
+5. Be able to pull media/photos from 3rd party providers like `drawio`

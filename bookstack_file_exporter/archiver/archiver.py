@@ -5,8 +5,10 @@ import os
 
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
+from bookstack_file_exporter.archiver.assets_archiver import AssetsArchiver
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.models import UserInput
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,6 @@ _FILE_EXTENSION_MAP = {
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 # pylint: disable=too-many-instance-attributes
-
 class Archiver:
     """
     Archiver pulls all the necessary files from upstream 
@@ -38,54 +39,100 @@ class Archiver:
     Args:
         :root_dir: str (required) = the base directory for 
         which the archive .tgz will be placed.
-        :add_meta: bool (required) = whether or not to add 
-        metadata json files for each page, book, chapter, and/or shelve.
-        :base_page_url: str (required) = the full url and path to get page content.
+        :urls: str (required) = the full urls and paths to get content.
         :headers: Dict[str, str] (required) = the headers which include the Authorization to use
+        :md_asset_options: MarkdownAssets (optional) = additional options to configure 
+        image/attachment exports for markdown files.
 
     Returns:
         Archiver instance with attributes that are 
         accessible for use for file level archival and backup.
     """
-    def __init__(self, base_dir: str, add_meta: Union[bool, None],
-                  base_page_url: str, headers: Dict[str, str]):
+    def __init__(self, base_dir: str, urls: Dict[str, str],
+                 headers: Dict[str, str], user_input: UserInput):
         self.base_dir = base_dir
-        self.add_meta = add_meta
-        self.base_page_url = base_page_url
+        self.api_urls = urls
+        self._asset_archiver = AssetsArchiver(user_input.assets, user_input.formats)
         self._headers = headers
-        self._root_dir = self.generate_root_folder(self.base_dir)
+        self._root_dir = self._generate_root_folder(self.base_dir)
         # the tgz file will be name of
         # parent export directory, bookstack-<timestamp>, and .tgz extension
         self._archive_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tgz']}"
         # name of intermediate tar file before gzip
         self._tar_file = f"{self._root_dir}{_FILE_EXTENSION_MAP['tar']}"
-        # name of the base folder to use within the tgz archive
+        # name of the base folder to use within the tgz archive (internal tar layout)
         self._archive_base_path = self._root_dir.split("/")[-1]
         # remote_system to function mapping
         self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
     # create local tarball first
-    def archive(self, page_nodes: Dict[int, Node], export_formats: List[str]):
-        """create a .tgz of all page content"""
+    def get_bookstack_files(self, page_nodes: Dict[int, Node], export_formats: List[str],
+                add_meta: Union[bool, None]):
+        """pull all bookstack pages into local files/tar"""
+        log.info("Exporting all bookstack page contents")
         for _, page in page_nodes.items():
             for ex_format in export_formats:
                 self._gather(page, ex_format)
+                if add_meta:
+                    self._gather_meta(page.file_path, page.meta)
+                # self._gather_images(page.file_path, ex_format)
+        # self._gzip_tar()
+
+    def get_bookstack_images(self, page_nodes: Dict[int, Node]):
+        """export images on pages if specified by user"""
+        if not self._asset_archiver.export_images:
+            log.debug("skipping image export based on user input")
+            return
+        image_page_meta = self._asset_archiver.get_image_meta(self._headers, self.api_urls['images'])
+        if not image_page_meta:
+            log.debug("skipping image export - no data returned from image meta")
+            return
+        log.info("Exporting all bookstack page images")
+        for _, page in page_nodes.items():
+            self._gather_images(page.file_path)
+        self._get_markdown_assets()
+
+    def _get_markdown_assets(self, page_nodes: Dict[int, Node], image_page_meta: Dict[int, List[str]]):
+        if not self._asset_archiver.modify_md:
+            return
+        # for _, page in page_nodes.items():
+
+    def create_archive(self):
+        # check if tar needs to be created first
         self._gzip_tar()
 
     # convert to bytes to be agnostic to end destination (future use case?)
     def _gather(self, page_node: Node, export_format: str):
         raw_data = self._get_data_format(page_node.id_, export_format)
-        self._gather_local(page_node.file_path, raw_data, export_format, page_node.meta)
+        self._gather_local(page_node.file_path, raw_data, export_format)
 
     def _gather_local(self, page_path: str, data: bytes,
-                      export_format: str, meta_data: Union[bytes, None]):
+                      export_format: str):
         page_file_name = f"{self._archive_base_path}/" \
         f"{page_path}{_FILE_EXTENSION_MAP[export_format]}"
-        util.write_bytes(self._tar_file, file_path=page_file_name, data=data)
-        if self.add_meta:
-            meta_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
-            bytes_meta = util.get_json_bytes(meta_data)
-            util.write_bytes(self._tar_file, file_path=meta_file_name, data=bytes_meta)
+        self._write_data(file_path=page_file_name, data=data)
+
+    def _gather_meta(self, page_path: str, meta_data: Dict[str, Union[str, int]]):
+        meta_file_name = f"{self._archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
+        bytes_meta = util.get_json_bytes(meta_data)
+        self._write_data(file_path=meta_file_name, data=bytes_meta)
+
+    def _gather_images(self, page_path: str):
+        return
+        # page_file_name = f"{self._archive_base_path}/" \
+        # f"{page_path}{_FILE_EXTENSION_MAP['markdown']}"
+        # page_image_dir = f"{self._archive_base_path}/{page_path}{_IMAGE_DIR_SUFFIX}"
+        # util.create_dir(page_image_dir)
+
+    def _update_image_links(self, page_path: str):
+        pass
+
+    def _write_data(self, file_path: str, data: bytes):
+        # if we don't have to modify markdown files for image export links
+        # we can go just create a tar file directly and append to it
+        if not self._asset_archiver.modify_md:
+            util.write_tar(self._tar_file, file_path=file_path, data=data)
+
 
     # send to remote systems
     def archive_remote(self, remote_targets: Dict[str, StorageProviderConfig]):
@@ -162,13 +209,14 @@ class Archiver:
 
     # convert page data to bytes
     def _get_data_format(self, page_node_id: int, export_format: str) -> bytes:
-        url = self._get_export_url(node_id=page_node_id, export_format=export_format)
+        url = f"{self.api_urls['pages']}/{page_node_id}/{_EXPORT_API_PATH}/{export_format}"
+        # url = self._get_export_url(node_id=page_node_id, export_format=export_format)
         return util.get_byte_response(url=url, headers=self._headers)
 
-    def _get_export_url(self, node_id: int, export_format: str) -> str:
-        return f"{self.base_page_url}/{node_id}/{_EXPORT_API_PATH}/{export_format}"
+    # def _get_export_url(self, node_id: int, export_format: str) -> str:
+    #     return f"{self.base_page_url}/{node_id}/{_EXPORT_API_PATH}/{export_format}"
 
     @staticmethod
-    def generate_root_folder(base_folder_name: str) -> str:
+    def _generate_root_folder(base_folder_name: str) -> str:
         """return base archive name"""
         return base_folder_name + "_" + datetime.now().strftime(_DATE_STR_FORMAT)
