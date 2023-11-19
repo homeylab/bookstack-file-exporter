@@ -45,6 +45,9 @@ class Node():
 
     def _get_file_path(self) -> str:
         if self._parent:
+            # page node
+            if not self._children:
+                return f"{self._parent.file_path}/{self.name}/{self.name}"
             return f"{self._parent.file_path}/{self.name}"
         return ""
 

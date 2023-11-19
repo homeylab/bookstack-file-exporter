@@ -100,11 +100,7 @@ class ConfigNode:
             minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
                                                self.user_inputs.minio_config.secret_key)
             object_config["minio"] = StorageProviderConfig(minio_access_key,
-                                     minio_secret_key, self.user_inputs.minio_config.bucket,
-                                     host=self.user_inputs.minio_config.host,
-                                     path=self.user_inputs.minio_config.path,
-                                     region=self.user_inputs.minio_config.region,
-                                     keep_last=self.user_inputs.minio_config.keep_last)
+                                     minio_secret_key, self.user_inputs.minio_config)
         return object_config
 
     def _generate_headers(self) -> Dict[str, str]:

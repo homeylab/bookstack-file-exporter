@@ -50,7 +50,7 @@ Command line options:
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
-_Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version._
+_Note: This application is tested and developed on Python version `3.12.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
 
 ### Run Via Docker
 Example:

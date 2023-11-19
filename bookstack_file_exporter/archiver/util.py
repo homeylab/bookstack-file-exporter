@@ -40,15 +40,6 @@ def write_file(file_path: str, data: bytes):
     with open(file_path, 'wb') as file_obj:
         file_obj.write(data)
 
-def write_bytes(base_tar_dir: str, file_path: str, data: bytes):
-    """append byte data to tar file"""
-    with tarfile.open(base_tar_dir, "a") as tar:
-        data_obj = BytesIO(data)
-        tar_info = tarfile.TarInfo(name=file_path)
-        tar_info.size = data_obj.getbuffer().nbytes
-        log.debug("Adding file: %s with size: %d bytes to tar file", tar_info.name, tar_info.size)
-        tar.addfile(tar_info, fileobj=data_obj)
-
 def get_json_bytes(data: Dict[str, Union[str, int]]) -> bytes:
     """dump dict to json file"""
     return json.dumps(data, indent=4).encode('utf-8')

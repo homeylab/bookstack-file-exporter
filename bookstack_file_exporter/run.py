@@ -18,10 +18,7 @@ def exporter(args: argparse.Namespace):
     ## convenience vars
     bookstack_headers = config.headers
     api_urls = config.urls
-    export_formats = config.user_inputs.formats
     unassigned_dir = config.unassigned_book_dir
-    page_base_url = config.urls['pages']
-    base_export_dir = config.base_dir_name
 
     #### Export Data #####
     # need to implement pagination for apis
@@ -40,22 +37,18 @@ def exporter(args: argparse.Namespace):
         sys.exit(0)
     log.info("Beginning archive")
     ## start archive ##
-    archive: Archiver = Archiver(base_export_dir, page_base_url,
-                                 bookstack_headers, config.user_inputs)
-    # create tar
-    archive.get_bookstack_files(page_nodes, export_formats,
-                    config.user_inputs.export_meta)
-    
-    # get images if requested
-    archive.get_bookstack_images(page_nodes)
-    
+    archive: Archiver = Archiver(config)
+
+    # get all page content for each page
+    archive.get_bookstack_exports(page_nodes)
+
     # create tar if needed and gzip tar
     archive.create_archive()
 
     # archive to remote targets
-    archive.archive_remote(config.object_storage_config)
+    archive.archive_remote()
     # if remote target is specified and clean is true
     # clean up the .tgz archive since it is already uploaded
-    archive.clean_up(config.user_inputs.keep_last)
+    archive.clean_up()
 
     log.info("Completed run")
