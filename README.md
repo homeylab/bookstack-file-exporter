@@ -44,26 +44,44 @@ The main use case is to backup all docs in a relational directory-tree format to
 Ensure a valid configuration is provided when running this application. See [Configuration](#Configuration) section for more details.
 
 ### Run via Pip
+The exporter can be installed via pip and run directly.
+
+#### Examples
 ```bash
 python -m pip install bookstack-file-exporter
 
-# if you already have python bin directory in your path
-bookstack-file-exporter -c <path_to_config_file>
-
 # using pip
 python -m bookstack_file_exporter -c <path_to_config_file>
+
+# if you already have python bin directory in your path
+bookstack-file-exporter -c <path_to_config_file>
 ```
+
+#### Options
 Command line options:
 | option | required | description |
 | ------ | -------- | ----------- |
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
+#### Environment Variables
+See [Valid Environment Variables](#valid-environment-variables) for more options.
+
+Example:
+```bash
+export LOG_LEVEL=debug
+
+# using pip
+python -m bookstack_file_exporter -c <path_to_config_file>
+```
+
+#### Python Version
 _Note: This application is tested and developed on Python version `3.12.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
 
 ### Run Via Docker
-Example:
+Docker can be utilized to run the exporter.
 
+#### Examples
 ```bash
 docker run \
     --user ${USER_ID}:${USER_GID} \
@@ -71,14 +89,20 @@ docker run \
     -v $(pwd)/bkps:/export/dump \
     homeylab/bookstack-file-exporter:latest
 ```
-Minimal example with object storage upload: 
+
+Minimal example with object storage upload. A temporary filesystem will be used so archive will not be persistent locally. 
 ```bash
 docker run \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
     homeylab/bookstack-file-exporter:latest
 ```
 
+
+#### Environment Variables
+See [Valid Environment Variables](#valid-environment-variables) for more options.
+
 Tokens and other options can be specified, example:
+
 ```bash
 # '-e' flag for env vars
 # --user flag to override the uid/gid for created files
@@ -91,7 +115,8 @@ docker run \
     -v $(pwd)/bkps:/export/dump \
     homeylab/bookstack-file-exporter:latest
 ```
-Bind Mounts:
+
+#### Bind Mounts
 | purpose | static docker path | description | example |
 | ------- | ------------------ | ----------- | ------- |
 | `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
@@ -136,7 +161,6 @@ assets:
     export_images: false
     export_meta: false
     verify_ssl: true
-keep_last: 5
  ```
 
 #### Full Example
@@ -190,6 +214,18 @@ More descriptions can be found for each section below:
 | `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
 | `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
+
+#### Valid Environment Variables
+General
+- `LOG_LEVEL`: default: `info``. Provide a valid log level: info, debug, warning, error.
+
+[Bookstack Credentials](#authentication)
+- `BOOKSTACK_TOKEN_ID`
+- `BOOKSTACK_TOKEN_SECRET`
+
+[Minio Credentials](#authentication-1)
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
 
 ### Backup Behavior
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
@@ -288,7 +324,6 @@ Credentials can be specified directly in the `minio` configuration section or as
 Environment variables:
 - `MINIO_ACCESS_KEY`
 - `MINIO_SECRET_KEY`
-
 
 #### Example
 ```yaml
