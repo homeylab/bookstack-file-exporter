@@ -95,7 +95,7 @@ python -m bookstack_file_exporter -c <path_to_config_file>
 ```
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.12.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
+_Note: This application is tested and developed on Python version `3.12.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
 
 ### Run Via Docker
 Docker can be utilized to run the exporter.
