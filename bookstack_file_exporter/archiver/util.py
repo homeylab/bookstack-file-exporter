@@ -1,4 +1,4 @@
-from typing import Dict, Union, List
+from typing import Dict, Union
 import json
 import os
 import logging
@@ -7,21 +7,15 @@ import shutil
 from io import BytesIO
 import gzip
 import glob
-import re
 
 from bookstack_file_exporter.common import util
 
 log = logging.getLogger(__name__)
 
-def get_byte_response(url: str, headers: Dict[str, str]) -> bytes:
+def get_byte_response(url: str, headers: Dict[str, str], verify_ssl: bool) -> bytes:
     """get byte response from http request"""
-    response = util.http_get_request(url=url, headers=headers)
+    response = util.http_get_request(url=url, headers=headers, verify_ssl=verify_ssl)
     return response.content
-
-# def create_dir(dir_name: str):
-#     """create a dir if not exists"""
-#     if not os.path.exists(dir_name):
-#         os.mkdir(dir_name)
 
 # append to a tar file instead of creating files locally and then tar'ing after
 def write_tar(base_tar_dir: str, file_path: str, data: bytes):
@@ -34,11 +28,11 @@ def write_tar(base_tar_dir: str, file_path: str, data: bytes):
         tar.addfile(tar_info, fileobj=data_obj)
 
 # create files first for manipulation/changes and tar later
-def write_file(file_path: str, data: bytes):
-    """write byte data to a local file"""
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, 'wb') as file_obj:
-        file_obj.write(data)
+# def write_file(file_path: str, data: bytes):
+#     """write byte data to a local file"""
+#     os.makedirs(os.path.dirname(file_path), exist_ok=True)
+#     with open(file_path, 'wb') as file_obj:
+#         file_obj.write(data)
 
 def get_json_bytes(data: Dict[str, Union[str, int]]) -> bytes:
     """dump dict to json file"""
@@ -62,11 +56,11 @@ def scan_archives(base_dir: str, extension: str) -> str:
     file_pattern = f"{base_dir}_*{extension}"
     return glob.glob(file_pattern)
 
-def find_file_matches(file_path: str, regex_expr: re.Pattern) -> List[str]:
-    """find all matching lines for regex pattern"""
-    matches=[]
-    with open(file_path, encoding="utf-8") as open_file:
-        for line in open_file:
-            for match in re.finditer(regex_expr, line):
-                matches.append(match.group)
-    return matches
+# def find_file_matches(file_path: str, regex_expr: re.Pattern) -> List[str]:
+#     """find all matching lines for regex pattern"""
+#     matches=[]
+#     with open(file_path, encoding="utf-8") as open_file:
+#         for line in open_file:
+#             for match in re.finditer(regex_expr, line):
+#                 matches.append(match.group)
+#     return matches

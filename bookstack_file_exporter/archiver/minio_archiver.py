@@ -14,12 +14,14 @@ log = logging.getLogger(__name__)
 
 class MinioArchiver:
     """
-    Class to handle minio object upload and validations.
+    MinioArchiver handles uploads, lifecycle, and validations for minio archives.
     
     Args:
-        config <StorageProviderConfig> = minio configuration
-        bucket <str> = upload bucket
-        path <str> (optional) = specify bucket path for upload
+        :config: <StorageProviderConfig> = minio configuration
+
+        :bucket: <str> = upload bucket
+        
+        :path: <str> (optional) = specify bucket path for upload
 
     Returns:
         MinioArchiver instance for archival use

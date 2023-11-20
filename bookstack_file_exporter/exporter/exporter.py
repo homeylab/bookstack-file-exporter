@@ -1,8 +1,8 @@
-from typing import Dict, List
+from typing import Dict, List, Union
 import logging
 
-from bookstack_file_exporter.exporter import util
 from bookstack_file_exporter.exporter.node import Node
+from bookstack_file_exporter.common import util
 
 log = logging.getLogger(__name__)
 
@@ -10,14 +10,16 @@ class NodeExporter():
     """
     NodeExporter class provides an interface to help create 
     Bookstack resources/nodes (pages, books, etc) and their relationships.
+    
+    Uses Bookstack API to get gather enough information to do so.
 
-    Raises:
-
-    ValueError if data returned from bookstack api is empty or not in desired format.
+    Returns:
+        NodeExporter instance to handle building shelve/book/chapter/page relations.
     """
-    def __init__(self, api_urls: Dict[str, str], headers: Dict[str,str]):
+    def __init__(self, api_urls: Dict[str, str], headers: Dict[str,str], verify_ssl: bool):
         self.api_urls = api_urls
         self.headers = headers
+        self.verify_ssl = verify_ssl
 
     def get_all_shelves(self) -> Dict[int, Node]:
         """
@@ -25,18 +27,30 @@ class NodeExporter():
         :returns: Dict[int, Node] for all shelf nodes
         """
         base_url = self.api_urls["shelves"]
-        all_parents: List[int] = util.get_all_ids(base_url, self.headers)
+        all_parents: List[int] = self._get_all_ids(base_url)
         if not all_parents:
             log.warning("No shelves found in given Bookstack instance")
             return {}
         return self._get_parents(base_url, all_parents)
+
+    def _get_json_response(self, url: str) -> List[Dict[str, Union[str,int]]]:
+        """get http response data in json format"""
+        response = util.http_get_request(url=url, headers=self.headers,
+                                        verify_ssl=self.verify_ssl)
+        return response.json()
+
+    def _get_all_ids(self, url: str) -> List[int]:
+        ids_api_meta = self._get_json_response(url)
+        if ids_api_meta:
+            return [item['id'] for item in ids_api_meta['data']]
+        return []
 
     def _get_parents(self, base_url: str, parent_ids: List[int],
                       path_prefix: str = "") -> Dict[int, Node]:
         parent_nodes = {}
         for parent_id in parent_ids:
             parent_url = f"{base_url}/{parent_id}"
-            parent_data = util.get_json_response(url=parent_url, headers=self.headers)
+            parent_data = self._get_json_response(parent_url)
             parent_nodes[parent_id] = Node(parent_data, path_prefix=path_prefix)
         return parent_nodes
 
@@ -46,7 +60,7 @@ class NodeExporter():
         # They are under books like pages but have their own children
         # i.e. not a terminal node
         base_url = self.api_urls["chapters"]
-        all_chapters: List[int] = util.get_all_ids(base_url, self.headers)
+        all_chapters: List[int] = self._get_all_ids(base_url)
         if not all_chapters:
             log.debug("No chapters found in given Bookstack instance")
             return {}
@@ -57,7 +71,7 @@ class NodeExporter():
         chapter_nodes = {}
         for chapter_id in all_chapters:
             chapter_url = f"{base_url}/{chapter_id}"
-            chapter_data = util.get_json_response(url=chapter_url, headers=self.headers)
+            chapter_data = self._get_json_response(chapter_url)
             book_id = chapter_data['book_id']
             chapter_nodes[chapter_id] = Node(chapter_data, book_nodes[book_id])
         return chapter_nodes
@@ -76,7 +90,7 @@ class NodeExporter():
                 for child in parent.children:
                     child_id = child['id']
                     child_url = f"{base_url}/{child_id}"
-                    child_data = util.get_json_response(url=child_url, headers=self.headers)
+                    child_data = self._get_json_response(child_url)
                     child_node = Node(child_data, parent)
                     if filter_empty:
                         if not child_node.empty:
@@ -89,7 +103,7 @@ class NodeExporter():
                               path_prefix: str) -> Dict[int, Node]:
         """get books not under a shelf"""
         base_url = self.api_urls["books"]
-        all_resources: List[int] = util.get_all_ids(url=base_url, headers=self.headers)
+        all_resources: List[int] = self._get_all_ids(base_url)
         unassigned = []
         # get all existing ones and compare against current known resources
         for resource_id in all_resources:

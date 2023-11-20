@@ -19,13 +19,15 @@ def exporter(args: argparse.Namespace):
     bookstack_headers = config.headers
     api_urls = config.urls
     unassigned_dir = config.unassigned_book_dir
+    verify_ssl = config.user_inputs.assets.verify_ssl
 
     #### Export Data #####
     # need to implement pagination for apis
-    log.info("Beginning export")
+    log.info("Beginning run")
 
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
-    export_helper = NodeExporter(api_urls, bookstack_headers)
+    log.info("Building shelve/book/chapter/page relationships")
+    export_helper = NodeExporter(api_urls, bookstack_headers, verify_ssl)
     ## shelves
     shelve_nodes: Dict[int, Node] = export_helper.get_all_shelves()
     ## books

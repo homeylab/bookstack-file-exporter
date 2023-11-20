@@ -94,13 +94,13 @@ class ConfigNode:
     def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
-        if self.user_inputs.minio_config:
+        if self.user_inputs.minio:
             minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD,
-                                               self.user_inputs.minio_config.access_key)
+                                               self.user_inputs.minio.access_key)
             minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
-                                               self.user_inputs.minio_config.secret_key)
+                                               self.user_inputs.minio.secret_key)
             object_config["minio"] = StorageProviderConfig(minio_access_key,
-                                     minio_secret_key, self.user_inputs.minio_config)
+                                     minio_secret_key, self.user_inputs.minio)
         return object_config
 
     def _generate_headers(self) -> Dict[str, str]:

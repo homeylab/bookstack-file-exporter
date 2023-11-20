@@ -21,16 +21,11 @@ class Archiver:
     and then pushes them to the specified backup location(s)
 
     Args:
-        :root_dir: str (required) = the base directory for 
-        which the archive .tgz will be placed.
-        :urls: str (required) = the full urls and paths to get content.
-        :headers: Dict[str, str] (required) = the headers which include the Authorization to use
-        :md_asset_options: MarkdownAssets (optional) = additional options to configure 
-        image/attachment exports for markdown files.
+        :config: <ConfigNode> = Configuration with user inputs and general options.
 
     Returns:
-        Archiver instance with attributes that are 
-        accessible for use for file level archival and backup.
+        Archiver instance with attributes that are accessible 
+        for use for handling bookstack exports and remote uploads.
     """
     def __init__(self, config: ConfigNode):
         self.config = config

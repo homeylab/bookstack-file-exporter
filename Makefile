@@ -1,10 +1,10 @@
 ## DOCKER BUILD VARS
 BASE_IMAGE=python
-BASE_IMAGE_TAG=3.11-slim-bookworm
+BASE_IMAGE_TAG=3.12-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
 # keep this start sequence unique (IMAGE_TAG=)
 # github actions will use this to create a tag
-IMAGE_TAG=0.0.2
+IMAGE_TAG=0.0.3
 DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
@@ -48,11 +48,11 @@ docker_build_latest:
 	-t ${IMAGE_NAME}:latest \
 	--no-cache .
 
-docker_push:
-	docker push ${IMAGE_NAME}:${IMAGE_TAG}
+# docker_push:
+# 	docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
-docker_push_latest:
-	docker push ${IMAGE_NAME} --all-tags
+# docker_push_latest:
+# 	docker push ${IMAGE_NAME} --all-tags
 
 # add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:

@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Dict
+from typing import Dict
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
@@ -7,9 +7,10 @@ from requests.adapters import HTTPAdapter, Retry
 
 log = logging.getLogger(__name__)
 
-def http_get_request(url: str, headers: Dict[str, str], timeout: int = 30) -> requests.Response:
+def http_get_request(url: str, headers: Dict[str, str],
+                     verify_ssl: bool, timeout: int = 30) -> requests.Response:
     """make http requests and return response object"""
-    verify, url_prefix = should_verify(url)
+    url_prefix = should_verify(url)
     try:
         with requests.Session() as session:
             # {backoff factor} * (2 ** ({number of previous retries}))
@@ -21,14 +22,14 @@ def http_get_request(url: str, headers: Dict[str, str], timeout: int = 30) -> re
                             raise_on_status=True,
                             status_forcelist=[ 500, 502, 503, 504 ])
             session.mount(url_prefix, HTTPAdapter(max_retries=retries))
-            response = session.get(url, headers=headers, verify=verify, timeout=timeout)
+            response = session.get(url, headers=headers, verify=verify_ssl, timeout=timeout)
     except Exception as req_err:
         log.error("Failed to make request for %s", url)
         raise req_err
     return response
 
-def should_verify(url: str) -> Tuple[bool, str]:
+def should_verify(url: str) -> str:
     """check if http or https"""
-    if url.startswith("https://"):
-        return (True, "https://")
-    return (False, "http://")
+    if url.startswith("https"):
+        return "https://"
+    return "http://"

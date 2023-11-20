@@ -25,6 +25,7 @@ class Assets(BaseModel):
     export_images: Optional[bool] = False
     modify_markdown: Optional[bool] = False
     export_meta: Optional[bool] = False
+    verify_ssl: Optional[bool] = True
 
 # pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
@@ -36,5 +37,5 @@ class UserInput(BaseModel):
     output_path: Optional[str] = None
     # export_meta: Optional[bool] = None
     assets: Optional[Assets] = Assets()
-    minio_config: Optional[ObjectStorageConfig] = None
+    minio: Optional[ObjectStorageConfig] = None
     keep_last: Optional[int] = None
