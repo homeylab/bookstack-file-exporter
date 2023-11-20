@@ -32,13 +32,13 @@ Supported backup formats are based on Bookstack API and shown [here](https://dem
 4. plaintext
 
 ### Use Case
-The main use case is to backup all docs in a directory-tree format to cover the scenarios:
+The main use case is to backup all docs in a relational directory-tree format to cover the scenarios:
 
-1. Offline copy wanted.
-2. Back up at a file level as an accessory or alternative to disk and volume backups.
-3. Share docs with another person to keep locally.
-4. Migrate to Markdown documenting for simplicity.
-5. Provide an easy way to do automated file backups locally, in docker, or kubernetes.
+1. Share docs with another person to keep locally.
+2. Offline copy wanted.
+3. Back up at a file level as an accessory or alternative to disk and volume backups.
+4. Migrate all Bookstack page contents to Markdown documenting for simplicity.
+5. Provide an easy way to do automated file backups locally, in docker, or kubernetes for Bookstack page contents.
 
 ## Using This Application
 Ensure a valid configuration is provided when running this application. See [Configuration](#Configuration) section for more details.
