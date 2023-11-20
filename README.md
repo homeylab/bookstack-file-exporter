@@ -43,6 +43,25 @@ The main use case is to backup all docs in a relational directory-tree format to
 ## Using This Application
 Ensure a valid configuration is provided when running this application. See [Configuration](#Configuration) section for more details.
 
+Simple example configuration:
+```yaml
+# config.yml
+host: "https://bookstack.yourdomain.com"
+credentials:
+    token_id: ""
+    token_secret: ""
+formats:
+- markdown
+- html
+- pdf
+- plaintext
+output_path: "bkps/"
+assets:
+    export_images: false
+    export_meta: false
+    verify_ssl: true
+```
+
 ### Run via Pip
 The exporter can be installed via pip and run directly.
 
