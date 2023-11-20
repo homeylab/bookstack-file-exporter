@@ -2,7 +2,7 @@
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
-This tool provides a way to export [Bookstack]() pages and their contents (images, metadata, etc.) in a directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
+This tool provides a way to export [Bookstack]() pages and their contents (_images, metadata, etc._) to a directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
@@ -14,6 +14,7 @@ What it does:
 - Additional content for pages like their images and metadata and can be exported
 - YAML configuration file for repeatable and easy runs
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
+- Can push archives to remote object storage like [Minio](https://min.io/)
 - Basic housekeeping option (`keep_last`) to keep a tidy archive destination
 
 
