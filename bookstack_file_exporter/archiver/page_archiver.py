@@ -78,9 +78,10 @@ class PageArchiver:
                       image_urls: List[str] = None):
         page_file_name = f"{self.archive_base_path}/" \
             f"{page.file_path}/{page.name}{_FILE_EXTENSION_MAP[export_format]}"
-
-        if export_format == _MARKDOWN_STR_CHECK and image_urls and self.modify_md:
-            data = self._update_image_links(data, image_urls)
+        
+        # note yet implemented
+        # if export_format == _MARKDOWN_STR_CHECK and image_urls and self.modify_md:
+        #     data = self._update_image_links(data, image_urls)
         self.write_data(page_file_name, data)
 
     def _get_page_data(self, page_id: int, export_format: str):
