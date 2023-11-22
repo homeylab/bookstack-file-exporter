@@ -29,6 +29,9 @@ assets:
   # optional export of all the images used in a page(s).
   # omit this or set to false if not needed
   export_images: false
+  # optional modify markdown files to replace image url links
+  # with local exported image paths
+  modify_markdown: false
   ## optional export of metadata about the page in a json file
   # this metadata contains general information about the page
   # like: last update, owner, revision count, etc.

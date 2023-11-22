@@ -15,6 +15,7 @@ Table of Contents
     - [Modify Markdown Files](#modify-markdown-files)
 - [Object Storage](#object-storage)
     - [Minio](#minio-backups)
+- [Future Items](#future-items)
 
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
@@ -76,6 +77,7 @@ formats:
 output_path: "bkps/"
 assets:
     export_images: false
+    modify_markdown: false
     export_meta: false
     verify_ssl: true
 ```
@@ -196,6 +198,7 @@ formats:
 output_path: "bkps/"
 assets:
     export_images: false
+    modify_markdown: false
     export_meta: false
     verify_ssl: true
  ```
@@ -228,6 +231,7 @@ minio:
 output_path: "bkps/"
 assets:
   export_images: true
+  modify_markdown: false
   export_meta: false
   verify_ssl: true
 keep_last: 5
@@ -368,7 +372,7 @@ bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.pn
 bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
 ```
 
-> **Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.
+**Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**
 
 ### Modify Markdown Files
 **To use this feature, `assets.export_images` should be set to `true`**
@@ -426,7 +430,7 @@ minio:
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
 2. ~~Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).~~
-3. Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.
+3. ~~Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.~~
 4. Be able to pull attachments locally and place in their respective page folders for a more complete file level backup.
 5. Export S3 and more options.
 6. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
