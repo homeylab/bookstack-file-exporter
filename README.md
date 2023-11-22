@@ -17,14 +17,14 @@ Table of Contents
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
-This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
+This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
 ### Features
 What it does:
 
-- Build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational directory-tree layout
+- Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
 - Additional content for pages like their images and metadata and can be exported
 - YAML configuration file for repeatable and easy runs
