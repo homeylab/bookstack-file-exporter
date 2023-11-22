@@ -48,11 +48,11 @@ docker_build_latest:
 	-t ${IMAGE_NAME}:latest \
 	--no-cache .
 
-# docker_push:
-# 	docker push ${IMAGE_NAME}:${IMAGE_TAG}
+docker_push:
+	docker push ${IMAGE_NAME}:${IMAGE_TAG}
 
-# docker_push_latest:
-# 	docker push ${IMAGE_NAME} --all-tags
+docker_push_latest:
+	docker push ${IMAGE_NAME} --all-tags
 
 # add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:
