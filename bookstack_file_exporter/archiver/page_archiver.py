@@ -47,17 +47,14 @@ class ImageNode:
         self.url: str = img_meta_data['url']
         self.name: str = self._get_image_name()
         self._markdown_str = ""
-        self.image_relative_path: str = f"./{_IMAGE_DIR_NAME}/{self.name}"
+        self._image_relative_path: str = f"./{_IMAGE_DIR_NAME}/{self.name}"
 
     def _get_image_name(self) -> str:
         return self.url.split('/')[-1]
-    
-    # def _get_markdown_str(self, img_details: Dict[str, Union[int, str]]) -> str:
-    #     if 'content' in img_details:
-    #         if _MARKDOWN_STR_CHECK in img_details['content']:
-    #             print(img_details['content'][_MARKDOWN_STR_CHECK])
-    #             return self._get_md_url_str(img_details['content'][_MARKDOWN_STR_CHECK])
-    #     return ""
+
+    @property
+    def image_relative_path(self):
+        return self._image_relative_path
 
     @property
     def markdown_str(self):
@@ -65,15 +62,6 @@ class ImageNode:
     
     def set_markdown_content(self, img_details: Dict[str, Union[int, str]]):
         self._markdown_str = self._get_md_url_str(img_details)
-    # @markdown_str.setter
-    # def markdown_str(self, img_details: Dict[str, Union[int, str]]) -> str:
-    #     self._markdown_str = self._get_md_url_str(img_details)
-        
-
-    def get_replace_str(self) -> str:
-        """return str for regex replace in page md content"""
-        # return f"[![{self.name}]({self.image_relative_path})]"
-        return self.image_relative_path
 
     @staticmethod
     def _get_md_url_str(img_data: Dict[str, Union[int, str]]) -> str:
@@ -185,29 +173,16 @@ class PageArchiver:
     def _update_image_links(self, page_data: bytes, image_nodes: List[ImageNode]) -> bytes:
         """regex replace links to local created directories"""
         for img_node in image_nodes:
-            img_meta_url = f"{self.api_urls["images"]}/{img_node.id}"
+            img_meta_url = f"{self.api_urls['images']}/{img_node.id}"
             img_details = common_util.http_get_request(img_meta_url,
                                                          self._headers, self.verify_ssl)
             
             img_node.set_markdown_content(img_details.json())
             if not img_node.markdown_str:
                 continue
-
-            # re_pattern_bytes = self._get_regex_expr(img_node.markdown_str)
-
-            # re_pattern_bytes = self._get_regex_expr(img_node.url)
-
             # 1 - what to replace, 2 - replace with, 3 is the data to replace
-            # re.sub(b'pfsense', b'lol', x.content)
-            print(img_node.markdown_str)
-            print(img_node.get_replace_str())
-            page_data = re.sub(img_node.markdown_str.encode(), img_node.get_replace_str().encode(), page_data)
-        # print(page_data)
+            page_data = re.sub(img_node.markdown_str.encode(), img_node.image_relative_path().encode(), page_data)
         return page_data
-
-        # string to bytes
-        # >>> k = 'lol'
-        # >>> k.encode()
 
     @property
     def file_extension_map(self) -> Dict[str, str]:
@@ -225,10 +200,9 @@ class PageArchiver:
         return self.asset_config.verify_ssl
 
     # @staticmethod
-    # def _get_regex_expr(image_str: str) -> bytes:
+    # def _get_regex_expr(url: str) -> bytes:
     #     # regex_str = fr"\[\!\[^$|.*\]\({url}\)\]"
-    #     # print(regex_str)
-    #     return re.compile(image_str.encode())
+    #     return re.compile(regex_str.encode())
 
     @staticmethod
     def _create_image_map(json_data: List[Dict[str, Union[str,int]]]) -> Dict[int, List[ImageNode]]:
