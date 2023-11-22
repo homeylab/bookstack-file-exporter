@@ -5,7 +5,7 @@ import os
 
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
-from bookstack_file_exporter.archiver.page_archiver import PageArchiver
+from bookstack_file_exporter.archiver.page_archiver import PageArchiver, ImageNode
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
@@ -49,23 +49,23 @@ class Archiver:
             self._get_page_files(page, page_image_meta)
             self._get_page_images(page.file_path, page_image_meta)
 
-    def _get_page_files(self, page_node: Node, image_meta: List[str]):
+    def _get_page_files(self, page_node: Node, image_meta: List[ImageNode]):
         """pull all bookstack pages into local files/tar"""
         log.debug("Exporting bookstack page data")
         self._page_archiver.archive_page(page_node, image_meta)
 
-    def _get_page_image_map(self) -> Dict[int, List[str]]:
+    def _get_page_image_map(self) -> Dict[int, ImageNode]:
         if not self._page_archiver.export_images:
             log.debug("skipping image export based on user input")
             return {}
         return self._page_archiver.get_image_meta()
 
-    def _get_page_images(self, page_path: str, urls: List[str]):
-        if not urls:
+    def _get_page_images(self, page_path: str, img_nodes: List[ImageNode]):
+        if not img_nodes:
             log.debug("page has no images to pull")
             return
         log.debug("Exporting bookstack page images")
-        self._page_archiver.archive_page_images(page_path, urls)
+        self._page_archiver.archive_page_images(page_path, img_nodes)
 
     def create_archive(self):
         """create tgz archive"""

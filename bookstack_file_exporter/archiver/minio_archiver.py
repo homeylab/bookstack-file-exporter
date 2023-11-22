@@ -96,7 +96,6 @@ class MinioArchiver:
             # last copy that remains if local is deleted
             log.debug("Minio 'keep_last' set to negative number, ignoring")
             return []
-        # keep_last > 0 condition
         to_delete = []
         if len(minio_objects) > self.keep_last:
             log.debug("Number of minio objects is greater than 'keep_last'")
