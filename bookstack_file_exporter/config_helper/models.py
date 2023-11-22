@@ -21,7 +21,7 @@ class BookstackAccess(BaseModel):
 
 # pylint: disable=too-few-public-methods
 class Assets(BaseModel):
-    """YAML schema for bookstack markdown asset(images/attachments) configuration"""
+    """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
     export_images: Optional[bool] = False
     modify_markdown: Optional[bool] = False
     export_meta: Optional[bool] = False

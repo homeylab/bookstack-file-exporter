@@ -1,8 +1,23 @@
 # bookstack-file-exporter
+Table of Contents
+- [Background](#background)
+- [Using This Application](#using-this-application)
+    - [Run via Pip](#run-via-pip)
+    - [Run via Docker](#run-via-docker)
+- [Authentication](#authentication)
+- [Configuration](#configuration)
+    - [Simple example](#just-run)
+    - [Full example](#full-example)
+    - [Options and descriptions](#options-and-descriptions)
+    - [Environment variables](#valid-environment-variables)
+- [Backup Behavior](#backup-behavior)
+- [Object Storage](#object-storage)
+    - [Minio](#minio-backups)
+
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
-This tool provides a way to export [Bookstack]() pages and their contents (_images, metadata, etc._) to a directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
+This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
@@ -333,6 +348,10 @@ Empty/New Pages will be ignored since they have not been modified yet from creat
 ```
 
 You may notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
+
+## Object Storage
+Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
+- [Minio](#minio-backups)
 
 ### Minio Backups
 Optionally, look at `examples/minio_config.yml` folder of the github repo for more examples. 
