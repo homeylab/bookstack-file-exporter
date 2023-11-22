@@ -27,13 +27,6 @@ def write_tar(base_tar_dir: str, file_path: str, data: bytes):
         log.debug("Adding file: %s with size: %d bytes to tar file", tar_info.name, tar_info.size)
         tar.addfile(tar_info, fileobj=data_obj)
 
-# create files first for manipulation/changes and tar later
-# def write_file(file_path: str, data: bytes):
-#     """write byte data to a local file"""
-#     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-#     with open(file_path, 'wb') as file_obj:
-#         file_obj.write(data)
-
 def get_json_bytes(data: Dict[str, Union[str, int]]) -> bytes:
     """dump dict to json file"""
     return json.dumps(data, indent=4).encode('utf-8')
@@ -55,12 +48,3 @@ def scan_archives(base_dir: str, extension: str) -> str:
     """scan export directory for archives"""
     file_pattern = f"{base_dir}_*{extension}"
     return glob.glob(file_pattern)
-
-# def find_file_matches(file_path: str, regex_expr: re.Pattern) -> List[str]:
-#     """find all matching lines for regex pattern"""
-#     matches=[]
-#     with open(file_path, encoding="utf-8") as open_file:
-#         for line in open_file:
-#             for match in re.finditer(regex_expr, line):
-#                 matches.append(match.group)
-#     return matches

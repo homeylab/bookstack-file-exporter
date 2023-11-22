@@ -3,12 +3,10 @@ import re
 # pylint: disable=import-error
 from requests import Response
 
-
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
-
 
 _META_FILE_SUFFIX = "_meta.json"
 _TAR_SUFFIX = ".tar"
@@ -26,10 +24,54 @@ _FILE_EXTENSION_MAP = {
     "tgz": _TAR_GZ_SUFFIX
 }
 
-
 _IMAGE_DIR_NAME = "images"
-# _MARKDOWN_IMAGE_REGEX= re.compile(r"\[\!\[^$|.*\].*\]")
 _MARKDOWN_STR_CHECK = "markdown"
+
+class ImageNode:
+    """
+    ImageNode provides metadata and convenience for Bookstack images.
+
+    Args:
+        :img_meta_data: <Dict[str, Union[int, str]> = image meta data
+
+    Returns:
+        :ImageNode: instance with attributes to help handle images.
+    """
+    def __init__(self, img_meta_data: Dict[str, Union[int, str]]):
+        self.id: int = img_meta_data['id']
+        self.page_id:  int = img_meta_data['uploaded_to']
+        self.url: str = img_meta_data['url']
+        self.name: str = self._get_image_name()
+        self._markdown_str = ""
+        self._image_relative_path: str = f"./{_IMAGE_DIR_NAME}/{self.name}"
+
+    def _get_image_name(self) -> str:
+        return self.url.split('/')[-1]
+
+    @property
+    def image_relative_path(self):
+        """return image path local to page directory"""
+        return self._image_relative_path
+
+    @property
+    def markdown_str(self):
+        """return markdown url str to replace"""
+        return self._markdown_str
+
+    def set_markdown_content(self, img_details: Dict[str, Union[int, str]]):
+        """provide image metadata to set markdown properties"""
+        self._markdown_str = self._get_md_url_str(img_details)
+
+    @staticmethod
+    def _get_md_url_str(img_data: Dict[str, Union[int, str]]) -> str:
+        url_str = ""
+        if 'content' in img_data:
+            if _MARKDOWN_STR_CHECK in img_data['content']:
+                url_str = img_data['content'][_MARKDOWN_STR_CHECK]
+        # check to see if empty before doing find
+        if not url_str:
+            return ""
+        return url_str[url_str.find("(")+1:url_str.find(")")]
 
 # pylint: disable=too-many-instance-attributes
 class PageArchiver:
@@ -75,13 +117,11 @@ class PageArchiver:
             self._archive_page_meta(page.name, page.file_path, page.meta)
 
     def _archive_page(self, page: Node, export_format: str, data: bytes,
-                      image_urls: List[str] = None):
+                      image_nodes: List[ImageNode] = None):
         page_file_name = f"{self.archive_base_path}/" \
             f"{page.file_path}/{page.name}{_FILE_EXTENSION_MAP[export_format]}"
-        
-        # note yet implemented
-        # if export_format == _MARKDOWN_STR_CHECK and image_urls and self.modify_md:
-        #     data = self._update_image_links(data, image_urls)
+        if self.modify_md and export_format == _MARKDOWN_STR_CHECK and image_nodes:
+            data = self._update_image_links(data, image_nodes)
         self.write_data(page_file_name, data)
 
     def _get_page_data(self, page_id: int, export_format: str):
@@ -96,7 +136,7 @@ class PageArchiver:
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(file_path=meta_file_name, data=bytes_meta)
 
-    def get_image_meta(self) -> Dict[int, List[str]]:
+    def get_image_meta(self) -> Dict[int, List[ImageNode]]:
         """Get all image metadata into a {page_number: [image_url]} format"""
         img_meta_response: Response = common_util.http_get_request(
             self.api_urls['images'],
@@ -105,28 +145,14 @@ class PageArchiver:
         img_meta_json = img_meta_response.json()['data']
         return self._create_image_map(img_meta_json)
 
-    @staticmethod
-    def _create_image_map(json_data: List[Dict[str, Union[str,int]]]) -> Dict[int, List[str]]:
-        image_page_map = {}
-        for image_node in json_data:
-            image_page_id = image_node['uploaded_to']
-            image_url = image_node['url']
-            if image_page_id in image_page_map:
-                image_page_map[image_page_id].append(image_url)
-            else:
-                image_page_map[image_page_id] = [image_url]
-        return image_page_map
-
-    def archive_page_images(self, page_path: str, image_urls: List[str]):
+    def archive_page_images(self, page_path: str, image_nodes: List[ImageNode]):
         """pull images locally into a directory based on page"""
         # image_base_path = f"{self.archive_base_path}/{page_path}{_IMAGE_DIR_SUFFIX}"
         image_base_path = f"{self.archive_base_path}/{page_path}/{_IMAGE_DIR_NAME}"
-        for image_url in image_urls:
-            img_data: bytes = archiver_util.get_byte_response(image_url, self._headers,
+        for img_node in image_nodes:
+            img_data: bytes = archiver_util.get_byte_response(img_node.url, self._headers,
                                                               self.verify_ssl)
-            # seems safer to use this instead of image['name'] field
-            img_file_name = image_url.split('/')[-1]
-            image_path = f"{image_base_path}/{img_file_name}"
+            image_path = f"{image_base_path}/{img_node.name}"
             self.write_data(image_path, img_data)
 
     def write_data(self, file_path: str, data: bytes):
@@ -142,19 +168,19 @@ class PageArchiver:
         """provide the tar to gzip and the name of the gzip output file"""
         archiver_util.create_gzip(self.tar_file, self.archive_file)
 
-    def _update_image_links(self, page_data: bytes, urls: List[str]) -> bytes:
+    def _update_image_links(self, page_data: bytes, image_nodes: List[ImageNode]) -> bytes:
         """regex replace links to local created directories"""
-        # 1 - what to replace, 2 - replace with, 3 is the data to replace
-        # re.sub(b'pfsense', b'lol', x.content)
-
-        # string to bytes
-        # >>> k = 'lol'
-        # >>> k.encode()
-        pass
-
-    def _valid_image_link(self):
-        """should contain bookstack host"""
-        pass
+        for img_node in image_nodes:
+            img_meta_url = f"{self.api_urls['images']}/{img_node.id}"
+            img_details = common_util.http_get_request(img_meta_url,
+                                                         self._headers, self.verify_ssl)
+            img_node.set_markdown_content(img_details.json())
+            if not img_node.markdown_str:
+                continue
+            # 1 - what to replace, 2 - replace with, 3 is the data to replace
+            page_data = re.sub(img_node.markdown_str.encode(),
+                               img_node.image_relative_path.encode(), page_data)
+        return page_data
 
     @property
     def file_extension_map(self) -> Dict[str, str]:
@@ -171,6 +197,18 @@ class PageArchiver:
         """return whether or not to verify ssl for http requests"""
         return self.asset_config.verify_ssl
 
+    # @staticmethod
+    # def _get_regex_expr(url: str) -> bytes:
+    #     # regex_str = fr"\[\!\[^$|.*\]\({url}\)\]"
+    #     return re.compile(regex_str.encode())
+
     @staticmethod
-    def _get_regex_expr(url: str) -> re.Pattern:
-        return re.compile(fr"\[\!\[^$|.*\].*{url}.*\]")
+    def _create_image_map(json_data: List[Dict[str, Union[str,int]]]) -> Dict[int, List[ImageNode]]:
+        image_page_map = {}
+        for img_meta in json_data:
+            img_node = ImageNode(img_meta)
+            if img_node.page_id in image_page_map:
+                image_page_map[img_node.page_id].append(img_node)
+            else:
+                image_page_map[img_node.page_id] = [img_node]
+        return image_page_map

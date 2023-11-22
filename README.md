@@ -11,22 +11,26 @@ Table of Contents
     - [Options and descriptions](#options-and-descriptions)
     - [Environment variables](#valid-environment-variables)
 - [Backup Behavior](#backup-behavior)
+    - [Images](#images)
+    - [Modify Markdown Files](#modify-markdown-files)
 - [Object Storage](#object-storage)
     - [Minio](#minio-backups)
+- [Future Items](#future-items)
 
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
-This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
+This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
 ### Features
 What it does:
 
-- Build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational directory-tree layout
+- Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
 - Additional content for pages like their images and metadata and can be exported
+- The exporter can also [Modify Markdown Files](#modify-markdown-files) to replace image links with local exported image paths for a more portable backup
 - YAML configuration file for repeatable and easy runs
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
 - Can push archives to remote object storage like [Minio](https://min.io/)
@@ -73,6 +77,7 @@ formats:
 output_path: "bkps/"
 assets:
     export_images: false
+    modify_markdown: false
     export_meta: false
     verify_ssl: true
 ```
@@ -193,6 +198,7 @@ formats:
 output_path: "bkps/"
 assets:
     export_images: false
+    modify_markdown: false
     export_meta: false
     verify_ssl: true
  ```
@@ -225,6 +231,7 @@ minio:
 output_path: "bkps/"
 assets:
   export_images: true
+  modify_markdown: false
   export_meta: false
   verify_ssl: true
 keep_last: 5
@@ -244,6 +251,7 @@ More descriptions can be found for each section below:
 | `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. If not provided, will use current run directory by default |
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
+| `assets.modify_markdown` | `bool` | `false` | Optional (default: `false`), modify markdown files to replace image links with local exported image paths. This requires `assets.export_images` to be `true` in order to work. See [Modify Markdown Files](#modify-markdown-files) for more information.
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file |
 | `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
 | `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
@@ -261,9 +269,12 @@ General
 - `MINIO_ACCESS_KEY`
 - `MINIO_SECRET_KEY`
 
-### Backup Behavior
+## Backup Behavior
+
+### Export File
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
 
+### General
 The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the [Configuration](#options-and-descriptions) section. Object storage provider configurations include their own `keep_last` property for flexibility. 
 
 For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced from page names/titles.
@@ -349,6 +360,37 @@ Empty/New Pages will be ignored since they have not been modified yet from creat
 
 You may notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
 
+### Images
+
+### General
+Images will be dumped in a separate directory, `images` within the page directory it belongs to. As shown earlier:
+
+```
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
+```
+
+**Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**
+
+### Modify Markdown Files
+**To use this feature, `assets.export_images` should be set to `true`**
+
+The configuration item, `assets.modify_markdown`, can be set to `true` to modify markdown files to replace image url links with local exported image paths. This feature allows for you to make your `markdown` exports much more portable.
+
+Page (parent) -> Images (Children) relationships are created and then each image url is replaced with its own respective local export path. Example:
+```
+## before
+[![pool-topology-1.png](https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
+
+## after
+[![pool-topology-1.png](./images/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
+```
+This allows the image to be found locally within the export files and allow your `markdown` docs to have all the images display properly like it would normally would.
+
+**Note: This will work properly if your pages are using the notation used by Bookstack for Markdown image links, example: ` [![image alt text](Bookstack Markdown image URL link)](anchor/url link)` The `(anchor/url link)` is optional.**
+
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
 - [Minio](#minio-backups)
@@ -388,7 +430,7 @@ minio:
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
 2. ~~Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).~~
-3. Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.
+3. ~~Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.~~
 4. Be able to pull attachments locally and place in their respective page folders for a more complete file level backup.
 5. Export S3 and more options.
 6. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
