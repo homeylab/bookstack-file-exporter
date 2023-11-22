@@ -3,12 +3,10 @@ import re
 # pylint: disable=import-error
 from requests import Response
 
-
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
-
 
 _META_FILE_SUFFIX = "_meta.json"
 _TAR_SUFFIX = ".tar"
@@ -26,9 +24,7 @@ _FILE_EXTENSION_MAP = {
     "tgz": _TAR_GZ_SUFFIX
 }
 
-
 _IMAGE_DIR_NAME = "images"
-# _MARKDOWN_IMAGE_REGEX= re.compile(r"\[\!\[^$|.*\].*\]")
 _MARKDOWN_STR_CHECK = "markdown"
 
 class ImageNode:
@@ -54,13 +50,16 @@ class ImageNode:
 
     @property
     def image_relative_path(self):
+        """return image path local to page directory"""
         return self._image_relative_path
 
     @property
     def markdown_str(self):
+        """return markdown url str to replace"""
         return self._markdown_str
-    
+
     def set_markdown_content(self, img_details: Dict[str, Union[int, str]]):
+        """provide image metadata to set markdown properties"""
         self._markdown_str = self._get_md_url_str(img_details)
 
     @staticmethod
@@ -121,7 +120,6 @@ class PageArchiver:
                       image_nodes: List[ImageNode] = None):
         page_file_name = f"{self.archive_base_path}/" \
             f"{page.file_path}/{page.name}{_FILE_EXTENSION_MAP[export_format]}"
-        # not yet implemented
         if self.modify_md and export_format == _MARKDOWN_STR_CHECK and image_nodes:
             data = self._update_image_links(data, image_nodes)
         self.write_data(page_file_name, data)
@@ -176,12 +174,12 @@ class PageArchiver:
             img_meta_url = f"{self.api_urls['images']}/{img_node.id}"
             img_details = common_util.http_get_request(img_meta_url,
                                                          self._headers, self.verify_ssl)
-            
             img_node.set_markdown_content(img_details.json())
             if not img_node.markdown_str:
                 continue
             # 1 - what to replace, 2 - replace with, 3 is the data to replace
-            page_data = re.sub(img_node.markdown_str.encode(), img_node.image_relative_path().encode(), page_data)
+            page_data = re.sub(img_node.markdown_str.encode(),
+                               img_node.image_relative_path.encode(), page_data)
         return page_data
 
     @property
