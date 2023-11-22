@@ -18,7 +18,8 @@ _API_PATHS = {
     "shelves": "api/shelves",
     "books": "api/books",
     "chapters": "api/chapters",
-    "pages": "api/pages"
+    "pages": "api/pages",
+    "images": "api/image-gallery"
 }
 
 _UNASSIGNED_BOOKS_DIR = "unassigned/"
@@ -31,7 +32,6 @@ _MINIO_ACCESS_KEY_FIELD='MINIO_ACCESS_KEY'
 _MINIO_SECRET_KEY_FIELD='MINIO_SECRET_KEY'
 
 # pylint: disable=too-many-instance-attributes
-
 ## Normalize config from cli or from config file
 class ConfigNode:
     """
@@ -94,17 +94,13 @@ class ConfigNode:
     def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
-        if self.user_inputs.minio_config:
+        if self.user_inputs.minio:
             minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD,
-                                               self.user_inputs.minio_config.access_key)
+                                               self.user_inputs.minio.access_key)
             minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
-                                               self.user_inputs.minio_config.secret_key)
+                                               self.user_inputs.minio.secret_key)
             object_config["minio"] = StorageProviderConfig(minio_access_key,
-                                     minio_secret_key, self.user_inputs.minio_config.bucket,
-                                     host=self.user_inputs.minio_config.host,
-                                     path=self.user_inputs.minio_config.path,
-                                     region=self.user_inputs.minio_config.region,
-                                     keep_last=self.user_inputs.minio_config.keep_last)
+                                     minio_secret_key, self.user_inputs.minio)
         return object_config
 
     def _generate_headers(self) -> Dict[str, str]:

@@ -1,30 +1,33 @@
-from typing import Union
+from bookstack_file_exporter.config_helper.models import ObjectStorageConfig
 
 ## convenience class
 ## able to work for minio, s3, etc.
 class StorageProviderConfig:
     """
-    Convenience class to get dot notation for remote object storage
-    configuration access.
+    Convenience class to hold object storage provider configuration
     
     Args:
         access_key <str> = required token id
+
         secret_key <str> = required secret token
-        bucket <str> = bucket to upload
-        host <str> (optional) = if provider requires a host/url
-        path <str> (optional) = specify bucket path for upload
-        region <str> (optional) = if provider requires region
+
+        config <ObjectStorageConfig> = required configuration options
 
     Returns:
-        StorageProviderConfig instance for dot notation access
+        StorageProviderConfig instance for holding configuration
     """
-    def __init__(self, access_key: str, secret_key: str, bucket: str,
-                 host: Union[str, None]=None, path: Union[str, None]=None,
-                 region: Union[str, None]=None, keep_last: Union[int, None] = None):
-        self.host = host
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.bucket = bucket
-        self.path = path
-        self.region = region
-        self.keep_last = keep_last
+
+    def __init__(self, access_key: str, secret_key: str, config: ObjectStorageConfig):
+        self.config = config
+        self._access_key = access_key
+        self._secret_key = secret_key
+
+    @property
+    def access_key(self) -> str:
+        """return access key for use"""
+        return self._access_key
+
+    @property
+    def secret_key(self) -> str:
+        """return secret key for use"""
+        return self._secret_key

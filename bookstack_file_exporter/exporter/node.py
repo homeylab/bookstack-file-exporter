@@ -8,7 +8,6 @@ _CHILD_KEYS = ['books', 'contents', 'pages']
 _NULL_PAGE_NAME = "New Page"
 
 # pylint: disable=too-many-instance-attributes
-
 class Node():
     """
     Node class provides an interface to create bookstack child/parent 
@@ -45,6 +44,9 @@ class Node():
 
     def _get_file_path(self) -> str:
         if self._parent:
+            # page node
+            # if not self._children:
+            #     return f"{self._parent.file_path}/{self.name}/{self.name}"
             return f"{self._parent.file_path}/{self.name}"
         return ""
 

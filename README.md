@@ -1,18 +1,37 @@
 # bookstack-file-exporter
+Table of Contents
+- [Background](#background)
+- [Using This Application](#using-this-application)
+    - [Run via Pip](#run-via-pip)
+    - [Run via Docker](#run-via-docker)
+- [Authentication](#authentication)
+- [Configuration](#configuration)
+    - [Simple example](#just-run)
+    - [Full example](#full-example)
+    - [Options and descriptions](#options-and-descriptions)
+    - [Environment variables](#valid-environment-variables)
+- [Backup Behavior](#backup-behavior)
+- [Object Storage](#object-storage)
+    - [Minio](#minio-backups)
+
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
 
-This tool provides a way to export Bookstack pages in a folder-tree layout locally with an option to push to remote object storage locations. See `Backup Behavior` section for more details on how pages are organized.
+This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, metadata, etc._) into a relational directory-tree layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
-The main use case is to backup all docs in a folder-tree format to cover the scenarios:
+### Features
+What it does:
 
-1. Offline copy wanted.
-2. Back up at a file level as an accessory or alternative to disk and volume backups.
-3. Share docs with another person to keep locally.
-4. Migrate to Markdown documenting for simplicity.
-5. Provide an easy way to do automated file backups locally, in docker, or kubernetes.
+- Build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational directory-tree layout
+- Export Bookstack pages and their content to a `.tgz` archive
+- Additional content for pages like their images and metadata and can be exported
+- YAML configuration file for repeatable and easy runs
+- Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
+- Can push archives to remote object storage like [Minio](https://min.io/)
+- Basic housekeeping option (`keep_last`) to keep a tidy archive destination
+
 
 Supported backup targets are:
 
@@ -20,41 +39,83 @@ Supported backup targets are:
 2. minio
 3. s3 (Not Yet Implemented)
 
-Supported backup formats are shown [here](https://demo.bookstackapp.com/api/docs#pages-exportHtml) and below:
+Supported backup formats are based on Bookstack API and shown [here](https://demo.bookstackapp.com/api/docs#pages-exportHtml) and below:
 
 1. html
 2. pdf
 3. markdown
 4. plaintext
 
-Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
+### Use Case
+The main use case is to backup all docs in a relational directory-tree format to cover the scenarios:
 
-The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the `Configuration` section. Object storage provider configurations include their own `keep_last` property for flexibility. 
+1. Share docs with another person to keep locally.
+2. Offline copy wanted.
+3. Back up at a file level as an accessory or alternative to disk and volume backups.
+4. Migrate all Bookstack page contents to Markdown documenting for simplicity.
+5. Provide an easy way to do automated file backups locally, in docker, or kubernetes for Bookstack page contents.
 
 ## Using This Application
-Ensure a valid configuration is provided when running this application. See `Configuration` section for more details.
+Ensure a valid configuration is provided when running this application. See [Configuration](#Configuration) section for more details.
+
+Simple example configuration:
+```yaml
+# config.yml
+host: "https://bookstack.yourdomain.com"
+credentials:
+    token_id: ""
+    token_secret: ""
+formats:
+- markdown
+- html
+- pdf
+- plaintext
+output_path: "bkps/"
+assets:
+    export_images: false
+    export_meta: false
+    verify_ssl: true
+```
 
 ### Run via Pip
+The exporter can be installed via pip and run directly.
+
+#### Examples
 ```bash
 python -m pip install bookstack-file-exporter
 
-# if you already have python bin directory in your path
-bookstack-file-exporter -c <path_to_config_file>
-
 # using pip
 python -m bookstack_file_exporter -c <path_to_config_file>
+
+# if you already have python bin directory in your path
+bookstack-file-exporter -c <path_to_config_file>
 ```
+
+#### Options
 Command line options:
 | option | required | description |
 | ------ | -------- | ----------- |
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 
-_Note: This application is tested and developed on Python `3.11.X`. It will probably work for >= `3.8` but is recommended to install (or set up a venv) a `3.11.X` version._
+#### Environment Variables
+See [Valid Environment Variables](#valid-environment-variables) for more options.
+
+Example:
+```bash
+export LOG_LEVEL=debug
+
+# using pip
+python -m bookstack_file_exporter -c <path_to_config_file>
+```
+
+#### Python Version
+_Note: This application is tested and developed on Python version `3.12.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
 
 ### Run Via Docker
-Example:
+Docker can be utilized to run the exporter.
 
+#### Examples
 ```bash
 docker run \
     --user ${USER_ID}:${USER_GID} \
@@ -62,14 +123,20 @@ docker run \
     -v $(pwd)/bkps:/export/dump \
     homeylab/bookstack-file-exporter:latest
 ```
-Minimal example with object storage upload: 
+
+Minimal example with object storage upload. A temporary filesystem will be used so archive will not be persistent locally. 
 ```bash
 docker run \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
     homeylab/bookstack-file-exporter:latest
 ```
 
+
+#### Environment Variables
+See [Valid Environment Variables](#valid-environment-variables) for more options.
+
 Tokens and other options can be specified, example:
+
 ```bash
 # '-e' flag for env vars
 # --user flag to override the uid/gid for created files
@@ -82,7 +149,8 @@ docker run \
     -v $(pwd)/bkps:/export/dump \
     homeylab/bookstack-file-exporter:latest
 ```
-Bind Mounts:
+
+#### Bind Mounts
 | purpose | static docker path | description | example |
 | ------- | ------------------ | ----------- | ------- |
 | `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
@@ -102,43 +170,51 @@ Env variables for credentials will take precedence over configuration file optio
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
 ### Configuration
-See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. 
+See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. Ensure [Authentication](#authentication) has been set up beforehand for required credentials.
 
 For object storage configuration, find more information in their respective sections
-- [Minio](https://github.com/homeylab/bookstack-file-exporter#minio-backups)
+- [Minio](#minio-backups)
 
-Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
+> Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
+
+#### Just Run
+Below is an example configuration to just get quickly running without any additional options.
+
 ```yaml
-# if http/https not specified, defaults to https
-# if you put http here, it will try verify=false, to not check certs
 host: "https://bookstack.yourdomain.com"
-
-# You could optionally set the bookstack token_id and token_secret here instead of env
-# If env variable is also supplied, env variable will take precedence
 credentials:
     token_id: ""
     token_secret: ""
+formats:
+- markdown
+- html
+- pdf
+- plaintext
+output_path: "bkps/"
+assets:
+    export_images: false
+    export_meta: false
+    verify_ssl: true
+ ```
 
-# additional headers to add, examples below
+#### Full Example
+Below is an example configuration that shows all possible options,
+
+```yaml
+host: "https://bookstack.yourdomain.com"
+credentials:
+    token_id: ""
+    token_secret: ""
 additional_headers:
   test: "test"
   test2: "test2"
   User-Agent: "test-agent"
-
-# supported formats from bookstack below
-# valid formats: markdown, html, pdf, plaintext
-# you can specify one or as many as you'd like
 formats:
   - markdown
   - html
   - pdf
   - plaintext
-
-# optional minio configuration
-# If not required, you should omit/comment out the section
-# You can specify env vars instead for access and secret key
-# See Minio Backups section of this doc for more info on required fields
-minio_config:
+minio:
   host: "minio.yourdomain.com"
   access_key: ""
   secret_key: ""
@@ -146,54 +222,117 @@ minio_config:
   bucket: "mybucket"
   path: "bookstack/file_backups"
   keep_last: 5
-
-# output directory for the exported archive
-# relative or full path
-# User who runs the command should have access to write and create sub folders in this directory
-# optional, if not provided, will use current run directory by default
 output_path: "bkps/"
-
-# optional export of metadata about the page in a json file
-# this metadata contains general information about the page
-# like: last update, owner, revision count, etc.
-# omit this or set to false if not needed
-export_meta: true
-
-# optional if specified exporter can delete older archives
-# valid values are:
-# set to -1 if you want to delete all archives after each run
-# - this is useful if you only want to upload to object storage
-# set to 1+ if you want to retain a certain number of archives
-# set to 0 or comment out section if you want no action done
+assets:
+  export_images: true
+  export_meta: false
+  verify_ssl: true
 keep_last: 5
 ```
 
+#### Options and Descriptions
+More descriptions can be found for each section below:
+
+| Configuration Item | Type | Required | Description |
+| ------------------ | ---- | -------- | ----------- |
+|  `host` | `str` | `true` | If `http/https` not specified in the url, defaults to `https`. Use `assets.verify_ssl` to disable certificate checking. |
+| `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](#authentication) for more details. |
+| `credentials.token_id` | `str`| `true` if `credentials` | If `credentials` section is given, this should be a valid tokenId |
+| `credentials.token_secret` | `str` | `true` if `credentials`| If `credentials` section is given, this should be a valid tokenSecret | 
+| `additional_headers` | `object` | `false` | Optional section where key/value for pairs can be specified to use in Bookstack http request headers.
+| `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext"]`|
+| `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. If not provided, will use current run directory by default |
+| `assets` | `object` | `false` | Optional section to export additional assets from pages. |
+| `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
+| `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file |
+| `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
+| `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
+| `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
+
+#### Valid Environment Variables
+General
+- `LOG_LEVEL`: default: `info``. Provide a valid log level: info, debug, warning, error.
+
+[Bookstack Credentials](#authentication)
+- `BOOKSTACK_TOKEN_ID`
+- `BOOKSTACK_TOKEN_SECRET`
+
+[Minio Credentials](#authentication-1)
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+
 ### Backup Behavior
-We will use slug names (from Bookstack API) by default, as such certain characters like `!`, `/` will be ignored and spaces replaced.
+Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
+
+The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the [Configuration](#options-and-descriptions) section. Object storage provider configurations include their own `keep_last` property for flexibility. 
+
+For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced from page names/titles.
 
 All sub directories will be created as required during the export process.
-
 ```
 Shelves --> Books --> Chapters --> Pages
 
 ## Example
-kafka
----> controller
-    ---> settings
-        ---> logs (chapter)
-            ---> retention.md
+kafka (shelf)
+---> controller (book)
+    ---> settings (chapter)
+        ---> retention-settings (page)
+            ---> retention-settings.md
+            ---> retention-settings_meta.json
+        ---> compression (page)
+            ---> compression.html
             ---> compression.pdf
-            ---> something.html
-            ---> other.txt
-        ---> optional
-        ---> main
-    ---> deploy
----> broker
-    ---> settings
-    ---> deploy
----> schema-registry
-    ---> protobuf
-    ---> settings
+            ---> compression_meta.json
+        ---> optional-config (page)
+            ...
+        ---> main (page)
+            ...
+---> broker (book)
+    ---> settings (page)
+        ...
+    ---> deploy (page)
+        ...
+kafka-apps (shelf)
+---> schema-registry (book)
+    ---> protobuf (page)
+        ...
+    ---> settings (page)
+        ...
+
+## Example with image layout
+unassigned (Used for books with no shelf)
+---> test (book)
+    ---> test_page (page)
+        ---> test_page.md
+        ---> test_page.pdf
+        ---> images (image_dir)
+            ---> img-001.png
+            ---> img-002.png
+    ---> rec_page (page)
+        ---> rec_page.md
+        ---> rec_page.pdf
+```
+Another example is shown below:
+```
+## First example:
+# programming = shelf
+# book = react
+# basics = page
+
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.md
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.html
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.pdf
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.txt
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics_meta.json
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
+bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.md
+bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.html
+bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.pdf
+bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.txt
+bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs_meta.json
 ```
 
 Books without a shelf will be put in a shelve folder named `unassigned`.
@@ -210,49 +349,47 @@ Empty/New Pages will be ignored since they have not been modified yet from creat
 
 You may notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
 
+## Object Storage
+Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
+- [Minio](#minio-backups)
+
 ### Minio Backups
-Optionally, look at `examples/` folder of the github repo for more examples. 
+Optionally, look at `examples/minio_config.yml` folder of the github repo for more examples. 
 
-```yaml
-minio_config:
-    # a host/ip + port combination is also allowed
-    # example: "minio.yourdomain.com:8443"
-    host: "minio.yourdomain.com"
+#### Authentication
+Credentials can be specified directly in the `minio` configuration section or as environment variables. If specified in config and env, env variable will take precedence.
 
-    # this is required since minio api appears to require it
-    # set to the region your bucket resides in
-    # if unsure, try "us-east-1" first
-    region: "us-east-1"
-
-    # bucket to upload to
-    bucket "mybucket"
-
-    # access key for the minio instance
-    # optionally set as env variable instead
-    access_key: ""
-
-    # secret key for the minio instance
-    # optionally set as env variable instead
-    secret_key: ""
-
-    # the path of the backup
-    # optional, will use root bucket path if not set
-    # in example below, the exported archive will appear in: `<bucket_name>:/bookstack/backups/bookstack-<timestamp>.tgz`
-    path: "bookstack/file_backups"
-
-    # optional if specified exporter can delete older archives
-    # valid values are:
-    # set to 1+ if you want to retain a certain number of archives
-    # set to 0 or comment out section if you want no action done
-    keep_last: 5
-```
-
-As mentioned you can optionally set access and secret key as env variables. If both are specified, env variable will take precedence.
+Environment variables:
 - `MINIO_ACCESS_KEY`
 - `MINIO_SECRET_KEY`
 
+#### Example
+```yaml
+minio:
+    host: "minio.yourdomain.com"
+    region: "us-east-1"
+    bucket: "mybucket"
+    access_key: ""
+    secret_key: ""
+    path: "bookstack/file_backups"
+    keep_last: 5
+```
+#### Configuration
+| Item | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `host` | `str` | `true` | Hostname for minio. A host/ip + port combination is also allowed, example: `minio.yourdomain.com:8443` |
+| `region` | `str` | `true` | This is required since minio api appears to require it. Set to the region your bucket resides in, if unsure, try `us-east-1` |
+| `bucket` | `str` | `true` | Bucket to upload to |
+| `access_key` | `str` | `false` if specified through env var instead, otherwise `true` | Access key for the minio instance |
+| `secret_key` | `str` | `false` if specified through env var, otherwise `true` | Secret key for the minio instance |
+| `path` | `str` | `false` | Optional, path of the backup to use. Will use root bucket path if not set. `<bucket_name>:/<path>/bookstack-<timestamp>.tgz` |
+| `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
+
 ## Future Items
-1. Be able to pull media/photos locally and place in their respective page folders for a more complete file level backup.
-2. Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).
-3. Export S3 or more options.
-4. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
+1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
+2. ~~Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).~~
+3. Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.
+4. Be able to pull attachments locally and place in their respective page folders for a more complete file level backup.
+5. Export S3 and more options.
+6. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
+7. Be able to pull media/photos from 3rd party providers like `drawio`

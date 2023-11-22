@@ -18,17 +18,16 @@ def exporter(args: argparse.Namespace):
     ## convenience vars
     bookstack_headers = config.headers
     api_urls = config.urls
-    export_formats = config.user_inputs.formats
     unassigned_dir = config.unassigned_book_dir
-    page_base_url = config.urls['pages']
-    base_export_dir = config.base_dir_name
+    verify_ssl = config.user_inputs.assets.verify_ssl
 
     #### Export Data #####
     # need to implement pagination for apis
-    log.info("Beginning export")
+    log.info("Beginning run")
 
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
-    export_helper = NodeExporter(api_urls, bookstack_headers)
+    log.info("Building shelve/book/chapter/page relationships")
+    export_helper = NodeExporter(api_urls, bookstack_headers, verify_ssl)
     ## shelves
     shelve_nodes: Dict[int, Node] = export_helper.get_all_shelves()
     ## books
@@ -40,14 +39,18 @@ def exporter(args: argparse.Namespace):
         sys.exit(0)
     log.info("Beginning archive")
     ## start archive ##
-    archive: Archiver = Archiver(base_export_dir, config.user_inputs.export_meta,
-                                 page_base_url, bookstack_headers)
-    # create tar
-    archive.archive(page_nodes, export_formats)
+    archive: Archiver = Archiver(config)
+
+    # get all page content for each page
+    archive.get_bookstack_exports(page_nodes)
+
+    # create tar if needed and gzip tar
+    archive.create_archive()
+
     # archive to remote targets
-    archive.archive_remote(config.object_storage_config)
+    archive.archive_remote()
     # if remote target is specified and clean is true
     # clean up the .tgz archive since it is already uploaded
-    archive.clean_up(config.user_inputs.keep_last)
+    archive.clean_up()
 
     log.info("Completed run")
