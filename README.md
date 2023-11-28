@@ -69,11 +69,11 @@ host: "https://bookstack.yourdomain.com"
 credentials:
     token_id: ""
     token_secret: ""
-formats:
+formats: # md only example
 - markdown
-- html
-- pdf
-- plaintext
+# - html
+# - pdf
+# - plaintext
 output_path: "bkps/"
 assets:
     export_images: false
@@ -176,33 +176,12 @@ Env variables for credentials will take precedence over configuration file optio
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
 ### Configuration
-See below for an example and explanation. Optionally, look at `examples/` folder of the github repo for more examples. Ensure [Authentication](#authentication) has been set up beforehand for required credentials.
+_Ensure [Authentication](#authentication) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](#using-this-application) section. A full example is also shown below with descriptions. Optionally, look at `examples/` folder of the github repo for more examples. 
 
 For object storage configuration, find more information in their respective sections
 - [Minio](#minio-backups)
 
-> Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.
-
-#### Just Run
-Below is an example configuration to just get quickly running without any additional options.
-
-```yaml
-host: "https://bookstack.yourdomain.com"
-credentials:
-    token_id: ""
-    token_secret: ""
-formats: # md only example
-- markdown
-# - html
-# - pdf
-# - plaintext
-output_path: "bkps/"
-assets:
-    export_images: false
-    modify_markdown: false
-    export_meta: false
-    verify_ssl: true
- ```
+**Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.**
 
 #### Full Example
 Below is an example configuration that shows example values for all possible options.
