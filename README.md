@@ -1,21 +1,37 @@
 # bookstack-file-exporter
 Table of Contents
-- [Background](#background)
-- [Using This Application](#using-this-application)
+- [bookstack-file-exporter](#bookstack-file-exporter)
+  - [Background](#background)
+    - [Features](#features)
+    - [Use Case](#use-case)
+  - [Using This Application](#using-this-application)
     - [Run via Pip](#run-via-pip)
-    - [Run via Docker](#run-via-docker)
-- [Authentication](#authentication)
-- [Configuration](#configuration)
-    - [Simple example](#just-run)
-    - [Full example](#full-example)
-    - [Options and descriptions](#options-and-descriptions)
-    - [Environment variables](#valid-environment-variables)
-- [Backup Behavior](#backup-behavior)
+      - [Examples](#examples)
+      - [Options](#options)
+      - [Environment Variables](#environment-variables)
+      - [Python Version](#python-version)
+    - [Run Via Docker](#run-via-docker)
+      - [Examples](#examples-1)
+      - [Environment Variables](#environment-variables-1)
+      - [Bind Mounts](#bind-mounts)
+    - [Authentication](#authentication)
+    - [Configuration](#configuration)
+      - [Just Run](#just-run)
+      - [Full Example](#full-example)
+      - [Options and Descriptions](#options-and-descriptions)
+      - [Valid Environment Variables](#valid-environment-variables)
+  - [Backup Behavior](#backup-behavior)
+    - [Export File](#export-file)
+    - [General](#general)
     - [Images](#images)
+    - [General](#general-1)
     - [Modify Markdown Files](#modify-markdown-files)
-- [Object Storage](#object-storage)
-    - [Minio](#minio-backups)
-- [Future Items](#future-items)
+  - [Object Storage](#object-storage)
+    - [Minio Backups](#minio-backups)
+      - [Authentication](#authentication-1)
+      - [Example](#example)
+      - [Configuration](#configuration-1)
+  - [Future Items](#future-items)
 
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
@@ -122,6 +138,7 @@ Docker can be utilized to run the exporter.
 
 #### Examples
 ```bash
+# --user flag to override the uid/gid for created files. Set this to your uid/gid
 docker run \
     --user ${USER_ID}:${USER_GID} \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
@@ -144,7 +161,7 @@ Tokens and other options can be specified, example:
 
 ```bash
 # '-e' flag for env vars
-# --user flag to override the uid/gid for created files
+# --user flag to override the uid/gid for created files. Set this to your uid/gid
 docker run \
     -e LOG_LEVEL='debug' \
     -e BOOKSTACK_TOKEN_ID='xyz' \
@@ -190,11 +207,11 @@ host: "https://bookstack.yourdomain.com"
 credentials:
     token_id: ""
     token_secret: ""
-formats:
+formats: # md only example
 - markdown
-- html
-- pdf
-- plaintext
+# - html
+# - pdf
+# - plaintext
 output_path: "bkps/"
 assets:
     export_images: false
@@ -204,7 +221,7 @@ assets:
  ```
 
 #### Full Example
-Below is an example configuration that shows all possible options,
+Below is an example configuration that shows example values for all possible options.
 
 ```yaml
 host: "https://bookstack.yourdomain.com"
@@ -289,9 +306,11 @@ kafka (shelf)
     ---> settings (chapter)
         ---> retention-settings.md (page)
         ---> retention-settings_meta.json
+            ...
         ---> compression.html (page)
         ---> compression.pdf
         ---> compression_meta.json
+            ...
         ---> optional-config.md (page)
             ...
         ---> main.md (page)
@@ -320,7 +339,7 @@ unassigned (shelf)
             ---> img-010.png
             ---> img-020.png
     ---> test_page.md (page)
-        ...
+            ...
     ---> rec_page (page)
         ---> rec_page.md
         ---> rec_page.pdf
@@ -382,7 +401,7 @@ Page (parent) -> Images (Children) relationships are created and then each image
 [![pool-topology-1.png](https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
 
 ## after
-[![pool-topology-1.png](./images/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
+[![pool-topology-1.png](./images/{page_name}/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
 ```
 This allows the image to be found locally within the export files and allow your `markdown` docs to have all the images display properly like it would normally would.
 
