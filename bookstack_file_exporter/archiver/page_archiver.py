@@ -43,15 +43,14 @@ class ImageNode:
         self.url: str = img_meta_data['url']
         self.name: str = self._get_image_name()
         self._markdown_str = ""
-        self._image_relative_path: str = f"./{_IMAGE_DIR_NAME}/{self.name}"
+        self._relative_path_prefix: str = f"./{_IMAGE_DIR_NAME}"
 
     def _get_image_name(self) -> str:
         return self.url.split('/')[-1]
 
-    @property
-    def image_relative_path(self):
+    def get_image_relative_path(self, page_name: str) -> str:
         """return image path local to page directory"""
-        return self._image_relative_path
+        return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
     @property
     def markdown_str(self):
@@ -92,7 +91,7 @@ class PageArchiver:
         self.export_formats = config.user_inputs.formats
         self.api_urls = config.urls
         self._headers = config.headers
-        # parent export directory, bookstack-<timestamp>, and .tgz extension
+        # full path, bookstack-<timestamp>, and .tgz extension
         self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
         # name of intermediate tar file before gzip
         self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
@@ -114,14 +113,14 @@ class PageArchiver:
             self._archive_page(page, export_format,
                                page_data, image_urls)
         if self.asset_config.export_meta:
-            self._archive_page_meta(page.name, page.file_path, page.meta)
+            self._archive_page_meta(page.file_path, page.meta)
 
     def _archive_page(self, page: Node, export_format: str, data: bytes,
                       image_nodes: List[ImageNode] = None):
         page_file_name = f"{self.archive_base_path}/" \
-            f"{page.file_path}/{page.name}{_FILE_EXTENSION_MAP[export_format]}"
+            f"{page.file_path}{_FILE_EXTENSION_MAP[export_format]}"
         if self.modify_md and export_format == _MARKDOWN_STR_CHECK and image_nodes:
-            data = self._update_image_links(data, image_nodes)
+            data = self._update_image_links(page.name, data, image_nodes)
         self.write_data(page_file_name, data)
 
     def _get_page_data(self, page_id: int, export_format: str):
@@ -129,10 +128,8 @@ class PageArchiver:
         return archiver_util.get_byte_response(url=url, headers=self._headers,
                                                verify_ssl=self.verify_ssl)
 
-    def _archive_page_meta(self, page_name: str, page_path: str,
-                           meta_data: Dict[str, Union[str, int]]):
-        meta_file_name = f"{self.archive_base_path}/{page_path}/" \
-            f"{page_name}{_FILE_EXTENSION_MAP['meta']}"
+    def _archive_page_meta(self, page_path: str, meta_data: Dict[str, Union[str, int]]):
+        meta_file_name = f"{self.archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(file_path=meta_file_name, data=bytes_meta)
 
@@ -145,14 +142,14 @@ class PageArchiver:
         img_meta_json = img_meta_response.json()['data']
         return self._create_image_map(img_meta_json)
 
-    def archive_page_images(self, page_path: str, image_nodes: List[ImageNode]):
+    def archive_page_images(self, parent_path: str, page_name: str,
+                            image_nodes: List[ImageNode]):
         """pull images locally into a directory based on page"""
-        # image_base_path = f"{self.archive_base_path}/{page_path}{_IMAGE_DIR_SUFFIX}"
-        image_base_path = f"{self.archive_base_path}/{page_path}/{_IMAGE_DIR_NAME}"
+        image_base_path = f"{self.archive_base_path}/{parent_path}/{_IMAGE_DIR_NAME}"
         for img_node in image_nodes:
             img_data: bytes = archiver_util.get_byte_response(img_node.url, self._headers,
                                                               self.verify_ssl)
-            image_path = f"{image_base_path}/{img_node.name}"
+            image_path = f"{image_base_path}/{page_name}/{img_node.name}"
             self.write_data(image_path, img_data)
 
     def write_data(self, file_path: str, data: bytes):
@@ -168,7 +165,8 @@ class PageArchiver:
         """provide the tar to gzip and the name of the gzip output file"""
         archiver_util.create_gzip(self.tar_file, self.archive_file)
 
-    def _update_image_links(self, page_data: bytes, image_nodes: List[ImageNode]) -> bytes:
+    def _update_image_links(self, page_name: str, page_data: bytes,
+                            image_nodes: List[ImageNode]) -> bytes:
         """regex replace links to local created directories"""
         for img_node in image_nodes:
             img_meta_url = f"{self.api_urls['images']}/{img_node.id}"
@@ -179,7 +177,7 @@ class PageArchiver:
                 continue
             # 1 - what to replace, 2 - replace with, 3 is the data to replace
             page_data = re.sub(img_node.markdown_str.encode(),
-                               img_node.image_relative_path.encode(), page_data)
+                               img_node.get_image_relative_path(page_name).encode(), page_data)
         return page_data
 
     @property

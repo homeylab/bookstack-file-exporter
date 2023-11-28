@@ -287,38 +287,40 @@ Shelves --> Books --> Chapters --> Pages
 kafka (shelf)
 ---> controller (book)
     ---> settings (chapter)
-        ---> retention-settings (page)
-            ---> retention-settings.md
-            ---> retention-settings_meta.json
-        ---> compression (page)
-            ---> compression.html
-            ---> compression.pdf
-            ---> compression_meta.json
-        ---> optional-config (page)
+        ---> retention-settings.md (page)
+        ---> retention-settings_meta.json
+        ---> compression.html (page)
+        ---> compression.pdf
+        ---> compression_meta.json
+        ---> optional-config.md (page)
             ...
-        ---> main (page)
+        ---> main.md (page)
             ...
 ---> broker (book)
-    ---> settings (page)
+    ---> settings.md (page)
         ...
-    ---> deploy (page)
+    ---> deploy.md (page)
         ...
 kafka-apps (shelf)
 ---> schema-registry (book)
-    ---> protobuf (page)
+    ---> protobuf.md (page)
         ...
-    ---> settings (page)
+    ---> settings.md (page)
         ...
 
 ## Example with image layout
-unassigned (Used for books with no shelf)
+# unassigned dir is used for books with no shelf
+unassigned (shelf)
 ---> test (book)
-    ---> test_page (page)
-        ---> test_page.md
-        ---> test_page.pdf
-        ---> images (image_dir)
+    ---> images (image_dir)
+        ---> test_page (page directory)
             ---> img-001.png
             ---> img-002.png
+        ---> rec-page
+            ---> img-010.png
+            ---> img-020.png
+    ---> test_page.md (page)
+        ...
     ---> rec_page (page)
         ---> rec_page.md
         ---> rec_page.pdf
@@ -330,20 +332,15 @@ Another example is shown below:
 # book = react
 # basics = page
 
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.md
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.html
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.pdf
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.txt
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics_meta.json
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.md
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.html
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.pdf
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.txt
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs_meta.json
+bookstack_export_2023-11-28_06-24-25/programming/react/basics.md
+bookstack_export_2023-11-28_06-24-25/programming/react/basics.pdf
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/YKvimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/dwwimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/NzZimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/next1.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
+bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.md
+bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.pdf
 ```
 
 Books without a shelf will be put in a shelve folder named `unassigned`.
@@ -363,13 +360,13 @@ You may notice some directories (books) and/or files (pages) in the archive have
 ### Images
 
 ### General
-Images will be dumped in a separate directory, `images` within the page directory it belongs to. As shown earlier:
+Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
 
 ```
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/dwwimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/NzZimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/next1.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
 ```
 
 **Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**

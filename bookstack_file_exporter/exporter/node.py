@@ -76,6 +76,11 @@ class Node():
         return self._children
 
     @property
+    def parent(self):
+        """return parent of a book/chapter/page"""
+        return self._parent
+
+    @property
     def empty(self):
         """return True if page node lacks content"""
         if not self.name and self._display_name == _NULL_PAGE_NAME:

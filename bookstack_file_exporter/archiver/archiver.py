@@ -47,7 +47,7 @@ class Archiver:
             if page.id_ in all_image_meta:
                 page_image_meta = all_image_meta[page.id_]
             self._get_page_files(page, page_image_meta)
-            self._get_page_images(page.file_path, page_image_meta)
+            self._get_page_images(page, page_image_meta)
 
     def _get_page_files(self, page_node: Node, image_meta: List[ImageNode]):
         """pull all bookstack pages into local files/tar"""
@@ -60,12 +60,13 @@ class Archiver:
             return {}
         return self._page_archiver.get_image_meta()
 
-    def _get_page_images(self, page_path: str, img_nodes: List[ImageNode]):
+    def _get_page_images(self, page_node: Node, img_nodes: List[ImageNode]):
         if not img_nodes:
             log.debug("page has no images to pull")
             return
         log.debug("Exporting bookstack page images")
-        self._page_archiver.archive_page_images(page_path, img_nodes)
+        self._page_archiver.archive_page_images(page_node.parent.file_path,
+                                                page_node.name, img_nodes)
 
     def create_archive(self):
         """create tgz archive"""
