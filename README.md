@@ -1,21 +1,21 @@
 # bookstack-file-exporter
 Table of Contents
-- [Background](#background)
-- [Using This Application](#using-this-application)
+- [bookstack-file-exporter](#bookstack-file-exporter)
+  - [Background](#background)
+    - [Features](#features)
+    - [Use Case](#use-case)
+  - [Using This Application](#using-this-application)
     - [Run via Pip](#run-via-pip)
-    - [Run via Docker](#run-via-docker)
-- [Authentication](#authentication)
-- [Configuration](#configuration)
-    - [Simple example](#just-run)
-    - [Full example](#full-example)
-    - [Options and descriptions](#options-and-descriptions)
-    - [Environment variables](#valid-environment-variables)
-- [Backup Behavior](#backup-behavior)
+    - [Run Via Docker](#run-via-docker)
+    - [Authentication](#authentication)
+    - [Configuration](#configuration)
+  - [Backup Behavior](#backup-behavior)
+    - [General](#general)
     - [Images](#images)
     - [Modify Markdown Files](#modify-markdown-files)
-- [Object Storage](#object-storage)
-    - [Minio](#minio-backups)
-- [Future Items](#future-items)
+  - [Object Storage](#object-storage)
+    - [Minio Backups](#minio-backups)
+  - [Future Items](#future-items)
 
 ## Background
 _Features are actively being developed. See `Future Items` section for more details. Open an issue for a feature request._
@@ -122,6 +122,7 @@ Docker can be utilized to run the exporter.
 
 #### Examples
 ```bash
+# --user flag to override the uid/gid for created files. Set this to your uid/gid
 docker run \
     --user ${USER_ID}:${USER_GID} \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
@@ -144,7 +145,7 @@ Tokens and other options can be specified, example:
 
 ```bash
 # '-e' flag for env vars
-# --user flag to override the uid/gid for created files
+# --user flag to override the uid/gid for created files. Set this to your uid/gid
 docker run \
     -e LOG_LEVEL='debug' \
     -e BOOKSTACK_TOKEN_ID='xyz' \
@@ -190,11 +191,11 @@ host: "https://bookstack.yourdomain.com"
 credentials:
     token_id: ""
     token_secret: ""
-formats:
+formats: # md only example
 - markdown
-- html
-- pdf
-- plaintext
+# - html
+# - pdf
+# - plaintext
 output_path: "bkps/"
 assets:
     export_images: false
@@ -204,7 +205,7 @@ assets:
  ```
 
 #### Full Example
-Below is an example configuration that shows all possible options,
+Below is an example configuration that shows example values for all possible options.
 
 ```yaml
 host: "https://bookstack.yourdomain.com"
@@ -271,10 +272,9 @@ General
 
 ## Backup Behavior
 
-### Export File
+### General
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
 
-### General
 The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the [Configuration](#options-and-descriptions) section. Object storage provider configurations include their own `keep_last` property for flexibility. 
 
 For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced from page names/titles.
@@ -287,38 +287,42 @@ Shelves --> Books --> Chapters --> Pages
 kafka (shelf)
 ---> controller (book)
     ---> settings (chapter)
-        ---> retention-settings (page)
-            ---> retention-settings.md
-            ---> retention-settings_meta.json
-        ---> compression (page)
-            ---> compression.html
-            ---> compression.pdf
-            ---> compression_meta.json
-        ---> optional-config (page)
+        ---> retention-settings.md (page)
+        ---> retention-settings_meta.json
             ...
-        ---> main (page)
+        ---> compression.html (page)
+        ---> compression.pdf
+        ---> compression_meta.json
+            ...
+        ---> optional-config.md (page)
+            ...
+        ---> main.md (page)
             ...
 ---> broker (book)
-    ---> settings (page)
+    ---> settings.md (page)
         ...
-    ---> deploy (page)
+    ---> deploy.md (page)
         ...
 kafka-apps (shelf)
 ---> schema-registry (book)
-    ---> protobuf (page)
+    ---> protobuf.md (page)
         ...
-    ---> settings (page)
+    ---> settings.md (page)
         ...
 
 ## Example with image layout
-unassigned (Used for books with no shelf)
+# unassigned dir is used for books with no shelf
+unassigned (shelf)
 ---> test (book)
-    ---> test_page (page)
-        ---> test_page.md
-        ---> test_page.pdf
-        ---> images (image_dir)
+    ---> images (image_dir)
+        ---> test_page (page directory)
             ---> img-001.png
             ---> img-002.png
+        ---> rec-page
+            ---> img-010.png
+            ---> img-020.png
+    ---> test_page.md (page)
+            ...
     ---> rec_page (page)
         ---> rec_page.md
         ---> rec_page.pdf
@@ -330,20 +334,15 @@ Another example is shown below:
 # book = react
 # basics = page
 
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.md
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.html
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.pdf
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics.txt
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/basics_meta.json
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.md
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.html
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.pdf
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs.txt
-bookstack_export_2023-11-20_08-00-29/programming/react/nextjs/nextjs_meta.json
+bookstack_export_2023-11-28_06-24-25/programming/react/basics.md
+bookstack_export_2023-11-28_06-24-25/programming/react/basics.pdf
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/YKvimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/dwwimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/NzZimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/next1.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
+bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.md
+bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.pdf
 ```
 
 Books without a shelf will be put in a shelve folder named `unassigned`.
@@ -362,14 +361,13 @@ You may notice some directories (books) and/or files (pages) in the archive have
 
 ### Images
 
-### General
-Images will be dumped in a separate directory, `images` within the page directory it belongs to. As shown earlier:
+Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
 
 ```
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/YKvimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/dwwimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/NzZimage.png
-bookstack_export_2023-11-20_08-00-29/programming/react/basics/images/Mymimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/dwwimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/basics/NzZimage.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/next1.png
+bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
 ```
 
 **Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**
@@ -385,7 +383,7 @@ Page (parent) -> Images (Children) relationships are created and then each image
 [![pool-topology-1.png](https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
 
 ## after
-[![pool-topology-1.png](./images/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
+[![pool-topology-1.png](./images/{page_name}/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
 ```
 This allows the image to be found locally within the export files and allow your `markdown` docs to have all the images display properly like it would normally would.
 
