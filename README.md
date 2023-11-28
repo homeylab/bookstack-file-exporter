@@ -6,31 +6,15 @@ Table of Contents
     - [Use Case](#use-case)
   - [Using This Application](#using-this-application)
     - [Run via Pip](#run-via-pip)
-      - [Examples](#examples)
-      - [Options](#options)
-      - [Environment Variables](#environment-variables)
-      - [Python Version](#python-version)
     - [Run Via Docker](#run-via-docker)
-      - [Examples](#examples-1)
-      - [Environment Variables](#environment-variables-1)
-      - [Bind Mounts](#bind-mounts)
     - [Authentication](#authentication)
     - [Configuration](#configuration)
-      - [Just Run](#just-run)
-      - [Full Example](#full-example)
-      - [Options and Descriptions](#options-and-descriptions)
-      - [Valid Environment Variables](#valid-environment-variables)
   - [Backup Behavior](#backup-behavior)
-    - [Export File](#export-file)
     - [General](#general)
     - [Images](#images)
-    - [General](#general-1)
     - [Modify Markdown Files](#modify-markdown-files)
   - [Object Storage](#object-storage)
     - [Minio Backups](#minio-backups)
-      - [Authentication](#authentication-1)
-      - [Example](#example)
-      - [Configuration](#configuration-1)
   - [Future Items](#future-items)
 
 ## Background
@@ -288,10 +272,9 @@ General
 
 ## Backup Behavior
 
-### Export File
+### General
 Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
 
-### General
 The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the [Configuration](#options-and-descriptions) section. Object storage provider configurations include their own `keep_last` property for flexibility. 
 
 For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced from page names/titles.
@@ -378,7 +361,6 @@ You may notice some directories (books) and/or files (pages) in the archive have
 
 ### Images
 
-### General
 Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
 
 ```
