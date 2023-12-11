@@ -88,6 +88,8 @@ class NodeExporter():
         for _, parent in parent_nodes.items():
             if parent.children:
                 for child in parent.children:
+                    if child.get('type') == "chapters":
+                        continue
                     child_id = child['id']
                     child_url = f"{base_url}/{child_id}"
                     child_data = self._get_json_response(child_url)
