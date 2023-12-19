@@ -135,6 +135,7 @@ class ConfigNode:
             url_prefix = ""
         for key, value in _API_PATHS.items():
             urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
+        log.debug("api urls: %s", urls)
         return urls
 
     def _set_base_dir(self, cmd_output_dir: str) -> str:
