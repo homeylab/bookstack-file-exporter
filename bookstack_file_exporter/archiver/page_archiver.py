@@ -52,14 +52,14 @@ class ImageNode:
         """return image path local to page directory"""
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
+    def set_markdown_content(self, img_details: Dict[str, Union[int, str]]):
+        """provide image metadata to set markdown properties"""
+        self._markdown_str = self._get_md_url_str(img_details)
+
     @property
     def markdown_str(self):
         """return markdown url str to replace"""
         return self._markdown_str
-
-    def set_markdown_content(self, img_details: Dict[str, Union[int, str]]):
-        """provide image metadata to set markdown properties"""
-        self._markdown_str = self._get_md_url_str(img_details)
 
     @staticmethod
     def _get_md_url_str(img_data: Dict[str, Union[int, str]]) -> str:
@@ -70,6 +70,8 @@ class ImageNode:
         # check to see if empty before doing find
         if not url_str:
             return ""
+        # find the link between two parenthesis
+        # - markdown format
         return url_str[url_str.find("(")+1:url_str.find(")")]
 
 # pylint: disable=too-many-instance-attributes

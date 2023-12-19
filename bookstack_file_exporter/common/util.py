@@ -26,6 +26,15 @@ def http_get_request(url: str, headers: Dict[str, str],
     except Exception as req_err:
         log.error("Failed to make request for %s", url)
         raise req_err
+    try:
+        #raise_for_status() throws an exception on codes 400-599
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        # this means it either exceeded 50X retries in `http_get_request` handler
+        # or it returned a 40X which is not expected
+        log.error("Bookstack request failed with status code: %d on url: %s",
+                   response.status_code, url)
+        raise e
     return response
 
 def should_verify(url: str) -> str:

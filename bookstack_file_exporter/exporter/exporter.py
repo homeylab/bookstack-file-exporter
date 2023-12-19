@@ -1,6 +1,9 @@
 from typing import Dict, List, Union
 import logging
 
+# pylint: disable=import-error
+from requests import Response
+
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.common import util
 
@@ -35,7 +38,7 @@ class NodeExporter():
 
     def _get_json_response(self, url: str) -> List[Dict[str, Union[str,int]]]:
         """get http response data in json format"""
-        response = util.http_get_request(url=url, headers=self.headers,
+        response: Response = util.http_get_request(url=url, headers=self.headers,
                                         verify_ssl=self.verify_ssl)
         return response.json()
 
@@ -77,42 +80,52 @@ class NodeExporter():
         return chapter_nodes
 
     def get_child_nodes(self, resource_type: str, parent_nodes: Dict[int, Node],
-                        filter_empty: bool = True) -> Dict[int, Node]:
+                        filter_empty: bool = True, node_type: str = "") -> Dict[int, Node]:
         """get child nodes from a book/chapter/shelf"""
         base_url = self.api_urls[resource_type]
-        return self._get_children(base_url, parent_nodes, filter_empty)
+        return self._get_children(base_url, parent_nodes, filter_empty, node_type)
 
     def _get_children(self, base_url: str, parent_nodes: Dict[int, Node],
-                       filter_empty: bool) -> Dict[int, Node]:
+                       filter_empty: bool, node_type: str = "") -> Dict[int, Node]:
         child_nodes = {}
         for _, parent in parent_nodes.items():
             if parent.children:
                 for child in parent.children:
+                    if node_type:
+                        # only used for Book Nodes to get children Page/Chapter Nodes
+                        # access key directly, don't create a Node if not needed
+                        # chapters and pages always have `type` from what I can tell
+                        if not child['type'] == node_type:
+                            log.debug("Book Node child of type: %s is not desired type: %s",
+                                       child['type'], node_type)
+                            continue
                     child_id = child['id']
                     child_url = f"{base_url}/{child_id}"
                     child_data = self._get_json_response(child_url)
                     child_node = Node(child_data, parent)
                     if filter_empty:
+                        # if it is not empty, add it
+                        # skip it if empty
                         if not child_node.empty:
                             child_nodes[child_id] = child_node
                     else:
                         child_nodes[child_id] = child_node
         return child_nodes
 
-    def get_unassigned_books(self, existing_resources: Dict[int, Node],
+    def get_unassigned_books(self, existing_books: Dict[int, Node],
                               path_prefix: str) -> Dict[int, Node]:
         """get books not under a shelf"""
-        base_url = self.api_urls["books"]
-        all_resources: List[int] = self._get_all_ids(base_url)
+        book_url = self.api_urls["books"]
+        all_books: List[int] = self._get_all_ids(book_url)
         unassigned = []
-        # get all existing ones and compare against current known resources
-        for resource_id in all_resources:
-            if resource_id not in existing_resources:
-                unassigned.append(resource_id)
+        # get all existing ones and compare against current known books
+        for book in all_books:
+            if book not in existing_books:
+                unassigned.append(book)
         if not unassigned:
             return {}
         # books with no shelf treated like a parent resource
-        return self._get_parents(base_url, unassigned, path_prefix)
+        return self._get_parents(book_url, unassigned, path_prefix)
 
     # convenience function
     def get_all_books(self, shelve_nodes: Dict[int, Node], unassigned_dir: str) -> Dict[int, Node]:
@@ -140,7 +153,10 @@ class NodeExporter():
         ## pages
         page_nodes = {}
         if book_nodes:
-            page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes)
+            # add `page` flag, we only want pages
+            # filter out chapters for now
+            # chapters can have their own children/pages
+            page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes, node_type="page")
         ## chapters (if exists)
         # chapter nodes are treated a little differently
         # chapters are children under books
