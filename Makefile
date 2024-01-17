@@ -29,6 +29,8 @@ download_testpypi:
 
 docker_build: 
 	docker buildx build \
+	--platform linux/amd64,linux/arm64 \
+	--output "type=image,push=false" \
 	--build-arg BASE_IMAGE=${BASE_IMAGE} \
 	--build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
 	--build-arg DOCKER_WORK_DIR=${DOCKER_WORK_DIR} \
@@ -39,6 +41,8 @@ docker_build:
 
 docker_build_latest:
 	docker buildx build \
+	--platform linux/amd64,linux/arm64 \
+	--output "type=image,push=true" \
 	--build-arg BASE_IMAGE=${BASE_IMAGE} \
 	--build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
 	--build-arg DOCKER_WORK_DIR=${DOCKER_WORK_DIR} \
