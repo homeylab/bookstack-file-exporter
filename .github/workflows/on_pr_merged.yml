@@ -30,10 +30,15 @@ jobs:
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Build the Docker image
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Build and push the Docker image
       run: make docker_build_latest
-    - name: Push Docker image
-      run: make docker_push_latest
+    # - name: Push Docker image
+    #   run: make docker_push_latest
     - name: Update Dockerhub Documentation
       uses: peter-evans/dockerhub-description@v3
       with:
