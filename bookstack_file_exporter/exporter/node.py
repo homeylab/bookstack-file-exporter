@@ -1,4 +1,6 @@
 from typing import Dict, Union, List
+import unicodedata
+from re import sub as re_sub
 
 # shelves --> 'books'
 # books --> 'content'
@@ -34,13 +36,22 @@ class Node():
         self._parent = parent
         self._path_prefix = path_prefix
         # for convenience/usage for exporter
-        self.name: str = self.meta['slug']
+        # self.name: str = self.meta['slug']
+        self.name = self.get_name(self.meta['slug'], self.meta['name'])
         self.id_: int = self.meta['id']
         self._display_name = self.meta['name']
         # children
         self._children = self._get_children()
         # if parent
         self._file_path = self._get_file_path()
+
+    def get_name(self, slug: str, name: str) -> str:
+        """return name of resource"""
+        if slug:
+            return slug
+        if name != _NULL_PAGE_NAME:
+            return self.slugify(name)
+        return ""
 
     def _get_file_path(self) -> str:
         if self._parent:
@@ -86,3 +97,23 @@ class Node():
         if not self.name and self._display_name == _NULL_PAGE_NAME:
             return True
         return False
+
+    @staticmethod
+    def slugify(value: str, allow_unicode=False):
+        """
+        Taken from https://github.com/django/django/blob/master/django/utils/text.py
+        Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+        dashes to single dashes. Remove characters that aren't alphanumerics,
+        underscores, or hyphens. Convert to lowercase. Also strip leading and
+        trailing whitespace, dashes, and underscores.
+        """
+        if allow_unicode:
+            value = unicodedata.normalize("NFKC", value)
+        else:
+            value = (
+                unicodedata.normalize("NFKD", value)
+                .encode("ascii", "ignore")
+                .decode("ascii")
+            )
+        value = re_sub(r"[^\w\s-]", "", value.lower())
+        return re_sub(r"[-\s]+", "-", value).strip("-_")
