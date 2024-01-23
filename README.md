@@ -57,7 +57,7 @@ The main use case is to backup all docs in a relational directory-tree format to
 2. Offline copy wanted.
 3. Back up at a file level as an accessory or alternative to disk and volume backups.
 4. Migrate all Bookstack page contents to Markdown documenting for simplicity.
-5. Provide an easy way to do automated file backups locally, in docker, or [kubernetes](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack) for Bookstack page contents.
+5. Provide an easy way to do automated file backups locally, in docker, or [kubernetes](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack#file-exporter-backup-your-pages) for Bookstack page contents.
 
 ## Using This Application
 Ensure a valid configuration is provided when running this application. See [Configuration](#Configuration) section for more details.
