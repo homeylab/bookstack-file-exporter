@@ -3,6 +3,11 @@ ARG BASE_IMAGE_TAG=3.12-slim-python
 
 FROM ${BASE_IMAGE}:${BASE_IMAGE_TAG}
 
+LABEL \
+    org.opencontainers.image.title="bookstack-file-exporter" \
+    org.opencontainers.image.description="Page asset and content exporter for Bookstack" \
+    org.opencontainers.image.source="https://github.com/homeylab/bookstack-file-exporter"
+
 # Get security updates and clean up apt cache for smaller size
 RUN apt update -y && apt upgrade -y && \
     apt install dumb-init && \

@@ -156,7 +156,8 @@ class NodeExporter():
             # add `page` flag, we only want pages
             # filter out chapters for now
             # chapters can have their own children/pages
-            page_nodes: Dict[int, Node] = self.get_child_nodes("pages", book_nodes, node_type="page")
+            page_nodes: Dict[int, Node] = self.get_child_nodes("pages",
+                                                book_nodes, node_type="page")
         ## chapters (if exists)
         # chapter nodes are treated a little differently
         # chapters are children under books

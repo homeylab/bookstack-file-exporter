@@ -19,7 +19,8 @@ _API_PATHS = {
     "books": "api/books",
     "chapters": "api/chapters",
     "pages": "api/pages",
-    "images": "api/image-gallery"
+    "images": "api/image-gallery",
+    "attachments": "api/attachments"
 }
 
 _UNASSIGNED_BOOKS_DIR = "unassigned/"

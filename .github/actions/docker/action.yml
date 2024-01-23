@@ -1,0 +1,83 @@
+---
+name: Docker image
+description: Creates a Docker image
+
+# note inputs have some weird behavior: https://github.com/actions/runner/issues/1483
+# for string type, don't wrap in JSON
+# for boolean type, wrap in JSON
+
+inputs:
+  dockerhub_username:
+    description: Dockerhub username
+    type: string
+    required: false
+    default: none
+  dockerhub_token:
+    description: Dockerhub token
+    type: string
+    required: false
+    default: none
+  push:
+    description: Push Images to docker hub
+    type: boolean
+    required: false
+    default: true
+  latest:
+    description: Update latest tag
+    type: boolean
+    required: false
+    default: true
+
+runs:
+  using: composite
+  steps:
+  - name: Docker meta
+    id: meta
+    uses: docker/metadata-action@v5
+    with:
+      images: docker.io/${{ github.repository }}
+      flavor: |
+        latest=${{ fromJSON(inputs.latest) }}
+      # for some reason can't get this to show up from docker image labels
+      # placing here for now
+      labels: |
+        org.opencontainers.image.description=Page asset and content exporter for Bookstack
+      tags: |
+        ## add the event types that should be added as tags
+        ## on merge to master - update `main` tag for testing before release
+        type=ref,event=branch
+        ## on release - for use by users
+        type=semver,pattern={{major}}.{{minor}}
+
+  - name: Set up QEMU
+    uses: docker/setup-qemu-action@v3
+
+  - name: Set up Docker Buildx
+    id: buildx
+    uses: docker/setup-buildx-action@v3
+
+  - name: Login to Dockerhub
+    if: github.event_name != 'pull_request'
+    uses: docker/login-action@v3
+    with:
+      username: ${{ inputs.dockerhub_username }}
+      password: ${{ inputs.dockerhub_token }}
+
+  - name: Build Docker Image
+    if: github.event_name != 'pull_request'
+    uses: docker/build-push-action@v5
+    with:
+      context: .
+      file: ./Dockerfile
+      platforms: linux/amd64,linux/arm64
+      push: ${{ fromJSON(inputs.push) }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+
+  - name: Update Dockerhub Documentation
+    uses: peter-evans/dockerhub-description@v3
+    if: ${{ (fromJSON(inputs.latest) == true) && (github.event_name != 'pull_request') }}
+    with:
+      username: ${{ inputs.dockerhub_username }}
+      password: ${{ inputs.dockerhub_token }}
+      repository: ${{ github.repository }}

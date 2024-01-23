@@ -23,6 +23,7 @@ class BookstackAccess(BaseModel):
 class Assets(BaseModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
     export_images: Optional[bool] = False
+    export_attachments: Optional[bool] = False
     modify_markdown: Optional[bool] = False
     export_meta: Optional[bool] = False
     verify_ssl: Optional[bool] = True
