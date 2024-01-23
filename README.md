@@ -150,7 +150,6 @@ docker run \
     homeylab/bookstack-file-exporter:latest
 ```
 
-
 #### Environment Variables
 See [Valid Environment Variables](#valid-environment-variables) for more options.
 
