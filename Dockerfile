@@ -16,9 +16,9 @@ RUN apt update -y && apt upgrade -y && \
 # create docker user
 RUN useradd -M -s /usr/sbin/nologin -u 33333 exporter
 
-ARG DOCKER_WORK_DIR
-ARG DOCKER_CONFIG_DIR
-ARG DOCKER_EXPORT_DIR
+ARG DOCKER_WORK_DIR=/export
+ARG DOCKER_CONFIG_DIR=/export/config
+ARG DOCKER_EXPORT_DIR=/export/dump
 
 ENV DOCKER_CONFIG_DIR=${DOCKER_CONFIG_DIR}
 ENV DOCKER_EXPORT_DIR=${DOCKER_EXPORT_DIR}
