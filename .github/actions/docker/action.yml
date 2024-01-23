@@ -47,7 +47,8 @@ runs:
         ## on merge to master - update `main` tag for testing before release
         type=ref,event=branch
         ## on release - for use by users
-        type=semver,pattern={{major}}.{{minor}}
+        ## version ; shorthand for {{major}}.{{minor}}.{{patch}} (can include pre-release)
+        type=semver,pattern={{ version }} 
 
   - name: Set up QEMU
     uses: docker/setup-qemu-action@v3
