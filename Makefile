@@ -4,7 +4,7 @@ BASE_IMAGE_TAG=3.12-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
 # keep this start sequence unique (IMAGE_TAG=)
 # github actions will use this to create a tag
-IMAGE_TAG=1.1.0
+IMAGE_TAG=main
 DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
