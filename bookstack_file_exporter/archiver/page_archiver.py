@@ -54,7 +54,7 @@ class PageArchiver:
     def _check_md_modify(self) -> bool:
         # check to ensure they have asset_config defined, could be None
         if 'markdown' in self.export_formats:
-            return self.asset_config.modify_markdown and self.export_images
+            return self.asset_config.modify_markdown and ( self.export_images or self.export_attachments)
         return False
     
     def archive_pages(self, page_nodes: Dict[int, Node]):

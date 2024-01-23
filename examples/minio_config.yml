@@ -58,6 +58,9 @@ assets:
   # optional export of all the images used in a page(s).
   # omit this or set to false if not needed
   export_images: false
+  # optional export of all the attachments used in a page(s).
+  # omit this or set to false if not needed
+  export_attachments: false
   # optional modify markdown files to replace image url links
   # with local exported image paths
   modify_markdown: false
