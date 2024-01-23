@@ -1,9 +1,9 @@
-from typing import Union, List, Dict
-# pylint: disable=import-error
-from requests import Response
-from re import sub as re_sub
 import logging
 import base64
+from typing import Union, List, Dict
+from re import sub as re_sub
+# pylint: disable=import-error
+from requests import Response
 
 from bookstack_file_exporter.common import util as common_util
 
@@ -14,12 +14,20 @@ _ATTACHMENT_DIR_NAME = "attachments"
 
 
 class AssetNode:
+    """
+    Base class for other asset nodes. This class should not be used directly.
+
+    Args:
+        :meta_data: <Dict[str, Union[int, str, bool]]> = asset meta data
+    
+    Returns:
+        AssetNode instance for use in other classes
+    """
     def __init__(self, meta_data: Dict[str, int | str | bool]):
         self.id: int = meta_data['id']
         self.page_id: int = meta_data['uploaded_to']
-        # self.page_name: str = page_name
-        self.url: str = meta_data['url']
-        self.name: str = self.url.split('/')[-1]
+        self.url: str = ""
+        self.name: str = ""
         self._markdown_str = ""
         self._relative_path_prefix: str = ""
 
@@ -33,6 +41,7 @@ class AssetNode:
         return self._markdown_str
 
     def set_markdown_content(self, asset_data: Dict[str, int | str | bool]) -> None:
+        """set markdown url str to replace"""
         self._markdown_str = self._get_md_url_str(asset_data)
 
     @staticmethod
@@ -49,20 +58,39 @@ class AssetNode:
         return url_str[url_str.find("(")+1:url_str.find(")")]
 
 class ImageNode(AssetNode):
+    """
+    ImageNode handles image meta data and markdown url replacement.
+
+    Args:
+        :meta_data: <Dict[str, Union[int, str]]> = image meta data
+    
+    Returns:
+        ImageNode instance for use in archiving images for a page
+    """
     def __init__(self, meta_data: Dict[str, Union[int, str]]):
         super().__init__(meta_data)
-        log.debug(self.url)
+        self.url: str = meta_data['url']
+        self.name: str = self.url.split('/')[-1]
+        log.debug("Image node has generated url: %s", self.url)
         self._relative_path_prefix = f"{_IMAGE_DIR_NAME}"
 
 class AttachmentNode(AssetNode):
+    """
+    AttachmentNode handles attachment meta data and markdown url replacement.
+
+    Args:
+        :meta_data: <Dict[str, Union[int, str, bool]]> = attachment meta data
+        :base_url: <str> = base url for attachment download
+
+    Returns:
+        AttachmentNode instance for use in archiving attachments for a page
+    """
     def __init__(self, meta_data: Dict[str, Union[int, str, bool]],
                  base_url: str):
-        self.id: int = meta_data['id']
-        self.page_id: int = meta_data['uploaded_to']
+        super().__init__(meta_data)
         self.url: str = f"{base_url}/{self.id}"
-        log.debug(self.url)
         self.name = meta_data['name']
-        self._markdown_str = ""
+        log.debug("Attachment node has generated url: %s", self.url)
         self._relative_path_prefix = f"{_ATTACHMENT_DIR_NAME}"
 
     @staticmethod
@@ -79,6 +107,17 @@ class AttachmentNode(AssetNode):
         return url_str[url_str.find("(")+1:url_str.find(")")]
 
 class AssetArchiver:
+    """
+    AssetArchiver handles image and attachment exports for a page.
+
+    Args:
+        :urls: <Dict[str, str]> = api urls for images and attachments
+        :headers: <Dict[str, str]> = http headers for api requests
+        :verify_ssl: <bool> = verify ssl for api requests
+
+    Returns:
+        AssetArchiver instance for use in archiving images and attachments for a page
+    """
     def __init__(self, urls: Dict[str, str], headers: Dict[str, str],
                  verify_ssl: bool):
         self.api_urls = urls
@@ -118,7 +157,7 @@ class AssetArchiver:
             case "images":
                 asset_data = asset_response.content
             case "attachments":
-                asset_data = self.decode_attachment_data(asset_response.json()['content'])
+                asset_data = self._decode_attachment_data(asset_response.json()['content'])
         return asset_data
 
     def update_asset_links(self, asset_type, page_name: str, page_data: bytes,
@@ -158,9 +197,9 @@ class AssetArchiver:
             else:
                 asset_nodes[asset_node.page_id] = [asset_node]
         return asset_nodes
-    
+
     @staticmethod
-    def decode_attachment_data(b64encoded_data: str) -> bytes:
+    def _decode_attachment_data(b64encoded_data: str) -> bytes:
         """decode base64 encoded data"""
         asset_data = b64encoded_data.encode()
         return base64.b64decode(asset_data)

@@ -4,7 +4,6 @@ from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
-from bookstack_file_exporter.common import util as common_util
 
 _META_FILE_SUFFIX = "_meta.json"
 _TAR_SUFFIX = ".tar"
@@ -54,9 +53,10 @@ class PageArchiver:
     def _check_md_modify(self) -> bool:
         # check to ensure they have asset_config defined, could be None
         if 'markdown' in self.export_formats:
-            return self.asset_config.modify_markdown and ( self.export_images or self.export_attachments)
+            return self.asset_config.modify_markdown and \
+                ( self.export_images or self.export_attachments)
         return False
-    
+
     def archive_pages(self, page_nodes: Dict[int, Node]):
         """export page contents and their images/attachments"""
         # get assets first if requested
@@ -73,16 +73,16 @@ class PageArchiver:
             for export_format in self.export_formats:
                 page_data = self._get_page_data(page.id_, export_format)
                 if page_images and export_format == 'markdown':
-                    page_data = self._modify_markdown("images", page.name, 
+                    page_data = self._modify_markdown("images", page.name,
                                                       page_data, page_images)
                 if page_attachments and export_format == 'markdown':
-                    page_data = self._modify_markdown("attachments", page.name, 
+                    page_data = self._modify_markdown("attachments", page.name,
                                                       page_data, page_attachments)
                 self._archive_page(page, export_format,
                                     page_data)
-            self.archive_page_assets("images", page.parent.file_path, 
+            self.archive_page_assets("images", page.parent.file_path,
                                      page.name, page_images)
-            self.archive_page_assets("attachments", page.parent.file_path, 
+            self.archive_page_assets("attachments", page.parent.file_path,
                                      page.name, page_attachments)
             if self.asset_config.export_meta:
                 self._archive_page_meta(page.file_path, page.meta)
@@ -101,7 +101,7 @@ class PageArchiver:
         meta_file_name = f"{self.archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(file_path=meta_file_name, data=bytes_meta)
-    
+
     def _get_image_meta(self) -> Dict[int, List[ImageNode]]:
         """Get all image metadata into a {page_number: [image_url]} format"""
         if not self.asset_config.export_images:
@@ -155,6 +155,11 @@ class PageArchiver:
     def export_images(self) -> bool:
         """return whether or not to export images"""
         return self.asset_config.export_images
+
+    @property
+    def export_attachments(self) -> bool:
+        """return whether or not to export attachments"""
+        return self.asset_config.export_attachments
 
     @property
     def verify_ssl(self) -> bool:
