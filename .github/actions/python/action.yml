@@ -12,21 +12,25 @@ runs:
   using: composite
   steps:
   - name: Get tag release without v
+    shell: bash
     run: |
       TAG=${{ github.ref_name }}
       echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
       echo "Tag without v is: ${VERSION}"
   - name: Update Release Tag
+    shell: bash
     run: sed -i "s/^version = [^ ]*/version = ${{ env.VERSION }}/" setup.cfg
   - name: Set up Python
     uses: actions/setup-python@v3
     with:
       python-version: '3.12.1'
   - name: Install Dependencies
+    shell: bash
     run: |
       python -m pip install --upgrade pip
       pip install build
   - name: Build Python Package
+    shell: bash
     run: |
       python -m pip install --upgrade build
       python -m build
