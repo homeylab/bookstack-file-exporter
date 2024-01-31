@@ -7,7 +7,7 @@ Table of Contents
   - [Using This Application](#using-this-application)
     - [Run via Pip](#run-via-pip)
     - [Run via Docker](#run-via-docker)
-    - [Authentication](#authentication)
+    - [Authentication and Permissions](#authentication-and-permissions)
     - [Configuration](#configuration)
   - [Backup Behavior](#backup-behavior)
     - [General](#general)
@@ -174,9 +174,16 @@ docker run \
 | `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
 | `dump` | `/export/dump` | Directory to place exports. **This is optional when using remote storage option(s)**. Omit if you don't need a local copy. | `-v /local/yourpath/bkps:/export/dump` |
 
-### Authentication
-**Note visibility of pages is based on user**, so use a user that has access to pages you want to back up.
+### Authentication and Permissions
+#### Permissions
+**Note visibility of pages is based on user**, so use a user that has read access to pages and content you want to back up. *The role assigned to the user* should have the additional permissions for target pages and their content:
+- `read` for all images and attachments
+  - For most users this may already be set - may be required to be set depending on storage option used
+- `Export Content` (This can be found in `Edit Role --> System Permissions`)
+  - For most users this may already set - may be required to be set if using custom roles
+  - If not set, you may see page contents showing as a HTML login page, as reported in this [issue](https://github.com/homeylab/bookstack-file-exporter/issues/35)
 
+#### Token Authentication
 Ref: [https://demo.bookstackapp.com/api/docs#authentication](https://demo.bookstackapp.com/api/docs#authentication)
 
 Provide a tokenId and a tokenSecret as environment variables or directly in the configuration file.
@@ -188,7 +195,7 @@ Env variables for credentials will take precedence over configuration file optio
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
 ### Configuration
-_Ensure [Authentication](#authentication) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](#using-this-application) section. A full example is also shown below with descriptions. Optionally, look at `examples/` folder of the github repo for more examples. 
+_Ensure [Authentication](#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](#using-this-application) section. A full example is also shown below with descriptions. Optionally, look at `examples/` folder of the github repo for more examples. 
 
 For object storage configuration, find more information in their respective sections
 - [Minio](#minio-backups)
