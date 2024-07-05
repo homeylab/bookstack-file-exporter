@@ -1,5 +1,5 @@
 ARG BASE_IMAGE=python
-ARG BASE_IMAGE_TAG=3.12.1-slim-bookworm
+ARG BASE_IMAGE_TAG=3.12.4-slim-bookworm
 
 FROM ${BASE_IMAGE}:${BASE_IMAGE_TAG}
 

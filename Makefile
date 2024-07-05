@@ -1,6 +1,6 @@
 ## DOCKER BUILD VARS
 BASE_IMAGE=python
-BASE_IMAGE_TAG=3.12-slim-bookworm
+BASE_IMAGE_TAG=3.12.4-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
 # keep this start sequence unique (IMAGE_TAG=)
 # github actions will use this to create a tag
