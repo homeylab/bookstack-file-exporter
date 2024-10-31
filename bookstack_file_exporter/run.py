@@ -53,4 +53,5 @@ def exporter(args: argparse.Namespace):
     # clean up the .tgz archive since it is already uploaded
     archive.clean_up()
 
+    log.info(f"Created file archive: {archive.archive_dir}.tgz")
     log.info("Completed run")

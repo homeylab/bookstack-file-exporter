@@ -24,7 +24,7 @@ class AssetNode:
         AssetNode instance for use in other classes
     """
     def __init__(self, meta_data: Dict[str, int | str | bool]):
-        self.id: int = meta_data['id']
+        self.id_: int = meta_data['id']
         self.page_id: int = meta_data['uploaded_to']
         self.url: str = ""
         self.name: str = ""
@@ -88,7 +88,7 @@ class AttachmentNode(AssetNode):
     def __init__(self, meta_data: Dict[str, Union[int, str, bool]],
                  base_url: str):
         super().__init__(meta_data)
-        self.url: str = f"{base_url}/{self.id}"
+        self.url: str = f"{base_url}/{self.id_}"
         self.name = meta_data['name']
         log.debug("Attachment node has generated url: %s", self.url)
         self._relative_path_prefix = f"{_ATTACHMENT_DIR_NAME}"
@@ -140,7 +140,7 @@ class AssetArchiver:
     def get_asset_data(self, asset_type: str,
             meta_data: Union[AttachmentNode, ImageNode]) -> Dict[str, str | bool | int | dict]:
         """Get asset data based on type"""
-        data_url = f"{self.api_urls[asset_type]}/{meta_data.id}"
+        data_url = f"{self.api_urls[asset_type]}/{meta_data.id_}"
         asset_data_response: Response = common_util.http_get_request(
             data_url,
             self._headers,
@@ -164,6 +164,7 @@ class AssetArchiver:
             asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
         """update markdown links in page data"""
         for asset_node in asset_nodes:
+            # get metadata instead of raw data/bytes
             asset_data = self.get_asset_data(asset_type, asset_node)
             asset_node.set_markdown_content(asset_data)
             if not asset_node.markdown_str:
