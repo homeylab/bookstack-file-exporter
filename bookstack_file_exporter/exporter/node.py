@@ -38,6 +38,7 @@ class Node():
         # for convenience/usage for exporter
         # self.name: str = self.meta['slug']
         self.name = self.get_name(self.meta['slug'], self.meta['name'])
+        # id() is a built-in function and should not be used as a variable name
         self.id_: int = self.meta['id']
         self._display_name = self.meta['name']
         # children

@@ -1,9 +1,13 @@
 from typing import Union, List, Dict
-
+import logging
+# pylint: disable=import-error
+from requests.exceptions import HTTPError
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+
+log = logging.getLogger(__name__)
 
 _META_FILE_SUFFIX = "_meta.json"
 _TAR_SUFFIX = ".tar"
@@ -70,6 +74,19 @@ class PageArchiver:
                 page_images = image_nodes[page.id_]
             if page.id_ in attachment_nodes:
                 page_attachments = attachment_nodes[page.id_]
+            failed_images = self.archive_page_assets("images", page.parent.file_path,
+                                     page.name, page_images)
+            failed_attach = self.archive_page_assets("attachments", page.parent.file_path,
+                                     page.name, page_attachments)
+            # exclude from page_images
+            # so it doesn't attempt to get modified in markdown file
+            if failed_images:
+                page_images = [img for img in page_images if img.id_ not in failed_images]
+            # exclude from page_attachments
+            # so it doesn't attempt to get modified in markdown file
+            if failed_attach:
+                page_attachments = [attach for attach in page_attachments
+                                    if attach.id_ not in failed_attach]
             for export_format in self.export_formats:
                 page_data = self._get_page_data(page.id_, export_format)
                 if page_images and export_format == 'markdown':
@@ -80,10 +97,6 @@ class PageArchiver:
                                                       page_data, page_attachments)
                 self._archive_page(page, export_format,
                                     page_data)
-            self.archive_page_assets("images", page.parent.file_path,
-                                     page.name, page_images)
-            self.archive_page_assets("attachments", page.parent.file_path,
-                                     page.name, page_attachments)
             if self.asset_config.export_meta:
                 self._archive_page_meta(page.file_path, page.meta)
 
@@ -123,15 +136,28 @@ class PageArchiver:
                                         asset_nodes)
 
     def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
-                            asset_nodes: List[ImageNode | AttachmentNode]):
+                            asset_nodes: List[ImageNode | AttachmentNode]) -> Dict[int, int]:
         """pull images locally into a directory based on page"""
         if not asset_nodes:
-            return
+            return {}
+        # use a map for faster lookup
+        failed_assets = {}
         node_base_path = f"{self.archive_base_path}/{parent_path}/"
         for asset_node in asset_nodes:
-            asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.url)
+            try:
+                asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.url)
+            except HTTPError:
+                # probably unnecessary, but just in case
+                if asset_node.id_ not in failed_assets:
+                    failed_assets[asset_node.id_] = 0
+                # a 404 or other error occurred
+                # skip this asset
+                log.error("Failed to get image or attachment data " \
+                          "for asset located at: %s - skipping", asset_node.url)
+                continue
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
+        return failed_assets
 
     def write_data(self, file_path: str, data: bytes):
         """write data to a tar file
