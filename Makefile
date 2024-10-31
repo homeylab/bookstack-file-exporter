@@ -19,6 +19,9 @@ build:
 	python -m pip install --upgrade build
 	python -m build
 
+lint:
+	pylint bookstack_file_exporter
+
 upload_testpypi:
 	python -m pip install --upgrade twine
 	python -m twine upload --repository testpypi dist/*
