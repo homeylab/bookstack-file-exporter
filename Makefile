@@ -1,6 +1,6 @@
 ## DOCKER BUILD VARS
 BASE_IMAGE=python
-BASE_IMAGE_TAG=3.12.4-slim-bookworm
+BASE_IMAGE_TAG=3.13.0-slim-bookworm
 IMAGE_NAME=homeylab/bookstack-file-exporter
 # keep this start sequence unique (IMAGE_TAG=)
 # github actions will use this to create a tag
@@ -26,6 +26,16 @@ upload_testpypi:
 # extra-url is for dependencies using real pypi
 download_testpypi:
 	python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bookstack-file-exporter
+
+docker_build_simple:
+	docker build \
+	--build-arg BASE_IMAGE=${BASE_IMAGE} \
+	--build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} \
+	--build-arg DOCKER_WORK_DIR=${DOCKER_WORK_DIR} \
+	--build-arg DOCKER_CONFIG_DIR=${DOCKER_CONFIG_DIR} \
+	--build-arg DOCKER_EXPORT_DIR=${DOCKER_EXPORT_DIR} \
+	-t ${IMAGE_NAME}:${IMAGE_TAG} \
+	--no-cache .
 
 docker_build: 
 	docker buildx build \
