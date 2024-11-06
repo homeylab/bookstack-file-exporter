@@ -47,7 +47,7 @@ class Archiver:
             util.create_dir(self.config.user_inputs.output_path)
         except PermissionError as perm_err:
             log.warning("Failed to create base directory: %s", perm_err)
-            log.warning("This usually occurs in docker environments" \
+            log.warning("This usually occurs in docker environments " \
                         "attempting to skip this step")
             return
 
