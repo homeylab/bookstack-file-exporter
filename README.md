@@ -248,7 +248,7 @@ More descriptions can be found for each section below:
 | `credentials.token_secret` | `str` | `true` if `credentials`| If `credentials` section is given, this should be a valid tokenSecret | 
 | `additional_headers` | `object` | `false` | Optional section where key/value for pairs can be specified to use in Bookstack http request headers.
 | `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext"]`|
-| `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. If not provided, will use current run directory by default |
+| `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. This directory and any parent directories will be attempted to be created if they do not exist. If not provided, will use current run directory by default.|
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments for a page to an `attachments` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |

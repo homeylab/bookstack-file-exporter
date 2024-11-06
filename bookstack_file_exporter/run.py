@@ -41,6 +41,9 @@ def exporter(args: argparse.Namespace):
     ## start archive ##
     archive: Archiver = Archiver(config)
 
+    # create export directory if not exists
+    archive.create_export_dir()
+
     # get all page content for each page
     archive.get_bookstack_exports(page_nodes)
 

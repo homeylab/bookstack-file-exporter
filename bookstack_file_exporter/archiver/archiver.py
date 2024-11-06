@@ -35,6 +35,15 @@ class Archiver:
         self._page_archiver = PageArchiver(self.archive_dir, self.config)
         self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
+    def create_export_dir(self):
+        """create directory for archiving"""
+        if not self.config.user_inputs.output_path:
+            log.info("No output path specified, using current directory for archive")
+            return
+        log.info("Creating base directory for archive: %s",
+                 self.config.user_inputs.output_path)
+        util.create_dir(self.config.user_inputs.output_path)
+
     def get_bookstack_exports(self, page_nodes: Dict[int, Node]):
         """export all page content"""
         log.info("Exporting all bookstack page contents")
