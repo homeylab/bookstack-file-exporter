@@ -47,8 +47,8 @@ class Archiver:
             util.create_dir(self.config.user_inputs.output_path)
         except PermissionError as perm_err:
             log.warning("Failed to create base directory: %s", perm_err)
-            log.warning("This usually occurs in docker environments, \
-                        attempting to skip this step")
+            log.warning("This usually occurs in docker environments" \
+                        "attempting to skip this step")
             return
 
     def get_bookstack_exports(self, page_nodes: Dict[int, Node]):
