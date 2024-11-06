@@ -87,7 +87,7 @@ assets:
 The exporter can be installed via pip and run directly.
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.12.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.12.X` version._
+_Note: This application is tested and developed on Python version `3.13.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.X` version._
 
 #### Examples
 ```bash
@@ -386,6 +386,8 @@ bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
 
 **Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**
 
+If an API call to get an image or its metadata fails, the exporter will skip the image and log the error. If using `modify_markdown` option, the image links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
+
 ### Attachments
 Attachments will be dumped in a separate directory, `attachments` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/attachments/{page}/{attachment_name}`. As shown earlier:
 
@@ -400,6 +402,8 @@ bookstack_export_2023-11-28_06-24-25/programming/react/attachments/nextjs/sample
 
 [Reference](https://demo.bookstackapp.com/api/docs#attachments-list) and excerpt from Bookstack API docs:
 > Get a listing of attachments visible to the user. The external property indicates whether the attachment is simple a link. A false value for the external property would indicate a file upload.
+
+If an API call to get an attachment or its metadata fails, the exporter will skip the attachment and log the error. If using `modify_markdown` option, the attachment links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
 
 ### Modify Markdown Files
 **To use this feature, `assets.export_images` should be set to `true` and/or `assets.export_attachments`**
