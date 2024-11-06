@@ -42,7 +42,14 @@ class Archiver:
             return
         log.info("Creating base directory for archive: %s",
                  self.config.user_inputs.output_path)
-        util.create_dir(self.config.user_inputs.output_path)
+        # in docker, this may fail if the user id is not the same as the host
+        try:
+            util.create_dir(self.config.user_inputs.output_path)
+        except PermissionError as perm_err:
+            log.warning("Failed to create base directory: %s", perm_err)
+            log.warning("This usually occurs in docker environments, \
+                        attempting to skip this step")
+            return
 
     def get_bookstack_exports(self, page_nodes: Dict[int, Node]):
         """export all page content"""

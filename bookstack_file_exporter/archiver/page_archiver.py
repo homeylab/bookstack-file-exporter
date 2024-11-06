@@ -142,7 +142,7 @@ class PageArchiver:
             return {}
         # use a map for faster lookup
         failed_assets = {}
-        node_base_path = f"{self.archive_base_path}/{parent_path}/"
+        node_base_path = f"{self.archive_base_path}/{parent_path}"
         for asset_node in asset_nodes:
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.url)
