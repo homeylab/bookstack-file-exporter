@@ -83,3 +83,8 @@ clean_up: true
 # set to 1+ if you want to retain a certain number of archives
 # set to 0 or comment out section if you want no action done
 keep_last: -1
+## optional - if specified exporter will run in a loop
+# it will run and then pause for {run_interval} seconds before running again
+# specify in seconds, example: 86400 seconds = 24 hours or run once a day
+# omit/commit out or set to 0 if you just want a single run and exit
+run_interval: 0

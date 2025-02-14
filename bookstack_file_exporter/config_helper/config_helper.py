@@ -57,8 +57,6 @@ class ConfigNode:
         self._token_id, self._token_secret = self._generate_credentials()
         self._headers = self._generate_headers()
         self._urls = self._generate_urls()
-        self._minio_access_key = ""
-        self._minio_secret_key = ""
         self._object_storage_config = self._generate_remote_config()
 
     def _generate_config(self, config_file: str) -> models.UserInput:

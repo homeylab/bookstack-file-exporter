@@ -87,7 +87,7 @@ assets:
 The exporter can be installed via pip and run directly.
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.13.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.X` version._
+_Note: This application is tested and developed on Python version `3.13.2`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.2` version._
 
 #### Examples
 ```bash
@@ -149,6 +149,11 @@ docker run \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
     homeylab/bookstack-file-exporter:latest
 ```
+
+#### Docker Compose
+When using the configuration option: `run_interval`, a docker compose set up could be used to run the exporter as an always running application. The exporter will sleep and wait until `{run_interval}` seconds has elapsed before subsequent runs.
+
+An example is shown in `examples/docker-compose.yaml`
 
 #### Environment Variables
 See [Valid Environment Variables](#valid-environment-variables) for more options.
@@ -256,6 +261,7 @@ More descriptions can be found for each section below:
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file |
 | `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
 | `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
+| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run in a loop and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will disable looping |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 
 #### Valid Environment Variables
