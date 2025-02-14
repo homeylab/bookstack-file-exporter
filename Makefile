@@ -15,7 +15,7 @@ pip_build:
 pip_local_dev:
 	python -m pip install -e .
 
-build:
+pip_build:
 	python -m pip install --upgrade build
 	python -m build
 
@@ -29,6 +29,10 @@ upload_testpypi:
 # extra-url is for dependencies using real pypi
 download_testpypi:
 	python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bookstack-file-exporter
+
+upload_realpypi:
+	python -m pip install --upgrade twine
+	python -m twine upload dist/*
 
 docker_build_simple:
 	docker build \
