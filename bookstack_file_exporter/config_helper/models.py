@@ -39,4 +39,4 @@ class UserInput(BaseModel):
     assets: Optional[Assets] = Assets()
     minio: Optional[ObjectStorageConfig] = None
     keep_last: Optional[int] = None
-    run_interval: Optional[int] = None
+    run_interval: Optional[int] = 0
