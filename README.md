@@ -87,7 +87,7 @@ assets:
 The exporter can be installed via pip and run directly.
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.13.X`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.X` version._
+_Note: This application is tested and developed on Python version `3.13.2`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.2` version._
 
 #### Examples
 ```bash
