@@ -240,6 +240,7 @@ assets:
   export_meta: false
   verify_ssl: true
 keep_last: 5
+run_interval: 0
 ```
 
 #### Options and Descriptions
