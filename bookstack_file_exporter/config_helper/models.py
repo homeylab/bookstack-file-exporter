@@ -36,7 +36,7 @@ class UserInput(BaseModel):
     credentials: Optional[BookstackAccess] = None
     formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
     output_path: Optional[str] = None
-    # export_meta: Optional[bool] = None
     assets: Optional[Assets] = Assets()
     minio: Optional[ObjectStorageConfig] = None
     keep_last: Optional[int] = None
+    run_interval: Optional[int] = None

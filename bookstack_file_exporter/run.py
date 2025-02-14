@@ -1,6 +1,7 @@
 import argparse
 import sys
 import logging
+import time
 from typing import Dict
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
@@ -10,10 +11,20 @@ from bookstack_file_exporter.archiver.archiver import Archiver
 
 log = logging.getLogger(__name__)
 
-def exporter(args: argparse.Namespace):
-    """export bookstack nodes and archive locally and/or remotely"""
-    ## get configuration from helper
+def entrypoint(args: argparse.Namespace):
+    """entrypoint for export process"""
+    # get configuration from helper
     config = ConfigNode(args)
+    if config.user_inputs.run_interval:
+        while True:
+            exporter(config)
+            log.info(f"Waiting {config.user_inputs.run_interval} seconds for next run")
+            # sleep process state
+            time.sleep(config.user_inputs.run_interval)
+    exporter(config)
+
+def exporter(config: ConfigNode):
+    """export bookstack nodes and archive locally and/or remotely"""
 
     ## convenience vars
     bookstack_headers = config.headers

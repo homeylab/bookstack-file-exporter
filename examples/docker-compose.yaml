@@ -1,0 +1,18 @@
+name: bookstack-file-exporter
+services:
+  bookstack-file-exporter:
+    image: homeylab/bookstack-file-exporter:latest
+    # use a uid/gid that has permissions to write to local dump directory
+    user: 1000:1000
+    container_name: bookstack-file-exporter
+    environment:
+      - LOG_LEVEL=info
+    # example volumes shown
+    # change the left side of the ':' to your preferred files/dir
+    volumes:
+      - /opt/bookstack/bkps/config.yml:/export/config/config.yml:ro
+      - /opt/bookstack/bkps/archives:/export/dump
+    # can also pass env variables as a file
+    env_file:
+      - bkp.env
+    restart: always
