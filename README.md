@@ -36,6 +36,7 @@ What it does:
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
 - Can push archives to remote object storage like [Minio](https://min.io/)
 - Basic housekeeping option (`keep_last`) to keep a tidy archive destination
+- Can run in application mode (always running) using `run_interval` property. Used for basic scheduling of backups.
 
 Supported backup targets are:
 
@@ -262,7 +263,7 @@ More descriptions can be found for each section below:
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file |
 | `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
 | `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
-| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run in a loop and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will disable looping |
+| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Used for basic scheduling of backups. |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 
 #### Valid Environment Variables
