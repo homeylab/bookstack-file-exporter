@@ -54,6 +54,8 @@ jobs:
     timeout-minutes: 20
     environment: 'PyPi'
     steps:
+    - name: Checkout
+      uses: actions/checkout@v4
     - name: Get tag release without v
       shell: bash
       run: |
