@@ -16,11 +16,11 @@ def http_get_request(url: str, headers: Dict[str, str],
             # {backoff factor} * (2 ** ({number of previous retries}))
             # {raise_on_status} if status falls in status_forcelist range
             #  and retries have been exhausted.
-            # {status_force_list} 429 is supposed to be included
-            retries = Retry(total=3,
+            # {status_force_list} 413, 429, 503 defaults are overwritten with additional ones
+            retries = Retry(total=5,
                             backoff_factor=0.5,
                             raise_on_status=True,
-                            status_forcelist=[ 500, 502, 503, 504 ])
+                            status_forcelist=[413, 429, 500, 502, 503, 504])
             session.mount(url_prefix, HTTPAdapter(max_retries=retries))
             response = session.get(url, headers=headers, verify=verify_ssl, timeout=timeout)
     except Exception as req_err:
