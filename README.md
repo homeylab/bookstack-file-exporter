@@ -7,6 +7,7 @@ Table of Contents
   - [Using This Application](#using-this-application)
     - [Run via Pip](#run-via-pip)
     - [Run via Docker](#run-via-docker)
+    - [Run via Helm](#run-via-helm)
     - [Authentication and Permissions](#authentication-and-permissions)
     - [Configuration](#configuration)
   - [Backup Behavior](#backup-behavior)
@@ -173,6 +174,9 @@ docker run \
     -v $(pwd)/bkps:/export/dump \
     homeylab/bookstack-file-exporter:latest
 ```
+
+### Run via Helm
+A helm chart can be used to run the exporter as a CronJob or Deployment resource. See [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack-file-exporter) for more information on using the helm chart.
 
 #### Bind Mounts
 | purpose | static docker path | description | example |
