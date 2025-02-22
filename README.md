@@ -175,14 +175,14 @@ docker run \
     homeylab/bookstack-file-exporter:latest
 ```
 
-### Run via Helm
-A helm chart can be used to run the exporter as a CronJob or Deployment resource. See [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack-file-exporter) for more information on using the helm chart.
-
 #### Bind Mounts
 | purpose | static docker path | description | example |
 | ------- | ------------------ | ----------- | ------- |
 | `config` | `/export/config/config.yml` | A valid configuration file |`-v /local/yourpath/config.yml:/export/config/config.yml:ro`|
 | `dump` | `/export/dump` | Directory to place exports. **This is optional when using remote storage option(s)**. Omit if you don't need a local copy. | `-v /local/yourpath/bkps:/export/dump` |
+
+### Run via Helm
+A helm chart can be used to run the exporter as a CronJob or Deployment resource. See [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack-file-exporter) for more information on using the helm chart.
 
 ### Authentication and Permissions
 #### Permissions
