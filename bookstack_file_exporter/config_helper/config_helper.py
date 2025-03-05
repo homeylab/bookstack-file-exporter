@@ -105,8 +105,8 @@ class ConfigNode:
     def _generate_headers(self) -> Dict[str, str]:
         headers = {}
         # add additional_headers provided by user
-        if self.user_inputs.additional_headers:
-            for key, value in self.user_inputs.additional_headers.items():
+        if self.user_inputs.http_config.additional_headers:
+            for key, value in self.user_inputs.http_config.additional_headers.items():
                 headers[key] = value
 
         # add default headers

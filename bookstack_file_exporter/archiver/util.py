@@ -9,13 +9,13 @@ import gzip
 import glob
 from pathlib import Path
 
-from bookstack_file_exporter.common import util
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
-def get_byte_response(url: str, headers: Dict[str, str], verify_ssl: bool) -> bytes:
+def get_byte_response(url: str, http_client: HttpHelper) -> bytes:
     """get byte response from http request"""
-    response = util.http_get_request(url=url, headers=headers, verify_ssl=verify_ssl)
+    response = http_client.http_get_request(url=url)
     return response.content
 
 # append to a tar file instead of creating files locally and then tar'ing after

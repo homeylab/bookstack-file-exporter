@@ -6,6 +6,7 @@ from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
@@ -33,17 +34,16 @@ class PageArchiver:
 
     Args:
         :archive_dir: <str> = directory where data will be put into.
-
         :config: <ConfigNode> = Configuration with user inputs and general options.
+        :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
         :PageArchiver: instance with methods to help collect page content from a Bookstack instance.
     """
-    def __init__(self, archive_dir: str, config: ConfigNode) -> None:
+    def __init__(self, archive_dir: str, config: ConfigNode, http_client: HttpHelper) -> None:
         self.asset_config = config.user_inputs.assets
         self.export_formats = config.user_inputs.formats
         self.api_urls = config.urls
-        self._headers = config.headers
         # full path, bookstack-<timestamp>, and .tgz extension
         self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
         # name of intermediate tar file before gzip
@@ -51,8 +51,9 @@ class PageArchiver:
         # name of the base folder to use within the tgz archive (internal tar layout)
         self.archive_base_path = archive_dir.split("/")[-1]
         self.modify_md: bool = self._check_md_modify()
-        self.asset_archiver = AssetArchiver(self.api_urls, self._headers,
-                                            self.verify_ssl)
+        self.asset_archiver = AssetArchiver(self.api_urls,
+                                            http_client)
+        self.http_client = http_client
 
     def _check_md_modify(self) -> bool:
         # check to ensure they have asset_config defined, could be None
@@ -107,8 +108,8 @@ class PageArchiver:
 
     def _get_page_data(self, page_id: int, export_format: str) -> bytes:
         url = f"{self.api_urls['pages']}/{page_id}/{_EXPORT_API_PATH}/{export_format}"
-        return archiver_util.get_byte_response(url=url, headers=self._headers,
-                                               verify_ssl=self.verify_ssl)
+        return archiver_util.get_byte_response(url=url,
+                                               http_client=self.http_client)
 
     def _archive_page_meta(self, page_path: str, meta_data: Dict[str, Union[str, int]]):
         meta_file_name = f"{self.archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"

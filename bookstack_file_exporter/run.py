@@ -8,6 +8,7 @@ from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.exporter.exporter import NodeExporter
 from bookstack_file_exporter.archiver.archiver import Archiver
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
@@ -26,23 +27,21 @@ def entrypoint(args: argparse.Namespace):
 def exporter(config: ConfigNode):
     """export bookstack nodes and archive locally and/or remotely"""
 
-    ## convenience vars
-    bookstack_headers = config.headers
-    api_urls = config.urls
-    unassigned_dir = config.unassigned_book_dir
-    verify_ssl = config.user_inputs.assets.verify_ssl
-
     #### Export Data #####
     # need to implement pagination for apis
     log.info("Beginning run")
 
+    ## Helper functions with user provided (or defaults) http config
+    http_client = HttpHelper(config.headers, config.user_inputs.http_config)
+
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     log.info("Building shelve/book/chapter/page relationships")
-    export_helper = NodeExporter(api_urls, bookstack_headers, verify_ssl)
+    export_helper = NodeExporter(config.urls, http_client)
     ## shelves
     shelve_nodes: Dict[int, Node] = export_helper.get_all_shelves()
     ## books
-    book_nodes: Dict[int, Node] = export_helper.get_all_books(shelve_nodes, unassigned_dir)
+    book_nodes: Dict[int, Node] = export_helper.get_all_books(shelve_nodes,
+                                                              config.unassigned_book_dir)
     ## pages
     page_nodes: Dict[int, Node] = export_helper.get_all_pages(book_nodes)
     if not page_nodes:

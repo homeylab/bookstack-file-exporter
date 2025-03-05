@@ -5,7 +5,7 @@ from re import sub as re_sub
 # pylint: disable=import-error
 from requests import Response
 
-from bookstack_file_exporter.common import util as common_util
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
@@ -112,28 +112,24 @@ class AssetArchiver:
 
     Args:
         :urls: <Dict[str, str]> = api urls for images and attachments
-        :headers: <Dict[str, str]> = http headers for api requests
         :verify_ssl: <bool> = verify ssl for api requests
+        :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
         AssetArchiver instance for use in archiving images and attachments for a page
     """
-    def __init__(self, urls: Dict[str, str], headers: Dict[str, str],
-                 verify_ssl: bool):
+    def __init__(self, urls: Dict[str, str], http_client: HttpHelper):
         self.api_urls = urls
-        self.verify_ssl = verify_ssl
-        self._headers = headers
         self._asset_map = {
             'images': self._create_image_map,
             'attachments': self._create_attachment_map
         }
+        self.http_client = http_client
 
     def get_asset_nodes(self, asset_type: str) -> Dict[str, ImageNode | AttachmentNode]:
         """Get image or attachment helpers for a page"""
-        asset_response: Response = common_util.http_get_request(
-            self.api_urls[asset_type],
-            self._headers,
-            self.verify_ssl)
+        asset_response: Response = self.http_client.http_get_request(
+            self.api_urls[asset_type])
         asset_json = asset_response.json()['data']
         return self._asset_map[asset_type](asset_json)
 
@@ -141,18 +137,14 @@ class AssetArchiver:
             meta_data: Union[AttachmentNode, ImageNode]) -> Dict[str, str | bool | int | dict]:
         """Get asset data based on type"""
         data_url = f"{self.api_urls[asset_type]}/{meta_data.id_}"
-        asset_data_response: Response = common_util.http_get_request(
-            data_url,
-            self._headers,
-            self.verify_ssl)
+        asset_data_response: Response = self.http_client.http_get_request(
+            data_url)
         return asset_data_response.json()
 
     def get_asset_bytes(self, asset_type: str, url: str) -> bytes:
         """Get raw asset data"""
-        asset_response: Response = common_util.http_get_request(
-            url,
-            self._headers,
-            self.verify_ssl)
+        asset_response: Response = self.http_client.http_get_request(
+            url)
         match asset_type:
             case "images":
                 asset_data = asset_response.content
