@@ -19,7 +19,7 @@ def entrypoint(args: argparse.Namespace):
     if config.user_inputs.run_interval:
         while True:
             exporter(config)
-            log.info(f"Waiting {config.user_inputs.run_interval} seconds for next run")
+            log.info("Waiting %s seconds for next run", config.user_inputs.run_interval)
             # sleep process state
             time.sleep(config.user_inputs.run_interval)
     exporter(config)

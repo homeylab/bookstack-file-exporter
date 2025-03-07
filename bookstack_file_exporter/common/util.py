@@ -14,6 +14,16 @@ log = logging.getLogger(__name__)
 urllib3.disable_warnings()
 
 class HttpHelper:
+    """
+    HttpHelper provides an http request helper with config stored and retries built in
+
+    Args:
+        :headers: <Dict[str, str]> = all headers to use for http requests
+        :config: <HttpConfig> = Configuration with user inputs for http requests
+
+    Returns:
+        :HttpHelper: instance with methods to help with http requests.
+    """
     def __init__(self, headers: Dict[str, str],
                  config: HttpConfig):
         self.backoff_factor = config.backoff_factor
@@ -23,7 +33,6 @@ class HttpHelper:
         self.verify_ssl = config.verify_ssl
         self._headers = headers
 
-    
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
