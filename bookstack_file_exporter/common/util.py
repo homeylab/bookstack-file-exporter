@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List
+from typing import Dict
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
