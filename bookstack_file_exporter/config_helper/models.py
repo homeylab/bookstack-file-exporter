@@ -26,13 +26,21 @@ class Assets(BaseModel):
     export_attachments: Optional[bool] = False
     modify_markdown: Optional[bool] = False
     export_meta: Optional[bool] = False
-    verify_ssl: Optional[bool] = True
+    # verify_ssl: Optional[bool] = True
+
+class HttpConfig(BaseModel):
+    """YAML schema for user provided http settings"""
+    verify_ssl: Optional[bool] = False
+    timeout: Optional[int] = 30
+    backoff_factor: Optional[float] = 2.5
+    retry_codes: Optional[List[int]] = [413, 429, 500, 502, 503, 504]
+    retry_count: Optional[int] = 5
+    additional_headers: Optional[Dict[str, str]] = {}
 
 # pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
     host: str
-    additional_headers: Optional[Dict[str, str]] = None
     credentials: Optional[BookstackAccess] = None
     formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
     output_path: Optional[str] = None
@@ -40,3 +48,4 @@ class UserInput(BaseModel):
     minio: Optional[ObjectStorageConfig] = None
     keep_last: Optional[int] = None
     run_interval: Optional[int] = 0
+    http_config: Optional[HttpConfig] = HttpConfig()

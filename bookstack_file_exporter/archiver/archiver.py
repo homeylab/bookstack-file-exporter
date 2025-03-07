@@ -9,6 +9,7 @@ from bookstack_file_exporter.archiver.page_archiver import PageArchiver
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
@@ -22,17 +23,18 @@ class Archiver:
 
     Args:
         :config: <ConfigNode> = Configuration with user inputs and general options.
+        :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
         Archiver instance with attributes that are accessible 
         for use for handling bookstack exports and remote uploads.
     """
-    def __init__(self, config: ConfigNode):
+    def __init__(self, config: ConfigNode, http_client: HttpHelper):
         self.config = config
         # for convenience
         self.base_dir = config.base_dir_name
         self.archive_dir = self._generate_root_folder(self.base_dir)
-        self._page_archiver = PageArchiver(self.archive_dir, self.config)
+        self._page_archiver = PageArchiver(self.archive_dir, self.config, http_client)
         self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
     def create_export_dir(self):

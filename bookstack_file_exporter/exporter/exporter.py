@@ -5,7 +5,7 @@ import logging
 from requests import Response
 
 from bookstack_file_exporter.exporter.node import Node
-from bookstack_file_exporter.common import util
+from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
@@ -19,10 +19,9 @@ class NodeExporter():
     Returns:
         NodeExporter instance to handle building shelve/book/chapter/page relations.
     """
-    def __init__(self, api_urls: Dict[str, str], headers: Dict[str,str], verify_ssl: bool):
+    def __init__(self, api_urls: Dict[str, str], http_client: HttpHelper):
         self.api_urls = api_urls
-        self.headers = headers
-        self.verify_ssl = verify_ssl
+        self.http_client = http_client
 
     def get_all_shelves(self) -> Dict[int, Node]:
         """
@@ -38,8 +37,7 @@ class NodeExporter():
 
     def _get_json_response(self, url: str) -> List[Dict[str, Union[str,int]]]:
         """get http response data in json format"""
-        response: Response = util.http_get_request(url=url, headers=self.headers,
-                                        verify_ssl=self.verify_ssl)
+        response: Response = self.http_client.http_get_request(url=url)
         return response.json()
 
     def _get_all_ids(self, url: str) -> List[int]:
