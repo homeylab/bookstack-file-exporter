@@ -1,5 +1,6 @@
 import logging
 from typing import Dict
+import urllib3
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
@@ -8,6 +9,9 @@ from requests.adapters import HTTPAdapter, Retry
 from bookstack_file_exporter.config_helper.models import HttpConfig
 
 log = logging.getLogger(__name__)
+
+# disable TLS warnings if using verify_ssl=false
+urllib3.disable_warnings()
 
 class HttpHelper:
     def __init__(self, headers: Dict[str, str],
