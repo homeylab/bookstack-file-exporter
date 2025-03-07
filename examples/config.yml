@@ -43,6 +43,8 @@ assets:
 # optional - can override default http_config
 # if not required, you can omit/comment out section
 # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
+# default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry
+# - this should allow for per minute rate limits to be refreshed
 http_config:
   verify_ssl: false
   timeout: 30
