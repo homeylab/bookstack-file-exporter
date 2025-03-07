@@ -49,7 +49,7 @@ def exporter(config: ConfigNode):
         sys.exit(0)
     log.info("Beginning archive")
     ## start archive ##
-    archive: Archiver = Archiver(config)
+    archive: Archiver = Archiver(config, http_client)
 
     # create export directory if not exists
     archive.create_export_dir()

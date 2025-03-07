@@ -112,7 +112,6 @@ class AssetArchiver:
 
     Args:
         :urls: <Dict[str, str]> = api urls for images and attachments
-        :verify_ssl: <bool> = verify ssl for api requests
         :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
