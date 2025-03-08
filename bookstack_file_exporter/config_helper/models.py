@@ -5,7 +5,7 @@ from pydantic import BaseModel
 # pylint: disable=too-few-public-methods
 class ObjectStorageConfig(BaseModel):
     """YAML schema for minio configuration"""
-    host: str
+    host: Optional[str] = ""
     access_key: Optional[str] = ""
     secret_key: Optional[str] = ""
     bucket: str
@@ -26,7 +26,6 @@ class Assets(BaseModel):
     export_attachments: Optional[bool] = False
     modify_markdown: Optional[bool] = False
     export_meta: Optional[bool] = False
-    # verify_ssl: Optional[bool] = True
 
 class HttpConfig(BaseModel):
     """YAML schema for user provided http settings"""

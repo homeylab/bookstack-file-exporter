@@ -3,14 +3,14 @@
 # if you put http here, it will try verify=false, not to check certs
 host: "https://bookstack.mydomain.org"
 # You could optionally set the bookstack token_id and token_secret here instead of env
-# If using env vars instead you can ignore this section
+# If using env vars instead you can leave values empty or omit this section
 credentials:
-    # set here or as env variable, BOOKSTACK_TOKEN_ID
-    # env var takes precedence over below
-    token_id: ""
-    # set here or as env variable, BOOKSTACK_TOKEN_SECRET
-    # env var takes precedence over below
-    token_secret: ""
+  # set here or as env variable, BOOKSTACK_TOKEN_ID
+  # env var takes precedence over below
+  token_id: ""
+  # set here or as env variable, BOOKSTACK_TOKEN_SECRET
+  # env var takes precedence over below
+  token_secret: ""
 # supported formats from bookstack below
 # specify one or more
 formats:
@@ -40,11 +40,18 @@ assets:
 # default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry
 # - this should allow for per minute rate limits to be refreshed
 http_config:
+  # whether or not to verify ssl certificates if using https
   verify_ssl: false
+  # set http timeout in seconds for requests
   timeout: 30
+  # default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry
+  # - this should allow for per minute rate limits to be refreshed
   backoff_factor: 2.5
+  # which status codes trigger retries
   retry_codes: [413, 429, 500, 502, 503, 504]
+  # number of retries
   retry_count: 5
+  # any additional headers to add to http requests
   additional_headers:
     test: "test"
     test2: "test2"

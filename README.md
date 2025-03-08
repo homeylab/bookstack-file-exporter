@@ -17,6 +17,7 @@ Table of Contents
     - [Modify Markdown Files](#modify-markdown-files)
   - [Object Storage](#object-storage)
     - [Minio Backups](#minio-backups)
+  - [Potential Breaking Upgrades](#potential-breaking-upgrades)
   - [Future Items](#future-items)
 
 ## Background
@@ -69,8 +70,8 @@ Simple example configuration:
 # config.yml
 host: "https://bookstack.yourdomain.com"
 credentials:
-    token_id: ""
-    token_secret: ""
+  token_id: ""
+  token_secret: ""
 formats: # md only example
 - markdown
 # - html
@@ -78,11 +79,10 @@ formats: # md only example
 # - plaintext
 output_path: "bkps/"
 assets:
-    export_images: false
-    export_attachments: false
-    modify_markdown: false
-    export_meta: false
-    verify_ssl: true
+  export_images: false
+  export_attachments: false
+  modify_markdown: false
+  export_meta: false
 ```
 
 ### Run via Pip
@@ -205,7 +205,9 @@ Env variables for credentials will take precedence over configuration file optio
 **For object storage authentication**, find the relevant sections further down in their respective sections.
 
 ### Configuration
-_Ensure [Authentication](#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](#using-this-application) section. A full example is also shown below with descriptions. Optionally, look at `examples/` folder of the github repo for more examples. 
+_Ensure [Authentication](#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](#using-this-application) section.
+
+A full example is also shown below. Optionally, look at `examples/` folder of the github repo for more examples with long descriptions.
 
 For object storage configuration, find more information in their respective sections
 - [Minio](#minio-backups)
@@ -218,17 +220,21 @@ Below is an example configuration that shows example values for all possible opt
 ```yaml
 host: "https://bookstack.yourdomain.com"
 credentials:
-    token_id: ""
-    token_secret: ""
-additional_headers:
-  test: "test"
-  test2: "test2"
-  User-Agent: "test-agent"
+  token_id: ""
+  token_secret: ""
 formats:
   - markdown
   - html
   - pdf
   - plaintext
+http_config:
+  verify_ssl: false
+  timeout: 30
+  backoff_factor: 2.5
+  retry_codes: [413, 429, 500, 502, 503, 504]
+  retry_count: 5
+  additional_headers:
+    User-Agent: "test-agent"
 minio:
   host: "minio.yourdomain.com"
   access_key: ""
@@ -243,7 +249,6 @@ assets:
   export_attachments: true
   modify_markdown: false
   export_meta: false
-  verify_ssl: true
 keep_last: 5
 run_interval: 0
 ```
@@ -253,20 +258,25 @@ More descriptions can be found for each section below:
 
 | Configuration Item | Type | Required | Description |
 | ------------------ | ---- | -------- | ----------- |
-|  `host` | `str` | `true` | If `http/https` not specified in the url, defaults to `https`. Use `assets.verify_ssl` to disable certificate checking. |
+|  `host` | `str` | `true` | If `http/https` not specified in the url, defaults to `https`. Use `http_config.verify_ssl` to disable certificate checking. |
 | `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](#authentication) for more details. |
-| `credentials.token_id` | `str`| `true` if `credentials` | If `credentials` section is given, this should be a valid tokenId |
-| `credentials.token_secret` | `str` | `true` if `credentials`| If `credentials` section is given, this should be a valid tokenSecret | 
-| `additional_headers` | `object` | `false` | Optional section where key/value for pairs can be specified to use in Bookstack http request headers.
+| `credentials.token_id` | `str`| `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenId. |
+| `credentials.token_secret` | `str` | `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenSecret. |
 | `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext"]`|
 | `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. This directory and any parent directories will be attempted to be created if they do not exist. If not provided, will use current run directory by default. If using docker, this option can be omitted. |
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments for a page to an `attachments` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
-| `assets.modify_markdown` | `bool` | `false` | Optional (default: `false`), modify markdown files to replace image links with local exported image paths. This requires `assets.export_images` to be `true` in order to work. See [Modify Markdown Files](#modify-markdown-files) for more information.
-| `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file |
-| `assets.verify_ssl` | `bool` | `false` | Optional (default: `true`), whether or not to check ssl certificates when requesting content from Bookstack host |
-| `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done |
+| `assets.modify_markdown` | `bool` | `false` | Optional (default: `false`), modify markdown files to replace image links with local exported image paths. This requires `assets.export_images` to be `true` in order to work. See [Modify Markdown Files](#modify-markdown-files) for more information. |
+| `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file. |
+| `http_config` | `object` | `false` | Optional section to override default http configuration. |
+| `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
+| `http_config.timeout` | `int` | `false` | Optional (default: `30`), set the timeout, in seconds, for http requests. |
+| `http_config.retry_count` | `int` | `false` | Optional (default: `5`), the number of http retries after initial failure. |
+| `http_config.retry_codes` | `List[int]` | `false` | Optional (default: `[413, 429, 500, 502, 503, 504]`), which http response status codes trigger a retry. |
+| `http_config.backoff_factor` | `float` | `false` | Optional (default: `2.5`), set the backoff_factor for http request retries. Default backoff_factor `2.5` means we wait 5, 10, 20, and then 40 seconds (with default `http_config.retry_count: 5`) before our last retry. This should allow for per minute rate limits to be refreshed. |
+| `http_config.additional_headers` | `object` | `false` | Optional (default: `{}`), specify key/value pairs that will be added as additional headers to http requests. |
+| `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
 | `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Used for basic scheduling of backups. |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 
@@ -468,7 +478,14 @@ minio:
 | `access_key` | `str` | `false` if specified through env var instead, otherwise `true` | Access key for the minio instance |
 | `secret_key` | `str` | `false` if specified through env var, otherwise `true` | Secret key for the minio instance |
 | `path` | `str` | `false` | Optional, path of the backup to use. Will use root bucket path if not set. `<bucket_name>:/<path>/bookstack-<timestamp>.tgz` |
-| `keep_last` | `int` | `false` | Optional (default: `None`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
+| `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
+
+## Potential Breaking Upgrades
+Below are versions that have major changes to the way configuration or exporter runs.
+
+| Start Version | Target Version | Description |
+| ------------- | -------------- | ----------- |
+| `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~

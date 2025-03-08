@@ -43,12 +43,10 @@ class StorageProviderConfig:
     
     def _is_minio_valid(self) -> bool:
         """check if minio config is valid"""
-        # required values - keys already checked so skip
+        # required values - keys and bucket already checked so skip
         checks = {
-            "bucket": self.config.bucket,
             "host": self.config.host
         }
-
         for prop, check in checks.items():
             if not check:
                 log.error("%s is missing from minio configuration and is required", prop)
