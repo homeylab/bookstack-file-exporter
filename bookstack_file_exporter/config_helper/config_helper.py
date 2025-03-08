@@ -79,11 +79,8 @@ class ConfigNode:
 
     def _generate_credentials(self) -> Tuple[str, str]:
         # if user provided credentials in config file, load them
-        token_id = ""
-        token_secret = ""
-        if self.user_inputs.credentials:
-            token_id = self.user_inputs.credentials.token_id
-            token_secret = self.user_inputs.credentials.token_secret
+        token_id = self.user_inputs.credentials.token_id
+        token_secret = self.user_inputs.credentials.token_secret
 
         # check to see if env var is specified, if so, it takes precedence
         token_id = self._check_var(_BOOKSTACK_TOKEN_FIELD, token_id)
@@ -98,8 +95,13 @@ class ConfigNode:
                                                self.user_inputs.minio.access_key)
             minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
                                                self.user_inputs.minio.secret_key)
+
             object_config["minio"] = StorageProviderConfig(minio_access_key,
                                      minio_secret_key, self.user_inputs.minio)
+        for platform, config in object_config.items():
+            if not config.is_valid(platform):
+                error_str = "provided " + platform + " configuration is invalid"
+                raise ValueError(error_str)
         return object_config
 
     def _generate_headers(self) -> Dict[str, str]:

@@ -6,18 +6,18 @@ from pydantic import BaseModel
 class ObjectStorageConfig(BaseModel):
     """YAML schema for minio configuration"""
     host: str
-    access_key: Optional[str] = None
-    secret_key: Optional[str] = None
+    access_key: Optional[str] = ""
+    secret_key: Optional[str] = ""
     bucket: str
-    path: Optional[str] = None
+    path: Optional[str] = ""
     region: str
-    keep_last: Optional[int] = None
+    keep_last: Optional[int] = 0
 
 # pylint: disable=too-few-public-methods
 class BookstackAccess(BaseModel):
     """YAML schema for bookstack access credentials"""
-    token_id: str
-    token_secret: str
+    token_id: Optional[str] = ""
+    token_secret: Optional[str] = ""
 
 # pylint: disable=too-few-public-methods
 class Assets(BaseModel):
@@ -41,11 +41,11 @@ class HttpConfig(BaseModel):
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
     host: str
-    credentials: Optional[BookstackAccess] = None
+    credentials: Optional[BookstackAccess] = BookstackAccess()
     formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
-    output_path: Optional[str] = None
+    output_path: Optional[str] = ""
     assets: Optional[Assets] = Assets()
     minio: Optional[ObjectStorageConfig] = None
-    keep_last: Optional[int] = None
+    keep_last: Optional[int] = 0
     run_interval: Optional[int] = 0
     http_config: Optional[HttpConfig] = HttpConfig()
