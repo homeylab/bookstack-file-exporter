@@ -17,6 +17,8 @@ Table of Contents
     - [Modify Markdown Files](#modify-markdown-files)
   - [Object Storage](#object-storage)
     - [Minio Backups](#minio-backups)
+  - [Notifications](#notifications)
+    - [apprise](#apprise)
   - [Potential Breaking Upgrades](#potential-breaking-upgrades)
   - [Future Items](#future-items)
 
@@ -251,6 +253,15 @@ assets:
   export_meta: false
 keep_last: 5
 run_interval: 0
+notifications:
+  apprise:
+    service_urls:
+      - "json://localhost:8080/notify"
+    config_path: ""
+    plugin_paths: []
+    storage_path: ""
+    custom_title: ""
+    custom_attachment_path: ""
 ```
 
 #### Options and Descriptions
@@ -479,6 +490,23 @@ minio:
 | `secret_key` | `str` | `false` if specified through env var, otherwise `true` | Secret key for the minio instance |
 | `path` | `str` | `false` | Optional, path of the backup to use. Will use root bucket path if not set. `<bucket_name>:/<path>/bookstack-<timestamp>.tgz` |
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
+
+## Notifications
+It is possible to also send notifications when an export run fails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise).
+
+### apprise
+The apprise configuration is a part of the configuration yaml file and can be modified under `notifications.apprise`.
+
+| Item | Type | Required | Description |
+| ---- | ---- | -------- | ----------- |
+| `apprise.service_urls` | `List<str>` | Provide the apprise urls for apprise to send notifications to |
+| `apprise.config_path` | `str` | If specified, overrides `apprise.service_urls`. Can specify the path to an apprise configuration file |
+| `apprise.plugin_paths` | `List<str>` | Provide the plugin paths for apprise to use |
+| `apprise.storage_path` | `str` | For persistent storage, specify a path for apprise to use |
+| `apprise.custom_title` | `str` | Replace the default message title for apprise notifications |
+| `apprise.custom_attachment_path` | `str` | To include a custom attachment to the apprise notification, specify the path to a file | 
+
+`apprise.service_urls` can contain sensitive information and can be specified as an environment variable instead, example: `export APPRISE='["json://localhost:8080/notify"]'`. 
 
 ## Potential Breaking Upgrades
 Below are versions that have major changes to the way configuration or exporter runs.
