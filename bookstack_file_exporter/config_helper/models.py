@@ -36,6 +36,19 @@ class HttpConfig(BaseModel):
     retry_count: Optional[int] = 5
     additional_headers: Optional[Dict[str, str]] = {}
 
+class AppRiseNotifyConfig(BaseModel):
+    """YAML schema for user provided app rise settings"""
+    service_urls: Optional[List[str]] = []
+    config_path: Optional[str] = ""
+    plugin_paths: Optional[List[str]] = []
+    storage_path: Optional[str] = ""
+    custom_title: Optional[str] = ""
+    custom_attachment_path: Optional[str] = ""
+
+class Notifications(BaseModel):
+    """YAML schema for user provided notification settings"""
+    apprise: Optional[AppRiseNotifyConfig] = None
+
 # pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
@@ -48,3 +61,4 @@ class UserInput(BaseModel):
     keep_last: Optional[int] = 0
     run_interval: Optional[int] = 0
     http_config: Optional[HttpConfig] = HttpConfig()
+    notifications: Optional[Notifications] = None

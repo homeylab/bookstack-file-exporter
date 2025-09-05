@@ -25,7 +25,7 @@ class StorageProviderConfig:
         self.config = config
         self._access_key = access_key
         self._secret_key = secret_key
-        self._valid_checker = {'minio': self._is_minio_valid()}
+        self._valid_checker = {'minio': self._is_minio_valid}
 
     @property
     def access_key(self) -> str:
@@ -40,7 +40,7 @@ class StorageProviderConfig:
     def is_valid(self, storage_type: str) -> bool:
         """check if object storage config is valid"""
         return self._valid_checker[storage_type]
-    
+
     def _is_minio_valid(self) -> bool:
         """check if minio config is valid"""
         # required values - keys and bucket already checked so skip

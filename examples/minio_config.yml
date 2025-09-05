@@ -95,3 +95,21 @@ keep_last: -1
 # specify in seconds, example: 86400 seconds = 24 hours or run once a day
 # omit/commit out or set to 0 if you just want a single run and exit
 run_interval: 0
+## optional - if specified exporter will send notifications on failure
+# supported notification services are:
+# - apprise (https://github.com/caronc/apprise)
+# omit/comment out section if not required
+notifications:
+  # optional - apprise notification config
+  # if used, required: specify one or more service_urls or a config_path
+  # - if both are specified, config_path takes precedence
+  # if service_urls is used, service_urls can also be specified as env var: APPRISE_URLS
+  # - env var takes precedence over service_urls below if both specified
+  apprise:
+    service_urls: []
+      # - "json://localhost:8080/notify"
+    config_path: ""
+    plugin_paths: []
+    storage_path: ""
+    custom_title: ""
+    custom_attachment_path: ""

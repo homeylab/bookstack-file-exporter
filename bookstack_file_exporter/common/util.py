@@ -1,5 +1,6 @@
 import logging
-from typing import Dict
+import os
+from typing import Dict, Union
 import urllib3
 # pylint: disable=import-error
 import requests
@@ -70,3 +71,27 @@ class HttpHelper:
         if url.startswith("https"):
             return "https://"
         return "http://"
+
+def check_var(env_key: str, default_val: Union[list[str],str], can_error: bool = False) -> str:
+    """
+    :param: env_key = the environment variable to check
+    :param: default_val = the default value if any to set if env variable not set
+    :param: can_error = whether or not missing both env_key and default_val should
+            trigger an exception
+    
+    :return: env_key if present or default_val if not
+    :throws: ValueError if both parameters are empty.
+    """
+    env_value = os.environ.get(env_key, "")
+    # env value takes precedence
+    if env_value:
+        log.debug("""env key: %s specified.
+                    Will override configuration file value if set.""", env_key)
+        return env_value
+    # check for optional inputs, if env and input is missing
+    if not can_error:
+        if not env_value and not default_val:
+            raise ValueError(f"""{env_key} is not specified in env and is
+                                missing from configuration - at least one should be set""")
+    # fall back to configuration file value if present
+    return default_val

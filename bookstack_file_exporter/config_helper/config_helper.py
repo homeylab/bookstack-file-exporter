@@ -5,6 +5,7 @@ import logging
 # pylint: disable=import-error
 import yaml
 
+from bookstack_file_exporter.common.util import check_var
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
@@ -83,17 +84,17 @@ class ConfigNode:
         token_secret = self.user_inputs.credentials.token_secret
 
         # check to see if env var is specified, if so, it takes precedence
-        token_id = self._check_var(_BOOKSTACK_TOKEN_FIELD, token_id)
-        token_secret = self._check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
+        token_id = check_var(_BOOKSTACK_TOKEN_FIELD, token_id)
+        token_secret = check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
         return token_id, token_secret
 
     def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
         if self.user_inputs.minio:
-            minio_access_key = self._check_var(_MINIO_ACCESS_KEY_FIELD,
+            minio_access_key = check_var(_MINIO_ACCESS_KEY_FIELD,
                                                self.user_inputs.minio.access_key)
-            minio_secret_key = self._check_var(_MINIO_SECRET_KEY_FIELD,
+            minio_secret_key = check_var(_MINIO_SECRET_KEY_FIELD,
                                                self.user_inputs.minio.secret_key)
 
             object_config["minio"] = StorageProviderConfig(minio_access_key,
@@ -177,24 +178,24 @@ class ConfigNode:
         """return remote storage configuration"""
         return self._object_storage_config
 
-    @staticmethod
-    def _check_var(env_key: str, default_val: str) -> str:
-        """
-        :param: env_key = the environment variable to check
-        :param: default_val = the default value if any to set if env variable not set
-        
-        :return: env_key if present or default_val if not
-        :throws: ValueError if both parameters are empty.
-        """
-        env_value = os.environ.get(env_key, "")
-        # env value takes precedence
-        if env_value:
-            log.debug("""env key: %s specified.
-                       Will override configuration file value if set.""", env_key)
-            return env_value
-        # check for optional inputs, if env and input is missing
-        if not env_value and not default_val:
-            raise ValueError(f"""{env_key} is not specified in env and is
-                              missing from configuration - at least one should be set""")
-        # fall back to configuration file value if present
-        return default_val
+    # @staticmethod
+    # def _check_var(env_key: str, default_val: str) -> str:
+    #     """
+    #     :param: env_key = the environment variable to check
+    #     :param: default_val = the default value if any to set if env variable not set
+
+    #     :return: env_key if present or default_val if not
+    #     :throws: ValueError if both parameters are empty.
+    #     """
+    #     env_value = os.environ.get(env_key, "")
+    #     # env value takes precedence
+    #     if env_value:
+    #         log.debug("""env key: %s specified.
+    #                    Will override configuration file value if set.""", env_key)
+    #         return env_value
+    #     # check for optional inputs, if env and input is missing
+    #     if not env_value and not default_val:
+    #         raise ValueError(f"""{env_key} is not specified in env and is
+    #                           missing from configuration - at least one should be set""")
+    #     # fall back to configuration file value if present
+    #     return default_val
