@@ -499,6 +499,26 @@ It is possible to send notifications when an export run succeeds orfails. Curren
 
 Notifications are optional and the `notification` section can be omitted/removed/commented out entirely to keep a smaller configuration if not required.
 
+The title for notifications is configurable but not if not specified, a default will be used. Example:
+```
+##### Failure Message #####
+{TITLE}: Bookstack File Exporter Failed
+{BODY}:
+Bookstack File Exporter encountered an unrecoverable error.
+
+Occurred At: 2025-09-06 01:02:47
+
+Error: 401 Client Error: Unauthorized for url: https://test.bookstack/api/shelve
+
+
+##### Success Message #####
+{TITLE}: Bookstack File Exporter Success
+{BODY}:
+Bookstack File Exporter completed successfully.
+
+Completed At: 2025-09-06 01:05:27
+```
+
 ### apprise
 The apprise configuration is a part of the configuration yaml file under the notifications section and can be modified under `notifications.apprise`.
 
