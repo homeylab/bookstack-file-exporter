@@ -9,6 +9,7 @@ from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.exporter.exporter import NodeExporter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper
+from bookstack_file_exporter.notify.handler import NotifyHandler
 
 log = logging.getLogger(__name__)
 
@@ -18,11 +19,28 @@ def entrypoint(args: argparse.Namespace):
     config = ConfigNode(args)
     if config.user_inputs.run_interval:
         while True:
-            exporter(config)
+            run(config)
             log.info("Waiting %s seconds for next run", config.user_inputs.run_interval)
             # sleep process state
             time.sleep(config.user_inputs.run_interval)
-    exporter(config)
+    run(config)
+
+def run(config: ConfigNode):
+    """run export process with error handling and notification support"""
+    try:
+        exporter(config)
+    except Exception as run_err: # general catch all for notifications
+        log.error("Run failed: %s", str(run_err))
+        if not config.user_inputs.notifications:
+            raise run_err
+        try:
+            log.info("Sending failure notification(s)")
+            notif = NotifyHandler(config.user_inputs.notifications)
+            notif.do_notify(run_err)
+        except Exception as notif_err:
+            log.error("Failed to send notification: %s", str(notif_err))
+        # raise original error instead of notification error
+        raise run_err
 
 def exporter(config: ConfigNode):
     """export bookstack nodes and archive locally and/or remotely"""

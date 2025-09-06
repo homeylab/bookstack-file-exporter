@@ -80,11 +80,9 @@ class MinioArchiver:
         # get all objects in archive path/directory
         full_list: List[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
         # validate and filter out non managed objects
-        if full_list:
-            return [object for object in full_list
-                    if object.object_name.endswith(file_extension)
-                        and filter_str in object.object_name]
-        return []
+        return [object for object in full_list
+                if object.object_name.endswith(file_extension)
+                    and filter_str in object.object_name]
 
     def _get_stale_objects(self, file_extension: str) -> List[MinioObject]:
         minio_objects = self._scan_objects(file_extension)
