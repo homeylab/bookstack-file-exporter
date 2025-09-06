@@ -15,8 +15,6 @@ _APPRISE_FIELDS = {
     # "storage_path": "APPRISE_STORAGE_PATH"
 }
 
-_DEFAULT_TITLE = "Bookstack File Exporter Failed"
-
 # pylint: disable=too-few-public-methods, too-many-instance-attributes
 class AppRiseNotifyConfig:
     """
@@ -58,7 +56,3 @@ class AppRiseNotifyConfig:
                     log.Error("Failed to parse env var for apprise urls. \
                             Ensure proper json string format")
                     raise url_err
-
-        # set default custom_title if not provided
-        if not self.custom_title:
-            self.custom_title = _DEFAULT_TITLE
