@@ -17,7 +17,7 @@ _APPRISE_FIELDS = {
 
 _DEFAULT_TITLE = "Bookstack File Exporter Failed"
 
-# pylint: disable=too-few-public-methods
+# pylint: disable=too-few-public-methods, too-many-instance-attributes
 class AppRiseNotifyConfig:
     """
     Convenience class to hold apprise notification configuration
@@ -36,6 +36,8 @@ class AppRiseNotifyConfig:
         self.storage_path = config.storage_path
         self.custom_title = config.custom_title
         self.custom_attachment = config.custom_attachment_path
+        self.on_success = config.on_success
+        self.on_failure = config.on_failure
 
     def validate(self) -> None:
         """validate apprise configuration"""

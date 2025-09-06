@@ -44,6 +44,8 @@ class AppRiseNotifyConfig(BaseModel):
     storage_path: Optional[str] = ""
     custom_title: Optional[str] = ""
     custom_attachment_path: Optional[str] = ""
+    on_success: Optional[bool] = False
+    on_failure: Optional[bool] = True
 
 class Notifications(BaseModel):
     """YAML schema for user provided notification settings"""
