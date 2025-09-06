@@ -1,4 +1,5 @@
 import logging
+from typing import Union
 
 from bookstack_file_exporter.config_helper import models, notifications
 from bookstack_file_exporter.notify import notifiers
@@ -31,7 +32,7 @@ class NotifyHandler:
 
         return targets
 
-    def do_notify(self, excep: Exception) -> None:
+    def do_notify(self, excep: Union[None, Exception] = None) -> None:
         """handle notification sending for all configured targets"""
         if len(self.targets) == 0:
             log.debug("No notification targets found")
@@ -40,9 +41,11 @@ class NotifyHandler:
             log.debug("Starting notification handling for: %s", target)
             self._supported_notifiers[target](config, excep)
 
-
     def _handle_apprise(self, config: models.AppRiseNotifyConfig, excep: Exception):
         a_config = notifications.AppRiseNotifyConfig(config)
         a_config.validate()
         apprise = notifiers.AppRiseNotify(a_config)
-        apprise.notify(excep)
+        # only send notification if on_success or on_failure is set
+        if (not excep and a_config.on_success) or (excep and a_config.on_failure):
+            log.info("Sending notification for run status")
+            apprise.notify(excep)

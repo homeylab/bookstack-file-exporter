@@ -29,12 +29,13 @@ def run(config: ConfigNode):
     """run export process with error handling and notification support"""
     try:
         exporter(config)
+        if config.user_inputs.notifications:
+            notif = NotifyHandler(config.user_inputs.notifications)
+            notif.do_notify()
     except Exception as run_err: # general catch all for notifications
-        log.error("Run failed: %s", str(run_err))
         if not config.user_inputs.notifications:
             raise run_err
         try:
-            log.info("Sending failure notification(s)")
             notif = NotifyHandler(config.user_inputs.notifications)
             notif.do_notify(run_err)
         except Exception as notif_err:
