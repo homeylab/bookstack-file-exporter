@@ -89,3 +89,5 @@ notifications:
     storage_path: ""
     custom_title: ""
     custom_attachment_path: ""
+    on_success: false
+    on_failure: true
