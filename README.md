@@ -54,6 +54,7 @@ Supported backup formats are based on Bookstack API and shown [here](https://dem
 2. pdf
 3. markdown
 4. plaintext
+5. zip
 
 ### Use Case
 The main use case is to backup all docs in a relational directory-tree format to cover the scenarios:
@@ -79,6 +80,7 @@ formats: # md only example
 # - html
 # - pdf
 # - plaintext
+# - zip
 output_path: "bkps/"
 assets:
   export_images: false
@@ -229,6 +231,7 @@ formats:
   - html
   - pdf
   - plaintext
+  - zip
 http_config:
   verify_ssl: false
   timeout: 30
@@ -275,7 +278,7 @@ More descriptions can be found for each section below:
 | `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](#authentication) for more details. |
 | `credentials.token_id` | `str`| `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenId. |
 | `credentials.token_secret` | `str` | `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenSecret. |
-| `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext"]`|
+| `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext", "zip"]`|
 | `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. This directory and any parent directories will be attempted to be created if they do not exist. If not provided, will use current run directory by default. If using docker, this option can be omitted. |
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
