@@ -18,6 +18,7 @@ formats:
   - html
   - pdf
   - plaintext
+  - zip
 minio:
   # a host/ip + port combination is also allowed
   # example: "minio.yourdomain.com:8443"

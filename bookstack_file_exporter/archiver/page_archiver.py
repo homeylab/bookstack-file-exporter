@@ -21,6 +21,7 @@ _FILE_EXTENSION_MAP = {
     "html": ".html",
     "pdf": ".pdf",
     "plaintext": ".txt",
+    "zip": ".zip",
     "meta": _META_FILE_SUFFIX,
     "tar": _TAR_SUFFIX,
     "tgz": _TAR_GZ_SUFFIX
