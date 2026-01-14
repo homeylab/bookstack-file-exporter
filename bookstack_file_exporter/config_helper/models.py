@@ -56,7 +56,7 @@ class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
     host: str
     credentials: Optional[BookstackAccess] = BookstackAccess()
-    formats: List[Literal["markdown", "html", "pdf", "plaintext"]]
+    formats: List[Literal["markdown", "html", "pdf", "plaintext", "zip"]]
     output_path: Optional[str] = ""
     assets: Optional[Assets] = Assets()
     minio: Optional[ObjectStorageConfig] = None
