@@ -177,3 +177,78 @@ def test_http_get_request_404_raises_http_error(http_config):
 ])
 def test_should_verify(url, expected):
     assert HttpHelper.should_verify(url) == expected
+
+
+# ---------------------------------------------------------------------------
+# http_get_request — error responses
+# ---------------------------------------------------------------------------
+
+@responses.activate
+@pytest.mark.parametrize("status_code", [401, 403, 500, 503])
+def test_http_get_request_non_2xx_raises_http_error(http_config, status_code):
+    """Non-2xx responses raise HTTPError (retry_count=0 so no retries)."""
+    client = HttpHelper(headers={}, config=http_config)
+    responses.get(
+        f"{BASE}/books",
+        status=status_code,
+    )
+    with pytest.raises(requests.exceptions.HTTPError):
+        client.http_get_request(f"{BASE}/books")
+
+
+# ---------------------------------------------------------------------------
+# http_get_request — retry logic
+# ---------------------------------------------------------------------------
+
+from bookstack_file_exporter.config_helper.models import HttpConfig  # noqa: E402
+
+
+def _retry_config(retry_count=2, retry_codes=None):
+    """Helper to build an HttpConfig with retries enabled."""
+    return HttpConfig(
+        timeout=10,
+        verify_ssl=True,
+        retry_count=retry_count,
+        backoff_factor=0,
+        retry_codes=retry_codes or [500, 502, 503],
+    )
+
+
+@responses.activate
+def test_http_get_request_retries_500_then_succeeds():
+    """500 in retry_codes → retried; eventual 200 returned."""
+    client = HttpHelper(headers={}, config=_retry_config(retry_count=3))
+    responses.get(f"{BASE}/books", status=500)
+    responses.get(f"{BASE}/books", status=500)
+    responses.get(f"{BASE}/books", json={"data": [], "total": 0}, status=200)
+    response = client.http_get_request(f"{BASE}/books")
+    assert response.status_code == 200
+
+
+@responses.activate
+def test_http_get_request_retries_exhausted_raises():
+    """500 in retry_codes; exhausted retries → exception raised."""
+    client = HttpHelper(headers={}, config=_retry_config(retry_count=1))
+    # 1 retry = 2 attempts total; register 3 responses to be safe
+    responses.get(f"{BASE}/books", status=500)
+    responses.get(f"{BASE}/books", status=500)
+    responses.get(f"{BASE}/books", status=500)
+    # urllib3 Retry with raise_on_status=True raises MaxRetryError, which
+    # requests wraps as RetryError; some configs surface HTTPError.
+    with pytest.raises((
+        requests.exceptions.RetryError,
+        requests.exceptions.HTTPError,
+        requests.exceptions.ConnectionError,
+    )):
+        client.http_get_request(f"{BASE}/books")
+
+
+@responses.activate
+def test_http_get_request_does_not_retry_non_retryable_code():
+    """404 not in retry_codes → fails immediately, no retries."""
+    client = HttpHelper(headers={}, config=_retry_config(retry_count=3))
+    responses.get(f"{BASE}/books", status=404)
+    with pytest.raises(requests.exceptions.HTTPError):
+        client.http_get_request(f"{BASE}/books")
+    # only one HTTP call should have been made (no retries for 404)
+    assert len(responses.calls) == 1
