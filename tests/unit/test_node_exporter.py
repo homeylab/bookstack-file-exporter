@@ -7,20 +7,13 @@ import pytest
 
 from bookstack_file_exporter.exporter.exporter import NodeExporter
 from bookstack_file_exporter.exporter.node import Node
+from tests.helpers import make_response
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _LOGGER_NAME = "bookstack_file_exporter.exporter.exporter"
-
-
-def make_response(payload):
-    """Inline duplicate of conftest helper so tests can call it freely."""
-    from unittest.mock import MagicMock
-    resp = MagicMock()
-    resp.json.return_value = payload
-    return resp
 
 
 def _exporter(api_urls, mock_http_client) -> NodeExporter:

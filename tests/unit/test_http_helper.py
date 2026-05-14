@@ -1,4 +1,6 @@
 """Unit tests for HttpHelper in bookstack_file_exporter.common.util."""
+import logging
+
 import pytest
 import requests
 import responses
@@ -185,8 +187,9 @@ def test_should_verify(url, expected):
 
 @responses.activate
 @pytest.mark.parametrize("status_code", [401, 403, 500, 503])
-def test_http_get_request_non_2xx_raises_http_error(http_config, status_code):
+def test_http_get_request_non_2xx_raises_http_error(http_config, status_code, caplog):
     """Non-2xx responses raise HTTPError (retry_count=0 so no retries)."""
+    caplog.set_level(logging.ERROR, logger="bookstack_file_exporter.common.util")
     client = HttpHelper(headers={}, config=http_config)
     responses.get(
         f"{BASE}/books",
@@ -194,6 +197,9 @@ def test_http_get_request_non_2xx_raises_http_error(http_config, status_code):
     )
     with pytest.raises(requests.exceptions.HTTPError):
         client.http_get_request(f"{BASE}/books")
+    # confirm the error log was emitted with the status code
+    error_logs = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert any(str(status_code) in r.getMessage() for r in error_logs)
 
 
 # ---------------------------------------------------------------------------
@@ -233,13 +239,9 @@ def test_http_get_request_retries_exhausted_raises():
     responses.get(f"{BASE}/books", status=500)
     responses.get(f"{BASE}/books", status=500)
     responses.get(f"{BASE}/books", status=500)
-    # urllib3 Retry with raise_on_status=True raises MaxRetryError, which
-    # requests wraps as RetryError; some configs surface HTTPError.
-    with pytest.raises((
-        requests.exceptions.RetryError,
-        requests.exceptions.HTTPError,
-        requests.exceptions.ConnectionError,
-    )):
+    # urllib3 Retry with raise_on_status=True surfaces exhaustion as
+    # requests.exceptions.RetryError (verified with requests 2.32.3, urllib3 1.26.20).
+    with pytest.raises(requests.exceptions.RetryError):
         client.http_get_request(f"{BASE}/books")
 
 

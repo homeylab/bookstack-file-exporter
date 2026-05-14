@@ -92,12 +92,12 @@ def _make_stat_patcher(mapping: Dict[str, int]):
     return _patched
 
 
-@pytest.mark.parametrize("keep_last,expected_len,expected_oldest", [
-    (2, 3, ["oldest.tgz", "old.tgz", "mid.tgz"]),
-])
 def test_filter_archives_5_files_keep_2(
-    monkeypatch, archiver_instance, mock_config, five_files, keep_last, expected_len, expected_oldest
+    monkeypatch, archiver_instance, mock_config, five_files
 ):
+    keep_last = 2
+    expected_len = 3
+    expected_oldest = ["oldest.tgz", "old.tgz", "mid.tgz"]
     mock_config.user_inputs.keep_last = keep_last
     fake_ctimes = {
         "oldest.tgz": 100,

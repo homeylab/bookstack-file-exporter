@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.helpers import make_response  # noqa: F401  re-export
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -67,13 +69,6 @@ def http_config():
         backoff_factor=0,
         retry_codes=[],
     )
-
-
-def make_response(payload):
-    """build a MagicMock that mimics requests.Response for given json payload"""
-    resp = MagicMock()
-    resp.json.return_value = payload
-    return resp
 
 
 @pytest.fixture
