@@ -56,25 +56,16 @@ class NodeExporter():
         return parent_nodes
 
     def get_chapter_nodes(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
-        """ get chapter nodes """
-        # Chapters are treated a little differently
-        # They are under books like pages but have their own children
-        # i.e. not a terminal node
+        """build chapter nodes by walking each book's contents"""
         base_url = self.api_urls["chapters"]
-        all_chapters: List[int] = self._get_all_ids(base_url)
-        if not all_chapters:
-            log.debug("No chapters found in given Bookstack instance")
-            return {}
-        return self._get_chapters(base_url, all_chapters, book_nodes)
-
-    def _get_chapters(self, base_url: str, all_chapters: List[int],
-                       book_nodes: Dict[int, Node]) -> Dict[int, Node]:
         chapter_nodes = {}
-        for chapter_id in all_chapters:
-            chapter_url = f"{base_url}/{chapter_id}"
-            chapter_data = self._get_json_response(chapter_url)
-            book_id = chapter_data['book_id']
-            chapter_nodes[chapter_id] = Node(chapter_data, book_nodes[book_id])
+        for book_node in book_nodes.values():
+            for child in book_node.children:
+                if child.get('type') != 'chapter':
+                    continue
+                chapter_id = child['id']
+                chapter_data = self._get_json_response(f"{base_url}/{chapter_id}")
+                chapter_nodes[chapter_id] = Node(chapter_data, book_node)
         return chapter_nodes
 
     def get_child_nodes(self, resource_type: str, parent_nodes: Dict[int, Node],
