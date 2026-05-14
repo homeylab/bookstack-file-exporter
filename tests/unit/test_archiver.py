@@ -297,6 +297,16 @@ def test_archive_remote_raises_on_unknown_storage_type(patched_page_archiver, mo
         archiver.archive_remote()
 
 
+def test_archive_remote_s3_raises_not_implemented(patched_page_archiver, mock_config, mock_http_client):
+    """archive_remote routes 's3' to _archive_s3 which is intentionally not implemented"""
+    config = MagicMock()
+    config.object_storage_config = {"s3": MagicMock()}
+    config.base_dir_name = "bkps"
+    archiver = Archiver(config, MagicMock())
+    with pytest.raises(NotImplementedError, match="S3 remote storage"):
+        archiver.archive_remote()
+
+
 def test_archive_remote_empty_config_no_calls(archiver_instance, mock_config):
     """object_storage_config={} → no remote export methods called."""
     mock_config.object_storage_config = {}

@@ -82,7 +82,7 @@ class Archiver:
         minio_archiver.clean_up(self._page_archiver.file_extension_map['tgz'])
 
     def _archive_s3(self, obj_config: StorageProviderConfig):
-        pass
+        raise NotImplementedError("S3 remote storage is not yet implemented")
 
     def clean_up(self):
         """remove archive after sending to remote target"""
