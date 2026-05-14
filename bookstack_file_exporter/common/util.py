@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Dict, Union
+from typing import Dict, List, Union
 import urllib3
 # pylint: disable=import-error
 import requests
@@ -64,6 +64,24 @@ class HttpHelper:
                     response.status_code, url)
             raise e
         return response
+
+    def http_get_all(self, url: str, count: int = 500) -> List[Dict]:
+        """fetch all items from a paginated bookstack list endpoint"""
+        separator = "&" if "?" in url else "?"
+        all_data: List[Dict] = []
+        offset = 0
+        while True:
+            body = self.http_get_request(
+                f"{url}{separator}count={count}&offset={offset}"
+            ).json()
+            batch = body.get('data', [])
+            if not batch:
+                break
+            all_data.extend(batch)
+            if len(all_data) >= body.get('total', 0):
+                break
+            offset += count
+        return all_data
 
     @staticmethod
     def should_verify(url: str) -> str:
