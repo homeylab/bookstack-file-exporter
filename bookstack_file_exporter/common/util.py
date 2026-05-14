@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Dict, List, Union
 import urllib3
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
@@ -67,13 +68,15 @@ class HttpHelper:
 
     def http_get_all(self, url: str, count: int = 500) -> List[Dict]:
         """fetch all items from a paginated bookstack list endpoint"""
-        separator = "&" if "?" in url else "?"
+        parsed = urlparse(url)
+        base_query = [(k, v) for k, v in parse_qsl(parsed.query)
+                      if k not in ('count', 'offset')]
         all_data: List[Dict] = []
         offset = 0
         while True:
-            body = self.http_get_request(
-                f"{url}{separator}count={count}&offset={offset}"
-            ).json()
+            query = urlencode(base_query + [('count', count), ('offset', offset)])
+            paginated_url = urlunparse(parsed._replace(query=query))
+            body = self.http_get_request(paginated_url).json()
             batch = body.get('data', [])
             if not batch:
                 break
