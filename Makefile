@@ -75,6 +75,14 @@ docker_push:
 docker_push_latest:
 	docker push ${IMAGE_NAME} --all-tags
 
+test:
+	pytest
+
+test-cov:
+	pytest --cov-report=html
+
+.PHONY: test test-cov
+
 # add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:
 	docker run -i \

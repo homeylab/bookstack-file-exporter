@@ -1,0 +1,67 @@
+{
+  "id": 200,
+  "book_id": 10,
+  "slug": "test-chapter-1",
+  "name": "Test Chapter 1",
+  "description": "A test chapter with two pages.",
+  "description_html": "<p>A test chapter with two pages.</p>",
+  "default_template_id": null,
+  "priority": 1,
+  "created_at": "2023-01-01T10:00:00.000000Z",
+  "updated_at": "2023-01-02T10:00:00.000000Z",
+  "created_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "updated_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "owned_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "book_slug": "test-book-1",
+  "tags": [],
+  "pages": [
+    {
+      "id": 300,
+      "book_id": 10,
+      "chapter_id": 200,
+      "name": "Chapter 1 Page 1",
+      "slug": "chapter-1-page-1",
+      "priority": 0,
+      "created_at": "2023-01-01T10:00:00.000000Z",
+      "updated_at": "2023-01-02T10:00:00.000000Z",
+      "created_by": 1,
+      "updated_by": 1,
+      "owned_by": 1,
+      "draft": false,
+      "revision_count": 1,
+      "template": false,
+      "editor": "wysiwyg",
+      "book_slug": "test-book-1"
+    },
+    {
+      "id": 301,
+      "book_id": 10,
+      "chapter_id": 200,
+      "name": "Chapter 1 Page 2",
+      "slug": "chapter-1-page-2",
+      "priority": 1,
+      "created_at": "2023-01-01T11:00:00.000000Z",
+      "updated_at": "2023-01-02T11:00:00.000000Z",
+      "created_by": 1,
+      "updated_by": 1,
+      "owned_by": 1,
+      "draft": false,
+      "revision_count": 1,
+      "template": false,
+      "editor": "wysiwyg",
+      "book_slug": "test-book-1"
+    }
+  ]
+}

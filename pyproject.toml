@@ -1,3 +1,23 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-ra --strict-markers --cov=bookstack_file_exporter --cov-report=term-missing --cov-report=xml"
+markers = [
+    "integration: tests that exercise multiple units together (slower, may build entire node trees)",
+    "slow: tests that take >1s",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["bookstack_file_exporter"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
