@@ -115,36 +115,34 @@ def test_filter_archives_5_files_keep_2(
 def test_filter_archives_3_files_keep_5(
     monkeypatch, archiver_instance, mock_config, three_files
 ):
-    """keep_last=5 with only 3 files.
-
-    NOTE: source bug — when keep_last >= len(file_list), to_delete starts <= 0.
-    The loop still appends the first file then breaks (off-by-one).
-    _get_stale_archives guards against calling _filter_archives in this case, so
-    this path is not reachable from public API. We document actual behavior here.
-    """
+    """keep_last=5 with only 3 files — nothing to delete, returns []."""
     mock_config.user_inputs.keep_last = 5
     fake_ctimes = {"oldest.tgz": 100, "mid.tgz": 200, "newest.tgz": 300}
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
-    # to_delete = 3-5 = -2; loop appends oldest then breaks immediately (off-by-one bug)
     result = archiver_instance._filter_archives(three_files)
-    assert result == ["oldest.tgz"]
+    assert result == []
+
+
+def test_filter_archives_3_files_keep_3(
+    monkeypatch, archiver_instance, mock_config, three_files
+):
+    """keep_last=3 equal to count — nothing to delete, returns []."""
+    mock_config.user_inputs.keep_last = 3
+    fake_ctimes = {"oldest.tgz": 100, "mid.tgz": 200, "newest.tgz": 300}
+    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
+    result = archiver_instance._filter_archives(three_files)
+    assert result == []
 
 
 def test_filter_archives_1_file_keep_1(
     monkeypatch, archiver_instance, mock_config, one_file
 ):
-    """1 file, keep_last=1.
-
-    NOTE: source bug — to_delete = 1-1 = 0; loop appends the single file then
-    breaks. Actual callers never reach this because _get_stale_archives only calls
-    _filter_archives when len > keep_last. We document actual behavior here.
-    """
+    """1 file, keep_last=1 — nothing to delete, returns []."""
     mock_config.user_inputs.keep_last = 1
     fake_ctimes = {"only.tgz": 100}
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
-    # off-by-one: to_delete=0, first append triggers break → returns [only.tgz]
     result = archiver_instance._filter_archives(one_file)
-    assert result == ["only.tgz"]
+    assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -281,18 +279,22 @@ def test_create_export_dir_permission_error_logs_warning(
 # archive_remote
 # ---------------------------------------------------------------------------
 
-def test_archive_remote_dispatches_minio(archiver_instance, mock_config):
-    """object_storage_config has 'minio' key → _archive_minio invoked.
-
-    _remote_exports is built at __init__ time, so we replace the dict entry
-    directly rather than swapping the bound method on the instance.
-    """
+def test_archive_remote_dispatches_minio(monkeypatch, archiver_instance, mock_config):
+    """object_storage_config has 'minio' key → _archive_minio invoked."""
     minio_mock = MagicMock()
     mock_config.object_storage_config = {"minio": minio_mock}
     minio_handler = MagicMock()
-    archiver_instance._remote_exports["minio"] = minio_handler
+    monkeypatch.setattr(archiver_instance, "_archive_minio", minio_handler)
     archiver_instance.archive_remote()
     minio_handler.assert_called_once_with(minio_mock)
+
+
+def test_archive_remote_raises_on_unknown_storage_type(patched_page_archiver, mock_config, mock_http_client):
+    """object_storage_config has unknown key → ValueError raised."""
+    mock_config.object_storage_config = {"gcs": MagicMock()}
+    archiver = Archiver(mock_config, mock_http_client)
+    with pytest.raises(ValueError, match="unsupported remote storage type"):
+        archiver.archive_remote()
 
 
 def test_archive_remote_empty_config_no_calls(archiver_instance, mock_config):

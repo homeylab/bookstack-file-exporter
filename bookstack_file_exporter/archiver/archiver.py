@@ -35,7 +35,6 @@ class Archiver:
         self.base_dir = config.base_dir_name
         self.archive_dir = self._generate_root_folder(self.base_dir)
         self._page_archiver = PageArchiver(self.archive_dir, self.config, http_client)
-        self._remote_exports = {'minio': self._archive_minio, 's3': self._archive_s3}
 
     def create_export_dir(self):
         """create directory for archiving"""
@@ -68,9 +67,13 @@ class Archiver:
     # send to remote systems
     def archive_remote(self):
         """for each target, do their respective tasks"""
-        if self.config.object_storage_config:
-            for key, value in self.config.object_storage_config.items():
-                self._remote_exports[key](value)
+        if not self.config.object_storage_config:
+            return
+        for key, value in self.config.object_storage_config.items():
+            handler = getattr(self, f"_archive_{key}", None)
+            if handler is None:
+                raise ValueError(f"unsupported remote storage type: {key}")
+            handler(value)
 
     def _archive_minio(self, obj_config: StorageProviderConfig):
         minio_archiver = MinioArchiver(obj_config.access_key,
@@ -113,23 +116,12 @@ class Archiver:
 
     def _filter_archives(self, file_list: List[str]) -> List[str]:
         """get older archives based on keep number"""
-        file_dict = {}
-        for file in file_list:
-            file_dict[file] = os.stat(file).st_ctime
-        # order dict by creation time
-        # ascending order
-        ordered_dict = dict(sorted(file_dict.items(), key=lambda item: item[1]))
-        # ordered_dict = {k: v for k, v in sorted(file_dict.items(),
-        #                                         key=lambda item: item[1])}
-
-        files_to_clean = []
-        # how many items we will have to delete to fulfill keep_last
-        to_delete = len(ordered_dict) - self.config.user_inputs.keep_last
-        for key in ordered_dict:
-            files_to_clean.append(key)
-            to_delete -= 1
-            if to_delete <= 0:
-                break
+        file_dict = {file: os.stat(file).st_ctime for file in file_list}
+        ordered = sorted(file_dict.items(), key=lambda item: item[1])
+        to_delete = len(ordered) - self.config.user_inputs.keep_last
+        if to_delete <= 0:
+            return []
+        files_to_clean = [key for key, _ in ordered[:to_delete]]
         log.debug("%d local archives will be cleaned up", len(files_to_clean))
         return files_to_clean
 
