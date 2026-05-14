@@ -41,10 +41,7 @@ class NodeExporter():
         return response.json()
 
     def _get_all_ids(self, url: str) -> List[int]:
-        ids_api_meta = self._get_json_response(url)
-        if ids_api_meta:
-            return [item['id'] for item in ids_api_meta['data']]
-        return []
+        return [item['id'] for item in self.http_client.http_get_all(url)]
 
     def _get_parents(self, base_url: str, parent_ids: List[int],
                       path_prefix: str = "") -> Dict[int, Node]:
