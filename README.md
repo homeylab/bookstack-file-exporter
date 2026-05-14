@@ -547,6 +547,34 @@ Below are versions that have major changes to the way configuration or exporter 
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 
+## Running Tests
+
+Install dev dependencies and run the test suite:
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+The pytest run includes coverage by default (configured in `pyproject.toml`). For an HTML coverage report:
+
+```bash
+pytest --cov-report=html
+open htmlcov/index.html
+```
+
+To run only unit tests (skipping integration tests):
+
+```bash
+pytest tests/unit
+```
+
+To run only the integration tests:
+
+```bash
+pytest -m integration
+```
+
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
 2. ~~Include the exporter in a maintained helm chart as an optional deployment. The helm chart is [here](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack).~~

@@ -162,6 +162,7 @@ cython_debug/
 
 ## Local
 local/
+.claude/
 
 ## test outputs
 bkps/

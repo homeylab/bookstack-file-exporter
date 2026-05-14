@@ -1,0 +1,56 @@
+{
+  "id": 1,
+  "name": "Test Shelf 1",
+  "slug": "test-shelf-1",
+  "description": "A test shelf containing books for fixture testing.",
+  "description_html": "<p>A test shelf containing books for fixture testing.</p>",
+  "created_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "updated_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "owned_by": {
+    "id": 1,
+    "name": "Test User",
+    "slug": "test-user"
+  },
+  "created_at": "2023-01-01T10:00:00.000000Z",
+  "updated_at": "2023-01-02T10:00:00.000000Z",
+  "tags": [
+    {
+      "name": "Category",
+      "value": "Test",
+      "order": 0
+    }
+  ],
+  "cover": null,
+  "books": [
+    {
+      "id": 10,
+      "name": "Test Book 1",
+      "slug": "test-book-1",
+      "description": "The first test book.",
+      "created_at": "2023-01-01T10:00:00.000000Z",
+      "updated_at": "2023-01-02T10:00:00.000000Z",
+      "created_by": 1,
+      "updated_by": 1,
+      "owned_by": 1
+    },
+    {
+      "id": 11,
+      "name": "Test Book 2",
+      "slug": "test-book-2",
+      "description": "The second test book.",
+      "created_at": "2023-01-01T11:00:00.000000Z",
+      "updated_at": "2023-01-02T11:00:00.000000Z",
+      "created_by": 1,
+      "updated_by": 1,
+      "owned_by": 1
+    }
+  ]
+}
