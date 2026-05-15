@@ -1,7 +1,7 @@
 from typing import Union, List, Dict
 import logging
 # pylint: disable=import-error
-from requests.exceptions import HTTPError
+from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
@@ -148,12 +148,9 @@ class PageArchiver:
         for asset_node in asset_nodes:
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.url)
-            except HTTPError:
-                # probably unnecessary, but just in case
+            except (HTTPError, RetryError):
                 if asset_node.id_ not in failed_assets:
                     failed_assets[asset_node.id_] = 0
-                # a 404 or other error occurred
-                # skip this asset
                 log.error("Failed to get image or attachment data " \
                           "for asset located at: %s - skipping", asset_node.url)
                 continue
