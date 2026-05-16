@@ -53,6 +53,6 @@ class AppRiseNotifyConfig:
                     self.service_urls = new_urls
                 # json errors can be hard to debug, add helpful log message
                 except json.decoder.JSONDecodeError as url_err:
-                    log.Error("Failed to parse env var for apprise urls. \
+                    log.error("Failed to parse env var for apprise urls. \
                             Ensure proper json string format")
                     raise url_err
