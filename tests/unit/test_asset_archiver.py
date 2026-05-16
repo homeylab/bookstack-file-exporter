@@ -13,6 +13,7 @@ from bookstack_file_exporter.archiver.asset_archiver import (
     AttachmentNode,
     ImageNode,
 )
+from bookstack_file_exporter.common.util import HttpHelper
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
@@ -868,3 +869,112 @@ class TestPhase4PageArchiverDispatch:
             nodes_arg = c.args[3] if len(c.args) > 3 else c.kwargs.get("asset_nodes", [])
             assert bad_node not in nodes_arg, "failed node must not be passed to html rewrite"
             assert good_node in nodes_arg, "successful node must be passed to html rewrite"
+
+
+# ---------------------------------------------------------------------------
+# E2E — full pipeline integration
+# ---------------------------------------------------------------------------
+
+class TestE2eHtmlRewrite:
+    """Full pipeline: PageArchiver → AssetArchiver → bytes.replace, HTTP mocked only.
+
+    Verifies that archive_pages rewrites image URLs in HTML exports
+    to local relative paths end-to-end without mocking internal components.
+    Requires Task 1 fix (skip redundant API call for ImageNode in HTML mode).
+
+    PAGE_HTML uses a base64 data: URI for img src — matching how real
+    BookStack page exports embed images. This is fixture realism only.
+
+    Task 1's optimization is proven by the http_get_request.call_count
+    assertion below, NOT by the base64 src. With Task 1: 1 HTTP call
+    (asset bytes only). Without Task 1: 2 HTTP calls (asset bytes +
+    redundant get_asset_data). The other assertions (anchor rewritten,
+    IMAGE_URL absent) pass in both states because 'content' in MagicMock()
+    is False, so _get_html_url_strs returns [] and url_map falls back to
+    {page_url: local_path} either way.
+    """
+
+    IMAGE_ID = 42
+    PAGE_ID = 5
+    IMAGE_URL = "https://wiki.example.com/uploads/images/gallery/2024-01/photo.png"
+    PAGE_HTML = (
+        '<html><body>'
+        f'<a href="{IMAGE_URL}">'
+        '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==" alt="photo">'
+        '</a></body></html>'
+    )
+
+    def _make_config(self):
+        config = MagicMock()
+        config.urls = {
+            "pages": "https://wiki.example.com/api/pages",
+            "images": "https://wiki.example.com/api/image-gallery",
+            "attachments": "https://wiki.example.com/api/attachments",
+        }
+        config.user_inputs.formats = ["html"]
+        config.user_inputs.assets.export_images = True
+        config.user_inputs.assets.export_attachments = False
+        config.user_inputs.assets.export_meta = False
+        config.user_inputs.assets.modify_links = True
+        return config
+
+    def test_html_image_url_rewritten_to_local_path(self, tmp_path, build_node):
+        """Full pipeline rewrites remote image URL in HTML export to local relative path."""
+        import re
+        from bookstack_file_exporter.archiver.page_archiver import PageArchiver
+
+        config = self._make_config()
+        archive_dir = str(tmp_path / "bookstack-test")
+
+        http_client = MagicMock(spec=HttpHelper)
+        http_client.http_get_all.return_value = [{
+            "id": self.IMAGE_ID,
+            "uploaded_to": self.PAGE_ID,
+            "url": self.IMAGE_URL,
+        }]
+        http_client.http_get_request.return_value.content = b"fake_png_bytes"
+
+        written: dict = {}
+
+        def capture_write(base_tar_dir: str, file_path: str, data: bytes) -> None:
+            written[file_path] = data
+
+        parent = build_node(id=1, name="my-book", slug="my-book")
+        page = build_node(id=self.PAGE_ID, name="test-page", slug="test-page", parent=parent)
+
+        archiver = PageArchiver(archive_dir, config, http_client)
+
+        with patch(
+            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            return_value=self.PAGE_HTML.encode(),
+        ), patch(
+            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar",
+            side_effect=capture_write,
+        ):
+            archiver.archive_pages({self.PAGE_ID: page})
+
+        html_files = {k: v for k, v in written.items() if k.endswith(".html")}
+        assert len(html_files) == 1, (
+            f"expected exactly one HTML file; got {len(html_files)}: {list(html_files)}"
+        )
+
+        html_bytes = next(iter(html_files.values()))
+
+        assert re.search(
+            rb'<a href="images/test-page/photo\.png">',
+            html_bytes,
+        ), "anchor href must be rewritten to local relative path"
+
+        assert self.IMAGE_URL.encode() not in html_bytes, (
+            "remote URL must be fully removed from HTML output"
+        )
+
+        assert b'src="data:image/png;base64,' in html_bytes, (
+            "base64 data: src must be preserved across rewrite"
+        )
+
+        assert http_client.http_get_request.call_count == 1, (
+            f"expected 1 HTTP call (asset bytes only); "
+            f"got {http_client.http_get_request.call_count} — "
+            f"Task 1 short-circuit not firing"
+        )
