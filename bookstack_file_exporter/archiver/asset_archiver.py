@@ -43,7 +43,9 @@ class AssetNode:
         """image path local to page directory"""
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
-    def all_urls(self, asset_data: dict[str, Union[int, str, bool, dict]], kind: Literal["markdown", "html"]) -> list[str]:
+    def all_urls(
+            self, asset_data: dict[str, Union[int, str, bool, dict]],
+            kind: Literal["markdown", "html"]) -> list[str]:
         """All URLs for this asset that may appear in an exported page.
 
         Canonical page_url always included — the per-asset content API
@@ -321,8 +323,10 @@ class AssetArchiver:
                 image_page_map[img_node.page_id] = [img_node]
         return image_page_map
 
-    def _create_attachment_map(self,
-            json_data: dict[str, list[dict[str, str | int | bool | dict]]]) -> dict[int, list[AttachmentNode]]:
+    def _create_attachment_map(
+            self,
+            json_data: dict[str, list[dict[str, str | int | bool | dict]]]
+            ) -> dict[int, list[AttachmentNode]]:
         asset_nodes = {}
         for asset_meta in json_data:
             asset_node = None

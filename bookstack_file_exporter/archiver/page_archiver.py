@@ -177,7 +177,8 @@ class PageArchiver:
         node_base_path = f"{self.archive_base_path}/{parent_path}"
         for asset_node in asset_nodes:
             try:
-                asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.download_url)
+                asset_data = self.asset_archiver.get_asset_bytes(
+                    asset_type, asset_node.download_url)
             except (HTTPError, RetryError):
                 if asset_node.id_ not in failed_assets:
                     failed_assets[asset_node.id_] = 0
