@@ -296,11 +296,16 @@ class AssetArchiver:
         # Prevents shorter URLs that are substrings of longer ones from corrupting
         # subsequent matches.
         for url, local_path in sorted(url_map.items(), key=lambda item: len(item[0]), reverse=True):
+            if not url:
+                # bytes.replace(b"", ...) inserts replacement between every byte —
+                # guard here even though _build_url_map already filters empties.
+                continue
             url_bytes = url.encode()
-            if page_data.count(url_bytes) == 0:
+            # isEnabledFor short-circuits the `not in` scan when debug is off,
+            # avoiding a redundant O(n) pass before replace() runs.
+            if log.isEnabledFor(logging.DEBUG) and url_bytes not in page_data:
                 log.debug("URL has zero matches in page data (no substitution made): %s", url)
-            else:
-                page_data = page_data.replace(url_bytes, local_path.encode())
+            page_data = page_data.replace(url_bytes, local_path.encode())
         return page_data
 
     @staticmethod
