@@ -47,14 +47,14 @@ class AssetNode:
 
         Canonical page_url always included — the per-asset content API
         may omit it (e.g. anchor href wrapping a scaled img src).
-        AttachmentNode.page_url is empty string (filtered by callers).
+        Empty strings are filtered out (AttachmentNode.page_url is '').
         """
         extracted = (
             self._get_md_url_strs(asset_data)
             if kind == "markdown"
             else self._get_html_url_strs(asset_data)
         )
-        return list(dict.fromkeys([*extracted, self.page_url]))
+        return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
     def _get_md_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:

@@ -429,9 +429,9 @@ class TestAllUrls:
     def test_all_urls_always_includes_canonical_node_url(
         self, image_node, image_api_content
     ):
-        """all_urls should include page_url even when content API omits it."""
+        """all_urls should include the full-res page URL even when content API omits it."""
         urls = image_node.all_urls(image_api_content, "html")
-        assert image_node.page_url in urls
+        assert "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png" in urls
 
     def test_all_urls_markdown_returns_extracted_urls(
         self, image_node, image_api_content
@@ -443,9 +443,9 @@ class TestAllUrls:
     def test_all_urls_returns_only_canonical_when_no_content(
         self, image_node
     ):
-        """all_urls should return [page_url] when asset_data has no content key."""
+        """all_urls should return only the full-res URL when asset_data has no content key."""
         urls = image_node.all_urls({}, "html")
-        assert urls == [image_node.page_url]
+        assert urls == ["https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png"]
 
     def test_attachment_all_urls_empty_page_url_filtered_by_build_url_map(
         self, asset_archiver, attachment_node, attachment_api_content
@@ -454,6 +454,16 @@ class TestAllUrls:
         asset_archiver.http_client.http_get_request.return_value.json.return_value = attachment_api_content
         url_map = asset_archiver._build_url_map("attachments", "my-page", [attachment_node], kind="html")
         assert "" not in url_map
+        # Positive: the public attachment URL from links.html IS in the map
+        assert "https://wiki.example.com/attachments/99" in url_map
+
+    def test_attachment_all_urls_filters_empty_page_url_at_source(
+        self, attachment_node, attachment_api_content
+    ):
+        """all_urls on AttachmentNode must not return '' — filtering happens inside all_urls."""
+        urls = attachment_node.all_urls(attachment_api_content, "html")
+        assert "" not in urls
+        assert "https://wiki.example.com/attachments/99" in urls
 
     def test_attachment_all_urls_markdown_returns_extracted_url(
         self, attachment_node, attachment_api_content
@@ -759,10 +769,10 @@ class TestPhase4PageArchiverDispatch:
         from requests.exceptions import HTTPError
         archiver = PageArchiver(archive_dir, config, MagicMock())
 
-        good_node = MagicMock()
+        good_node = MagicMock(spec=ImageNode)
         good_node.id_ = 10
         good_node.download_url = "https://wiki.example.com/uploads/images/10/good.png"
-        bad_node = MagicMock()
+        bad_node = MagicMock(spec=ImageNode)
         bad_node.id_ = 99
         bad_node.download_url = "https://wiki.example.com/uploads/images/99/bad.png"
 
