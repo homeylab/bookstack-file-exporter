@@ -90,7 +90,7 @@ class ConfigNode:
         log.warning(
             "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
             "USE 'assets.modify_links' INSTEAD. "
-            "THE LEGACY KEY WILL BE REMOVED IN 2.0.0."
+            "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
         )
         if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
             log.warning(

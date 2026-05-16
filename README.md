@@ -20,6 +20,7 @@ Table of Contents
   - [Notifications](#notifications)
     - [apprise](#apprise)
   - [Potential Breaking Upgrades](#potential-breaking-upgrades)
+  - [Running Tests](#running-tests)
   - [Future Items](#future-items)
 
 ## Background
@@ -283,7 +284,7 @@ More descriptions can be found for each section below:
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments for a page to an `attachments` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
-| `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. Legacy key `modify_markdown` still accepted as alias; will be removed in 2.0.0. See [Modify Links](#modify-links) for more information. |
+| `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. Legacy key `modify_markdown` still accepted (deprecated); will be removed in a future version. See [Modify Links](#modify-links) for more information. |
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
@@ -451,7 +452,7 @@ The configuration item, `assets.modify_links`, can be set to `true` to rewrite i
 
 - **Eligible formats**: `markdown` and `html` only. PDF, plaintext, and zip exports are not rewritten.
 - **Scope**: rewrites image `src` attributes and their outer anchor `href` wrappers; rewrites attachment `<a href>` links. Does **not** rewrite inter-page, inter-book, inter-chapter, or inter-shelf links (deferred to a future issue).
-- **Legacy alias**: the old key `modify_markdown` is still accepted and maps to `modify_links`. It will be removed in 2.0.0.
+- **Legacy alias**: the old key `modify_markdown` will be removed in a future version. Rename to `modify_links` in your configuration.
 
 #### Markdown example
 
@@ -581,7 +582,6 @@ Below are versions that have major changes to the way configuration or exporter 
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 | `1.6.X` | `1.7.0` | Behavior change: with `modify_links: true` (or legacy `modify_markdown: true`) and `formats: [html]` only, link rewriting now activates for HTML exports. Previously, `modify_markdown: true` was silently a no-op when `markdown` was absent from `formats`. |
-| `< 2.0.0` | `2.0.0` | The legacy `modify_markdown` config key alias is removed. Rename to `modify_links` in your configuration file before upgrading. |
 
 ## Running Tests
 

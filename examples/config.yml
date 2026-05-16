@@ -29,7 +29,7 @@ assets:
   export_attachments: false
   # optional rewrite image and attachment URLs in markdown and html exports
   # to local relative paths
-  modify_links: false  # legacy 'modify_markdown' key still accepted; removed in 2.0.0
+  modify_links: false  # legacy 'modify_markdown' key still accepted (deprecated); will be removed in a future version
   ## optional export of metadata about the page in a json file
   # this metadata contains general information about the page
   # like: last update, owner, revision count, etc.
