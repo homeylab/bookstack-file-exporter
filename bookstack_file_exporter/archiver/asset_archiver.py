@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import logging
 import base64
-from typing import Union, List, Dict
-from re import sub as re_sub
+import html
+import re
+from typing import Union, List, Dict, Literal
 # pylint: disable=import-error
 from requests import Response
+from bs4 import BeautifulSoup, SoupStrainer
 
 from bookstack_file_exporter.common.util import HttpHelper
 
@@ -19,7 +23,7 @@ class AssetNode:
 
     Args:
         :meta_data: <Dict[str, Union[int, str, bool]]> = asset meta data
-    
+
     Returns:
         AssetNode instance for use in other classes
     """
@@ -28,34 +32,58 @@ class AssetNode:
         self.page_id: int = meta_data['uploaded_to']
         self.url: str = ""
         self.name: str = ""
-        self._markdown_str = ""
         self._relative_path_prefix: str = ""
 
     def get_relative_path(self, page_name: str) -> str:
         """image path local to page directory"""
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
-    @property
-    def markdown_str(self):
-        """return markdown url str to replace"""
-        return self._markdown_str
+    def all_urls(self, asset_data: Dict[str, Union[int, str, bool, dict]], kind: Literal["markdown", "html"]) -> List[str]:
+        """All URLs for this asset that may appear in an exported page.
 
-    def set_markdown_content(self, asset_data: Dict[str, int | str | bool]) -> None:
-        """set markdown url str to replace"""
-        self._markdown_str = self._get_md_url_str(asset_data)
+        Canonical node.url always included — the per-asset content API
+        may omit it (e.g. anchor href wrapping a scaled img src).
+        """
+        extracted = (
+            self._get_md_url_strs(asset_data)
+            if kind == "markdown"
+            else self._get_html_url_strs(asset_data)
+        )
+        return list(dict.fromkeys([*extracted, self.url]))
 
     @staticmethod
-    def _get_md_url_str(asset_data: Dict[str, Union[int, str]]) -> str:
+    def _get_md_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
+        """Extract all URLs from markdown content using regex findall.
+        Returns both inner and outer URLs from anchor-wrapped image syntax."""
         url_str = ""
         if 'content' in asset_data:
             if 'markdown' in asset_data['content']:
                 url_str = asset_data['content']['markdown']
-        # check to see if empty before doing find
         if not url_str:
-            return ""
-        # find the link between two parenthesis
-        # - markdown format
-        return url_str[url_str.find("(")+1:url_str.find(")")]
+            return []
+        return re.findall(r'\]\(([^)]+)\)', url_str)
+
+    @staticmethod
+    def _get_html_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
+        """Extract URLs from content.html using bs4. Skips data: URIs."""
+        html_str = ""
+        if 'content' in asset_data and 'html' in asset_data['content']:
+            html_str = asset_data['content']['html']
+        if not html_str:
+            return []
+        strainer = SoupStrainer(["img", "a"])
+        soup = BeautifulSoup(html_str, "html.parser", parse_only=strainer)
+        urls: list[str] = []
+        # collect outer anchor href first (click-to-zoom target)
+        for anchor in soup.find_all("a", href=True):
+            urls.append(anchor["href"])
+        # collect img src only if not base64
+        for img in soup.find_all("img", src=True):
+            src = img["src"]
+            if not src.startswith("data:"):
+                urls.append(src)
+        return urls
+
 
 class ImageNode(AssetNode):
     """
@@ -63,7 +91,7 @@ class ImageNode(AssetNode):
 
     Args:
         :meta_data: <Dict[str, Union[int, str]]> = image meta data
-    
+
     Returns:
         ImageNode instance for use in archiving images for a page
     """
@@ -94,17 +122,27 @@ class AttachmentNode(AssetNode):
         self._relative_path_prefix = f"{_ATTACHMENT_DIR_NAME}"
 
     @staticmethod
-    def _get_md_url_str(asset_data: Dict[str, int | str | dict]) -> str:
+    def _get_md_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
         url_str = ""
         if 'links' in asset_data:
             if 'markdown' in asset_data['links']:
                 url_str = asset_data['links']['markdown']
-        # check to see if empty before doing find
         if not url_str:
-            return ""
-        # find the link between two parenthesis
-        # - markdown format
-        return url_str[url_str.find("(")+1:url_str.find(")")]
+            return []
+        return re.findall(r'\]\(([^)]+)\)', url_str)
+
+    @staticmethod
+    def _get_html_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
+        """Extract href URL from links.html for attachments."""
+        html_str = ""
+        if 'links' in asset_data and 'html' in asset_data['links']:
+            html_str = asset_data['links']['html']
+        if not html_str:
+            return []
+        strainer = SoupStrainer("a")
+        soup = BeautifulSoup(html_str, "html.parser", parse_only=strainer)
+        return [a["href"] for a in soup.find_all("a", href=True)]
+
 
 class AssetArchiver:
     """
@@ -125,11 +163,9 @@ class AssetArchiver:
         }
         self.http_client = http_client
 
-    def get_asset_nodes(self, asset_type: str) -> Dict[str, ImageNode | AttachmentNode]:
-        """Get image or attachment helpers for a page"""
-        asset_response: Response = self.http_client.http_get_request(
-            self.api_urls[asset_type])
-        asset_json = asset_response.json()['data']
+    def get_asset_nodes(self, asset_type: str) -> Dict[int, List[ImageNode | AttachmentNode]]:
+        """Get image or attachment helpers for a page (paginated to cover all assets)."""
+        asset_json = self.http_client.http_get_all(self.api_urls[asset_type])
         return self._asset_map[asset_type](asset_json)
 
     def get_asset_data(self, asset_type: str,
@@ -151,17 +187,92 @@ class AssetArchiver:
                 asset_data = self._decode_attachment_data(asset_response.json()['content'])
         return asset_data
 
-    def update_asset_links(self, asset_type, page_name: str, page_data: bytes,
+    def update_asset_links(self, asset_type: str, page_name: str, page_data: bytes,
             asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
-        """update markdown links in page data"""
+        """Update markdown links in page data using literal bytes.replace."""
+        url_map = self._build_url_map(asset_type, page_name, asset_nodes, kind="markdown")
+        return self._apply_url_substitutions(page_data, url_map)
+
+    def update_asset_links_html(self, asset_type: str, page_name: str, page_data: bytes,
+            asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+        """Update HTML links in page data using bs4 URL discovery + bytes.replace.
+
+        Caller must guard on modify_links before invoking this method.
+        """
+        if not asset_nodes:
+            return page_data
+        url_map = self._build_url_map(asset_type, page_name, asset_nodes, kind="html")
+        # Parse to find which URLs appear in HTML element attributes (img src, a href).
+        # Do NOT remove this filter — passing url_map directly to _apply_url_substitutions
+        # would let bytes.replace hit URLs inside <code>, <pre>, comments, and text nodes.
+        strainer = SoupStrainer(["img", "a"])
+        soup = BeautifulSoup(page_data, "html.parser", parse_only=strainer)
+        matched_urls: dict[str, str] = {}
+
+        def _add_url(url: str, local_path: str) -> None:
+            """Add URL and its HTML entity-encoded form — bs4 decodes &amp; to & but
+            raw page bytes may still contain &amp;, causing bytes.replace to miss."""
+            matched_urls[url] = local_path
+            escaped = html.escape(url, quote=False)
+            if escaped != url:
+                matched_urls[escaped] = local_path
+
+        # Anchor-wrapped images: check img src and parent href
+        for img in soup.find_all("img", src=True):
+            src = img["src"]
+            if src in url_map:
+                _add_url(src, url_map[src])
+            parent = img.parent
+            if parent and parent.name == "a":
+                href = parent.get("href", "")
+                if href in url_map:
+                    _add_url(href, url_map[href])
+        # Catch-all for attachments and any anchor-wrapped image hrefs not captured above.
+        # Dict assignment is idempotent for hrefs already seen in the img-parent branch.
+        for anchor in soup.find_all("a", href=True):
+            href = anchor["href"]
+            if href in url_map:
+                _add_url(href, url_map[href])
+        return self._apply_url_substitutions(page_data, matched_urls)
+
+    def _build_url_map(self, asset_type: str, page_name: str,
+            asset_nodes: List[ImageNode | AttachmentNode],
+            kind: Literal["markdown", "html"]) -> dict[str, str]:
+        """Build a {remote_url: local_relative_path} map for all asset nodes.
+
+        For each node we collect every URL variant that could appear in the
+        exported page (the per-asset API content URL, e.g. scaled image src,
+        plus the canonical listing URL) and map each to the same local path.
+        Callers then run literal bytes.replace of every key against the page
+        body to rewrite remote links to local relative paths.
+
+        all_urls() on each node returns both extracted content URLs and the
+        canonical node.url, ensuring anchor-wrapped images are fully rewritten.
+        """
+        url_map: dict[str, str] = {}
         for asset_node in asset_nodes:
-            # get metadata instead of raw data/bytes
             asset_data = self.get_asset_data(asset_type, asset_node)
-            asset_node.set_markdown_content(asset_data)
-            if not asset_node.markdown_str:
-                continue
-            page_data = re_sub(asset_node.markdown_str.encode(),
-                               asset_node.get_relative_path(page_name).encode(), page_data)
+            local_path = asset_node.get_relative_path(page_name)
+            for url in asset_node.all_urls(asset_data, kind):
+                if url:
+                    url_map[url] = local_path
+        return url_map
+
+    @staticmethod
+    def _apply_url_substitutions(page_data: bytes, url_map: dict[str, str]) -> bytes:
+        """Apply literal bytes.replace substitutions for each URL in url_map.
+
+        Logs debug when a URL has zero matches in page_data (silent-miss surface).
+        """
+        # Sort by URL length descending so longer/more-specific URLs replace first.
+        # Prevents shorter URLs that are substrings of longer ones from corrupting
+        # subsequent matches.
+        for url, local_path in sorted(url_map.items(), key=lambda item: len(item[0]), reverse=True):
+            url_bytes = url.encode()
+            if page_data.count(url_bytes) == 0:
+                log.debug("URL has zero matches in page data (no substitution made): %s", url)
+            else:
+                page_data = page_data.replace(url_bytes, local_path.encode())
         return page_data
 
     @staticmethod

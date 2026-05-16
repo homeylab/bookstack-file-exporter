@@ -15,8 +15,13 @@ from bookstack_file_exporter.exporter.node import Node
 
 def _make_config(formats: List[str] = None, export_images: bool = False,
                  export_attachments: bool = False, export_meta: bool = False,
+                 modify_links: bool = False,
                  modify_markdown: bool = False) -> MagicMock:
-    """Build a minimal ConfigNode mock that satisfies PageArchiver.__init__."""
+    """Build a minimal ConfigNode mock that satisfies PageArchiver.__init__.
+
+    Accepts both modify_links (preferred) and legacy modify_markdown kwarg.
+    modify_links wins when both are provided.
+    """
     config = MagicMock()
     config.urls = {
         "pages": "https://wiki.test.example/api/pages",
@@ -27,7 +32,8 @@ def _make_config(formats: List[str] = None, export_images: bool = False,
     config.user_inputs.assets.export_images = export_images
     config.user_inputs.assets.export_attachments = export_attachments
     config.user_inputs.assets.export_meta = export_meta
-    config.user_inputs.assets.modify_markdown = modify_markdown
+    # modify_links is the canonical flag; accept legacy kwarg for backward compat test coverage
+    config.user_inputs.assets.modify_links = modify_links or modify_markdown
     return config
 
 

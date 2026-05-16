@@ -27,10 +27,12 @@ _FILE_EXTENSION_MAP = {
     "tgz": _TAR_GZ_SUFFIX
 }
 
+_REWRITABLE_FORMATS = {"markdown", "html"}
+
 # pylint: disable=too-many-instance-attributes
 class PageArchiver:
     """
-    PageArchiver handles all data extraction and modifications 
+    PageArchiver handles all data extraction and modifications
     to Bookstack page contents including assets like images or attachments.
 
     Args:
@@ -51,22 +53,30 @@ class PageArchiver:
         self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
         # name of the base folder to use within the tgz archive (internal tar layout)
         self.archive_base_path = archive_dir.split("/")[-1]
-        self.modify_md: bool = self._check_md_modify()
+        self.modify_links: bool = self._check_links_modify()
         self.asset_archiver = AssetArchiver(self.api_urls,
                                             http_client)
         self.http_client = http_client
 
-    def _check_md_modify(self) -> bool:
-        # check to ensure they have asset_config defined, could be None
-        if 'markdown' in self.export_formats:
-            return self.asset_config.modify_markdown and \
-                ( self.export_images or self.export_attachments)
-        return False
+    def _check_links_modify(self) -> bool:
+        """Return True iff modify_links AND asset export enabled AND a rewritable format present."""
+        if not self.asset_config.modify_links:
+            return False
+        if not (self.export_images or self.export_attachments):
+            return False
+        has_rewritable = any(fmt in _REWRITABLE_FORMATS for fmt in self.export_formats)
+        if not has_rewritable:
+            log.warning(
+                "MODIFY_LINKS ENABLED BUT NO REWRITABLE FORMAT (markdown, html) CONFIGURED "
+                "— NO LINK REWRITING WILL OCCUR"
+            )
+            return False
+        return True
 
     def archive_pages(self, page_nodes: Dict[int, Node]):
         """export page contents and their images/attachments"""
         # get assets first if requested
-        # this is because we may want to manipulate page data with modify_markdown flag
+        # this is because we may want to manipulate page data with modify_links flag
         image_nodes = self._get_image_meta()
         attachment_nodes = self._get_attachment_meta()
         for _, page in page_nodes.items():
@@ -81,26 +91,36 @@ class PageArchiver:
             failed_attach = self.archive_page_assets("attachments", page.parent.file_path,
                                      page.name, page_attachments)
             # exclude from page_images
-            # so it doesn't attempt to get modified in markdown file
+            # so it doesn't attempt to get modified in markdown/html file
             if failed_images:
                 page_images = [img for img in page_images if img.id_ not in failed_images]
             # exclude from page_attachments
-            # so it doesn't attempt to get modified in markdown file
+            # so it doesn't attempt to get modified in markdown/html file
             if failed_attach:
                 page_attachments = [attach for attach in page_attachments
                                     if attach.id_ not in failed_attach]
+            page_assets = {"images": page_images, "attachments": page_attachments}
             for export_format in self.export_formats:
                 page_data = self._get_page_data(page.id_, export_format)
-                if page_images and export_format == 'markdown':
-                    page_data = self._modify_markdown("images", page.name,
-                                                      page_data, page_images)
-                if page_attachments and export_format == 'markdown':
-                    page_data = self._modify_markdown("attachments", page.name,
-                                                      page_data, page_attachments)
-                self._archive_page(page, export_format,
-                                    page_data)
+                page_data = self._rewrite_page_data(export_format, page.name,
+                                                    page_data, page_assets)
+                self._archive_page(page, export_format, page_data)
             if self.asset_config.export_meta:
                 self._archive_page_meta(page.file_path, page.meta)
+
+    def _rewrite_page_data(self, export_format: str, page_name: str,
+                           page_data: bytes, page_assets: Dict[str, list]) -> bytes:
+        """Dispatch link rewriting for the given export format. No-op for non-rewritable formats."""
+        if export_format == 'markdown':
+            rewriter = self._modify_links
+        elif export_format == 'html':
+            rewriter = self._modify_html
+        else:
+            return page_data
+        for asset_type, nodes in page_assets.items():
+            if nodes:
+                page_data = rewriter(asset_type, page_name, page_data, nodes)
+        return page_data
 
     def _archive_page(self, page: Node, export_format: str, data: bytes):
         page_file_name = f"{self.archive_base_path}/" \
@@ -129,13 +149,23 @@ class PageArchiver:
             return {}
         return self.asset_archiver.get_asset_nodes('attachments')
 
-    def _modify_markdown(self, asset_type: str,
-                         page_name: str, page_data: bytes,
-                         asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
-        if not self.modify_md:
+    def _modify_links(self, asset_type: str,
+                      page_name: str, page_data: bytes,
+                      asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+        """Markdown link rewriting. Short-circuits when modify_links is False."""
+        if not self.modify_links:
             return page_data
         return self.asset_archiver.update_asset_links(asset_type, page_name, page_data,
-                                        asset_nodes)
+                                                      asset_nodes)
+
+    def _modify_html(self, asset_type: str,
+                     page_name: str, page_data: bytes,
+                     asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+        """HTML link rewriting. Short-circuits when modify_links is False (no bs4 parse)."""
+        if not self.modify_links:
+            return page_data
+        return self.asset_archiver.update_asset_links_html(asset_type, page_name, page_data,
+                                                           asset_nodes)
 
     def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
                             asset_nodes: List[ImageNode | AttachmentNode]) -> Dict[int, int]:

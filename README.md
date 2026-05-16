@@ -14,7 +14,7 @@ Table of Contents
     - [General](#general)
     - [Images](#images)
     - [Attachments](#attachments)
-    - [Modify Markdown Files](#modify-markdown-files)
+    - [Modify Links](#modify-links)
   - [Object Storage](#object-storage)
     - [Minio Backups](#minio-backups)
   - [Notifications](#notifications)
@@ -35,7 +35,7 @@ What it does:
 - Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
 - Additional content for pages like their images, attachments, and metadata and can be exported
-- The exporter can also [Modify Markdown Files](#modify-markdown-files) to replace image and/or attachment links with local exported paths for a more portable backup
+- The exporter can also [Modify Links](#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
 - YAML configuration file for repeatable and easy runs
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
 - Can push archives to remote object storage like [Minio](https://min.io/)
@@ -85,7 +85,7 @@ output_path: "bkps/"
 assets:
   export_images: false
   export_attachments: false
-  modify_markdown: false
+  modify_links: false
   export_meta: false
 ```
 
@@ -252,7 +252,7 @@ output_path: "bkps/"
 assets:
   export_images: true
   export_attachments: true
-  modify_markdown: false
+  modify_links: false
   export_meta: false
 keep_last: 5
 run_interval: 0
@@ -283,7 +283,7 @@ More descriptions can be found for each section below:
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments for a page to an `attachments` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
-| `assets.modify_markdown` | `bool` | `false` | Optional (default: `false`), modify markdown files to replace image links with local exported image paths. This requires `assets.export_images` to be `true` in order to work. See [Modify Markdown Files](#modify-markdown-files) for more information. |
+| `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. Legacy key `modify_markdown` still accepted as alias; will be removed in 2.0.0. See [Modify Links](#modify-links) for more information. |
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
@@ -425,7 +425,7 @@ bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
 
 **Note you may see old images in your exports. This is because, by default, Bookstack retains images/drawings that are uploaded even if no longer referenced on an active page. Admins can run `Cleanup Images` in the Maintenance Settings or via [CLI](https://www.bookstackapp.com/docs/admin/commands/#cleanup-unused-images) to remove them.**
 
-If an API call to get an image or its metadata fails, the exporter will skip the image and log the error. If using `modify_markdown` option, the image links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
+If an API call to get an image or its metadata fails, the exporter will skip the image and log the error. If using `modify_links` option, the image links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
 
 ### Attachments
 Attachments will be dumped in a separate directory, `attachments` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/attachments/{page}/{attachment_name}`. As shown earlier:
@@ -442,24 +442,58 @@ bookstack_export_2023-11-28_06-24-25/programming/react/attachments/nextjs/sample
 [Reference](https://demo.bookstackapp.com/api/docs#attachments-list) and excerpt from Bookstack API docs:
 > Get a listing of attachments visible to the user. The external property indicates whether the attachment is simple a link. A false value for the external property would indicate a file upload.
 
-If an API call to get an attachment or its metadata fails, the exporter will skip the attachment and log the error. If using `modify_markdown` option, the attachment links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
+If an API call to get an attachment or its metadata fails, the exporter will skip the attachment and log the error. If using `modify_links` option, the attachment links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
 
-### Modify Markdown Files
-**To use this feature, `assets.export_images` should be set to `true` and/or `assets.export_attachments`**
+### Modify Links
+**To use this feature, `assets.export_images` should be set to `true` and/or `assets.export_attachments` should be set to `true`.**
 
-The configuration item, `assets.modify_markdown`, can be set to `true` to modify markdown files to replace image and attachment url links with local exported image paths. This feature allows for you to make your `markdown` exports much more portable.
+The configuration item, `assets.modify_links`, can be set to `true` to rewrite image and attachment URL links in exported files to local relative paths. This feature makes your `markdown` and `html` exports fully portable — assets resolve locally without a network connection to the Bookstack instance.
 
-Page (parent) -> Images (Children) relationships are created and then each image/attachment url is replaced with its own respective local export path. Example:
+- **Eligible formats**: `markdown` and `html` only. PDF, plaintext, and zip exports are not rewritten.
+- **Scope**: rewrites image `src` attributes and their outer anchor `href` wrappers; rewrites attachment `<a href>` links. Does **not** rewrite inter-page, inter-book, inter-chapter, or inter-shelf links (deferred to a future issue).
+- **Legacy alias**: the old key `modify_markdown` is still accepted and maps to `modify_links`. It will be removed in 2.0.0.
+
+#### Markdown example
+
+Page (parent) -> Images (children) relationships are created and then each image/attachment URL is replaced with its respective local export path.
+
 ```
 ## before
 [![pool-topology-1.png](https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
 
 ## after
-[![pool-topology-1.png](images/{page_name}/pool-topology-1.png)](https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png)
+[![pool-topology-1.png](images/{page_name}/pool-topology-1.png)](images/{page_name}/pool-topology-1.png)
 ```
-This allows the image or attachment to be found locally within the export files and allow your `markdown` docs to have all the assets display properly like it would normally would.
 
-**Note: This will work properly if your pages are using the notation used by Bookstack for Markdown image links, example: ` [![image alt text](Bookstack Markdown image URL link)](anchor/url link)` The `(anchor/url link)` is optional. For attachments the format is: `[file](url link)`**
+#### HTML example
+
+Bookstack HTML exports wrap images in an anchor tag (click-to-zoom). Both the `<img src>` and the outer `<a href>` are rewritten to the same local file.
+
+```html
+<!-- before: anchor-wrapped image -->
+<a href="https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png">
+  <img src="data:image/png;base64,...">
+</a>
+
+<!-- after -->
+<a href="images/{page_name}/pool-topology-1.png">
+  <img src="data:image/png;base64,...">
+</a>
+```
+
+Attachment links are rewritten from the live URL to a local relative path.
+
+```html
+<!-- before: attachment link -->
+<a href="https://demo.bookstack/attachments/42">my-config.yml</a>
+
+<!-- after -->
+<a href="attachments/{page_name}/my-config.yml">my-config.yml</a>
+```
+
+#### Known limitations
+
+- **Literal byte substitution**: URL rewriting replaces every occurrence of the URL bytes in the page, including inside `<code>`, `<pre>`, and HTML comments. Pages that quote their own asset URLs as documentation text (e.g., in code blocks) will have those occurrences rewritten too. If this causes problems, please open an issue — targeted node substitution is out of scope for 1.7.0.
 
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
@@ -546,6 +580,8 @@ Below are versions that have major changes to the way configuration or exporter 
 | Start Version | Target Version | Description |
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
+| `1.6.X` | `1.7.0` | Behavior change: with `modify_links: true` (or legacy `modify_markdown: true`) and `formats: [html]` only, link rewriting now activates for HTML exports. Previously, `modify_markdown: true` was silently a no-op when `markdown` was absent from `formats`. |
+| `< 2.0.0` | `2.0.0` | The legacy `modify_markdown` config key alias is removed. Rename to `modify_links` in your configuration file before upgrading. |
 
 ## Running Tests
 

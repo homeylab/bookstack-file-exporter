@@ -70,6 +70,7 @@ class ConfigNode:
                 # log here to make it easier to identify the issue
                 log.error("Failed to load yaml configuration file")
                 raise load_err
+        self._check_legacy_modify_markdown(yaml_input)
         try:
             user_inputs = models.UserInput(**yaml_input)
         except Exception as err:
@@ -77,6 +78,26 @@ class ConfigNode:
             log.error("Yaml configuration failed schema validation")
             raise err
         return user_inputs
+
+    @staticmethod
+    def _check_legacy_modify_markdown(yaml_input: dict) -> None:
+        """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
+        assets_raw = yaml_input.get("assets", {}) or {}
+        has_legacy = "modify_markdown" in assets_raw
+        has_new = "modify_links" in assets_raw
+        if not has_legacy:
+            return
+        log.warning(
+            "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
+            "USE 'assets.modify_links' INSTEAD. "
+            "THE LEGACY KEY WILL BE REMOVED IN 2.0.0."
+        )
+        if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
+            log.warning(
+                "Both 'assets.modify_links' and 'assets.modify_markdown' "
+                "are set with different values. 'assets.modify_links' wins; "
+                "the legacy 'assets.modify_markdown' value is ignored."
+            )
 
     def _generate_credentials(self) -> Tuple[str, str]:
         # if user provided credentials in config file, load them
