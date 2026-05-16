@@ -473,6 +473,33 @@ class TestAllUrls:
         assert "https://wiki.example.com/attachments/99" in urls
 
 
+class TestPhase2HtmlPath:
+    """Tests for _build_url_map behaviour in HTML mode."""
+
+    def test_build_url_map_skips_api_call_for_image_nodes_in_html_mode(
+        self, asset_archiver, image_node
+    ):
+        """ImageNode.page_url is known from listing data — no per-asset API call needed for HTML mode.
+
+        Asserts both:
+          (a) http_get_request was not called (no redundant API roundtrip), and
+          (b) url_map content is exactly {page_url: local_path} — locks the contract
+              that page_url is the only URL contributed for ImageNode in HTML mode.
+        """
+        # Stub json() so the current (unfixed) code runs cleanly and the assertion
+        # isolates the "no HTTP call" contract rather than failing on MagicMock parsing.
+        asset_archiver.http_client.http_get_request.return_value.json.return_value = {}
+
+        # Directly exercise _build_url_map so we can assert on its return value.
+        url_map = asset_archiver._build_url_map(
+            "images", "my-page", [image_node], kind="html"
+        )
+
+        asset_archiver.http_client.http_get_request.assert_not_called()
+        local_path = image_node.get_relative_path("my-page")
+        assert url_map == {image_node.page_url: local_path}
+
+
 class TestPhase3HtmlRewrite:
     """Tests for update_asset_links_html byte-exact replacement."""
 

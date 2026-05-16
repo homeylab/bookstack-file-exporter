@@ -267,12 +267,19 @@ class AssetArchiver:
         Callers then run literal bytes.replace of every key against the page
         body to rewrite remote links to local relative paths.
 
-        all_urls() on each node returns both extracted content URLs and the
-        canonical node.page_url, ensuring anchor-wrapped images are fully rewritten.
+        For HTML exports, ImageNode.page_url already covers the anchor href
+        that BookStack embeds in content.html (the img src is base64 and
+        skipped by _get_html_url_strs). Skip the per-asset API call.
         """
         url_map: dict[str, str] = {}
         for asset_node in asset_nodes:
-            asset_data = self.get_asset_data(asset_type, asset_node)
+            # In HTML mode, ImageNode.page_url is the only useful URL —
+            # content.html img src is base64 (filtered out) and the outer
+            # anchor href equals page_url. Skip the redundant API call.
+            if kind == "html" and isinstance(asset_node, ImageNode):
+                asset_data: dict = {}
+            else:
+                asset_data = self.get_asset_data(asset_type, asset_node)
             local_path = asset_node.get_relative_path(page_name)
             for url in asset_node.all_urls(asset_data, kind):
                 if url:
