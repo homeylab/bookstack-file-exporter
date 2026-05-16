@@ -3,13 +3,16 @@ from __future__ import annotations
 import logging
 import base64
 import html
-import re
 from typing import Union, List, Dict, Literal
+
+from markdown_it import MarkdownIt
 # pylint: disable=import-error
 from requests import Response
 from bs4 import BeautifulSoup, SoupStrainer
 
 from bookstack_file_exporter.common.util import HttpHelper
+
+_md = MarkdownIt()
 
 log = logging.getLogger(__name__)
 
@@ -53,15 +56,22 @@ class AssetNode:
 
     @staticmethod
     def _get_md_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
-        """Extract all URLs from markdown content using regex findall.
-        Returns both inner and outer URLs from anchor-wrapped image syntax."""
-        url_str = ""
-        if 'content' in asset_data:
-            if 'markdown' in asset_data['content']:
-                url_str = asset_data['content']['markdown']
-        if not url_str:
+        """Extract image src and link href values from content.markdown.
+        Uses markdown-it-py for spec-compliant parsing — handles URLs with
+        parentheses and alt-text containing parens without regex brittleness."""
+        md_str = ""
+        if 'content' in asset_data and 'markdown' in asset_data.get('content', {}):
+            md_str = asset_data['content']['markdown']
+        if not md_str:
             return []
-        return re.findall(r'\]\(([^)]+)\)', url_str)
+        urls = []
+        for block_token in _md.parse(md_str):
+            for token in (block_token.children or []):
+                if token.type == 'image':
+                    urls.append(token.attrs['src'])
+                elif token.type == 'link_open':
+                    urls.append(token.attrs['href'])
+        return urls
 
     @staticmethod
     def _get_html_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
@@ -123,13 +133,20 @@ class AttachmentNode(AssetNode):
 
     @staticmethod
     def _get_md_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
-        url_str = ""
-        if 'links' in asset_data:
-            if 'markdown' in asset_data['links']:
-                url_str = asset_data['links']['markdown']
-        if not url_str:
+        """Extract link href from links.markdown using markdown-it-py."""
+        md_str = ""
+        if 'links' in asset_data and 'markdown' in asset_data.get('links', {}):
+            md_str = asset_data['links']['markdown']
+        if not md_str:
             return []
-        return re.findall(r'\]\(([^)]+)\)', url_str)
+        urls = []
+        for block_token in _md.parse(md_str):
+            for token in (block_token.children or []):
+                if token.type == 'image':
+                    urls.append(token.attrs['src'])
+                elif token.type == 'link_open':
+                    urls.append(token.attrs['href'])
+        return urls
 
     @staticmethod
     def _get_html_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
@@ -288,7 +305,7 @@ class AssetArchiver:
         return image_page_map
 
     def _create_attachment_map(self,
-            json_data: Dict[str, List[Dict[str, str | int | bool | dict]]]) -> List[AssetNode]:
+            json_data: Dict[str, List[Dict[str, str | int | bool | dict]]]) -> Dict[int, List[AttachmentNode]]:
         asset_nodes = {}
         for asset_meta in json_data:
             asset_node = None

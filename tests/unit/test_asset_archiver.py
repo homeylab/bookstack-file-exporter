@@ -172,6 +172,17 @@ class TestPhase1MdFixes:
         result = ImageNode._get_md_url_strs({})
         assert result == []
 
+    def test_get_md_url_strs_handles_url_with_parentheses(self):
+        """_get_md_url_strs must extract URLs containing balanced parentheses.
+        The old regex ([^)]+) would truncate these; markdown-it-py handles them correctly."""
+        asset_data = {
+            "content": {
+                "markdown": "![diagram](https://en.wikipedia.org/wiki/Foo_(bar))"
+            }
+        }
+        result = ImageNode._get_md_url_strs(asset_data)
+        assert "https://en.wikipedia.org/wiki/Foo_(bar)" in result
+
     def test_update_asset_links_replaces_url_with_special_chars(
         self, asset_archiver, image_node
     ):
