@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup, SoupStrainer
 
 from bookstack_file_exporter.common.util import HttpHelper
 
+# Module-level singleton avoids reconstructing the parser on every call.
 _md = MarkdownIt()
 
 log = logging.getLogger(__name__)

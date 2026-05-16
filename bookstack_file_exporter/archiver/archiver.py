@@ -70,7 +70,7 @@ class Archiver:
         if not self.config.object_storage_config:
             return
         # dict built per-call so instance-level monkey-patching of handlers
-        # propagates (regression fixed in commit ecd2dda)
+        # propagates during tests (class-level dict captures pre-patch values)
         handlers = {
             "minio": self._archive_minio,
             "s3": self._archive_s3,
