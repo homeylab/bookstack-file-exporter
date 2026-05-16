@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import base64
 import html
-from typing import Union, List, Dict, Literal
+from typing import Union, Literal
 
 from markdown_it import MarkdownIt
 # pylint: disable=import-error
@@ -25,12 +25,12 @@ class AssetNode:
     Base class for other asset nodes. This class should not be used directly.
 
     Args:
-        :meta_data: <Dict[str, Union[int, str, bool]]> = asset meta data
+        :meta_data: <dict[str, Union[int, str, bool]]> = asset meta data
 
     Returns:
         AssetNode instance for use in other classes
     """
-    def __init__(self, meta_data: Dict[str, int | str | bool]):
+    def __init__(self, meta_data: dict[str, int | str | bool]):
         self.id_: int = meta_data['id']
         self.page_id: int = meta_data['uploaded_to']
         self.download_url: str = ""
@@ -42,7 +42,7 @@ class AssetNode:
         """image path local to page directory"""
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
-    def all_urls(self, asset_data: Dict[str, Union[int, str, bool, dict]], kind: Literal["markdown", "html"]) -> List[str]:
+    def all_urls(self, asset_data: dict[str, Union[int, str, bool, dict]], kind: Literal["markdown", "html"]) -> list[str]:
         """All URLs for this asset that may appear in an exported page.
 
         Canonical page_url always included — the per-asset content API
@@ -57,7 +57,7 @@ class AssetNode:
         return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
-    def _get_md_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
+    def _get_md_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
         """Extract image src and link href values from content.markdown.
         Uses markdown-it-py for spec-compliant parsing — handles URLs with
         parentheses and alt-text containing parens without regex brittleness."""
@@ -76,7 +76,7 @@ class AssetNode:
         return urls
 
     @staticmethod
-    def _get_html_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
+    def _get_html_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
         """Extract URLs from content.html using bs4. Skips data: URIs."""
         html_str = ""
         if 'content' in asset_data and 'html' in asset_data['content']:
@@ -102,12 +102,12 @@ class ImageNode(AssetNode):
     ImageNode handles image meta data and markdown url replacement.
 
     Args:
-        :meta_data: <Dict[str, Union[int, str]]> = image meta data
+        :meta_data: <dict[str, Union[int, str]]> = image meta data
 
     Returns:
         ImageNode instance for use in archiving images for a page
     """
-    def __init__(self, meta_data: Dict[str, Union[int, str]]):
+    def __init__(self, meta_data: dict[str, Union[int, str]]):
         super().__init__(meta_data)
         self.download_url: str = meta_data['url']
         self.page_url: str = meta_data['url']
@@ -120,13 +120,13 @@ class AttachmentNode(AssetNode):
     AttachmentNode handles attachment meta data and markdown url replacement.
 
     Args:
-        :meta_data: <Dict[str, Union[int, str, bool]]> = attachment meta data
+        :meta_data: <dict[str, Union[int, str, bool]]> = attachment meta data
         :base_url: <str> = base url for attachment download
 
     Returns:
         AttachmentNode instance for use in archiving attachments for a page
     """
-    def __init__(self, meta_data: Dict[str, Union[int, str, bool]],
+    def __init__(self, meta_data: dict[str, Union[int, str, bool]],
                  base_url: str):
         super().__init__(meta_data)
         self.download_url: str = f"{base_url}/{self.id_}"
@@ -136,7 +136,7 @@ class AttachmentNode(AssetNode):
         self._relative_path_prefix = f"{_ATTACHMENT_DIR_NAME}"
 
     @staticmethod
-    def _get_md_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
+    def _get_md_url_strs(asset_data: dict[str, int | str | dict]) -> list[str]:
         """Extract link href from links.markdown using markdown-it-py."""
         md_str = ""
         if 'links' in asset_data and 'markdown' in asset_data.get('links', {}):
@@ -153,7 +153,7 @@ class AttachmentNode(AssetNode):
         return urls
 
     @staticmethod
-    def _get_html_url_strs(asset_data: Dict[str, int | str | dict]) -> list[str]:
+    def _get_html_url_strs(asset_data: dict[str, int | str | dict]) -> list[str]:
         """Extract href URL from links.html for attachments."""
         html_str = ""
         if 'links' in asset_data and 'html' in asset_data['links']:
@@ -170,13 +170,13 @@ class AssetArchiver:
     AssetArchiver handles image and attachment exports for a page.
 
     Args:
-        :urls: <Dict[str, str]> = api urls for images and attachments
+        :urls: <dict[str, str]> = api urls for images and attachments
         :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
         AssetArchiver instance for use in archiving images and attachments for a page
     """
-    def __init__(self, urls: Dict[str, str], http_client: HttpHelper):
+    def __init__(self, urls: dict[str, str], http_client: HttpHelper):
         self.api_urls = urls
         self._asset_map = {
             'images': self._create_image_map,
@@ -184,13 +184,13 @@ class AssetArchiver:
         }
         self.http_client = http_client
 
-    def get_asset_nodes(self, asset_type: str) -> Dict[int, List[ImageNode | AttachmentNode]]:
+    def get_asset_nodes(self, asset_type: str) -> dict[int, list[ImageNode | AttachmentNode]]:
         """Get image or attachment helpers for a page (paginated to cover all assets)."""
         asset_json = self.http_client.http_get_all(self.api_urls[asset_type])
         return self._asset_map[asset_type](asset_json)
 
     def get_asset_data(self, asset_type: str,
-            meta_data: Union[AttachmentNode, ImageNode]) -> Dict[str, str | bool | int | dict]:
+            meta_data: Union[AttachmentNode, ImageNode]) -> dict[str, str | bool | int | dict]:
         """Get asset data based on type"""
         data_url = f"{self.api_urls[asset_type]}/{meta_data.id_}"
         asset_data_response: Response = self.http_client.http_get_request(
@@ -209,13 +209,13 @@ class AssetArchiver:
         return asset_data
 
     def update_asset_links(self, asset_type: str, page_name: str, page_data: bytes,
-            asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+            asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
         """Update markdown links in page data using literal bytes.replace."""
         url_map = self._build_url_map(asset_type, page_name, asset_nodes, kind="markdown")
         return self._apply_url_substitutions(page_data, url_map)
 
     def update_asset_links_html(self, asset_type: str, page_name: str, page_data: bytes,
-            asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+            asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
         """Update HTML links in page data using bs4 URL discovery + bytes.replace.
 
         Caller must guard on modify_links before invoking this method.
@@ -257,7 +257,7 @@ class AssetArchiver:
         return self._apply_url_substitutions(page_data, matched_urls)
 
     def _build_url_map(self, asset_type: str, page_name: str,
-            asset_nodes: List[ImageNode | AttachmentNode],
+            asset_nodes: list[ImageNode | AttachmentNode],
             kind: Literal["markdown", "html"]) -> dict[str, str]:
         """Build a {remote_url: local_relative_path} map for all asset nodes.
 
@@ -309,8 +309,8 @@ class AssetArchiver:
         return page_data
 
     @staticmethod
-    def _create_image_map(json_data: Dict[str,
-            List[Dict[str, str | int | bool | dict]]]) -> Dict[int, List[ImageNode]]:
+    def _create_image_map(json_data: dict[str,
+            list[dict[str, str | int | bool | dict]]]) -> dict[int, list[ImageNode]]:
         image_page_map = {}
         for img_meta in json_data:
             img_node = ImageNode(img_meta)
@@ -321,7 +321,7 @@ class AssetArchiver:
         return image_page_map
 
     def _create_attachment_map(self,
-            json_data: Dict[str, List[Dict[str, str | int | bool | dict]]]) -> Dict[int, List[AttachmentNode]]:
+            json_data: dict[str, list[dict[str, str | int | bool | dict]]]) -> dict[int, list[AttachmentNode]]:
         asset_nodes = {}
         for asset_meta in json_data:
             asset_node = None
