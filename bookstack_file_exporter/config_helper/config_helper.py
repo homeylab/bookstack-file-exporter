@@ -83,6 +83,9 @@ class ConfigNode:
     def _check_legacy_modify_markdown(yaml_input: dict) -> None:
         """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
         assets_raw = yaml_input.get("assets", {}) or {}
+        if not isinstance(assets_raw, dict):
+            # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
+            return
         has_legacy = "modify_markdown" in assets_raw
         has_new = "modify_links" in assets_raw
         if not has_legacy:

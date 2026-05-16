@@ -397,6 +397,21 @@ assets:
         assert len(warning_msgs) >= 2
         assert any("ignored" in m.lower() for m in warning_msgs)
 
+    def test_check_legacy_modify_markdown_non_dict_assets_does_not_crash(self, caplog):
+        """assets: true (or other non-dict) must not crash before pydantic validates."""
+        from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+        import logging
+        logger_name = "bookstack_file_exporter.config_helper.config_helper"
+        with caplog.at_level(logging.WARNING, logger=logger_name):
+            ConfigNode._check_legacy_modify_markdown({"assets": True})
+            ConfigNode._check_legacy_modify_markdown({"assets": "bad_string"})
+            ConfigNode._check_legacy_modify_markdown({"assets": 42})
+        our_records = [r for r in caplog.records if r.name == logger_name]
+        assert our_records == [], (
+            f"non-dict assets must produce zero warnings from this logger; "
+            f"got: {[r.message for r in our_records]}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 3 — HTML rewrite
