@@ -230,7 +230,7 @@ class TestPhase1MdFixes:
     def test_update_asset_links_rewrites_outer_anchor_when_content_only_has_scaled_url(
         self, asset_archiver, image_node
     ):
-        """_build_url_map appends node.url so full-res anchor href gets rewritten even when
+        """_build_url_map includes page_url so full-res anchor href gets rewritten even when
         content.markdown only contains the simple (scaled-only) image form."""
         scaled_url = "https://wiki.example.com/uploads/images/gallery/2024-01/scaled-1680-/screenshot.png"
         full_res_url = "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png"
@@ -429,9 +429,9 @@ class TestAllUrls:
     def test_all_urls_always_includes_canonical_node_url(
         self, image_node, image_api_content
     ):
-        """all_urls should include node.url even when content API omits it."""
+        """all_urls should include page_url even when content API omits it."""
         urls = image_node.all_urls(image_api_content, "html")
-        assert image_node.url in urls
+        assert image_node.page_url in urls
 
     def test_all_urls_markdown_returns_extracted_urls(
         self, image_node, image_api_content
@@ -443,9 +443,17 @@ class TestAllUrls:
     def test_all_urls_returns_only_canonical_when_no_content(
         self, image_node
     ):
-        """all_urls should return [node.url] when asset_data has no content key."""
+        """all_urls should return [page_url] when asset_data has no content key."""
         urls = image_node.all_urls({}, "html")
-        assert urls == [image_node.url]
+        assert urls == [image_node.page_url]
+
+    def test_attachment_all_urls_empty_page_url_filtered_by_build_url_map(
+        self, asset_archiver, attachment_node, attachment_api_content
+    ):
+        """AttachmentNode.page_url is '' — _build_url_map must not add it to the map."""
+        asset_archiver.http_client.http_get_request.return_value.json.return_value = attachment_api_content
+        url_map = asset_archiver._build_url_map("attachments", "my-page", [attachment_node], kind="html")
+        assert "" not in url_map
 
     def test_attachment_all_urls_markdown_returns_extracted_url(
         self, attachment_node, attachment_api_content
@@ -753,10 +761,10 @@ class TestPhase4PageArchiverDispatch:
 
         good_node = MagicMock()
         good_node.id_ = 10
-        good_node.url = "https://wiki.example.com/uploads/images/10/good.png"
+        good_node.download_url = "https://wiki.example.com/uploads/images/10/good.png"
         bad_node = MagicMock()
         bad_node.id_ = 99
-        bad_node.url = "https://wiki.example.com/uploads/images/99/bad.png"
+        bad_node.download_url = "https://wiki.example.com/uploads/images/99/bad.png"
 
         archiver.asset_archiver.get_asset_nodes.side_effect = lambda asset_type: (
             {5: [good_node, bad_node]} if asset_type == "images" else {}

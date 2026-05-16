@@ -33,7 +33,8 @@ class AssetNode:
     def __init__(self, meta_data: Dict[str, int | str | bool]):
         self.id_: int = meta_data['id']
         self.page_id: int = meta_data['uploaded_to']
-        self.url: str = ""
+        self.download_url: str = ""
+        self.page_url: str = ""
         self.name: str = ""
         self._relative_path_prefix: str = ""
 
@@ -44,15 +45,16 @@ class AssetNode:
     def all_urls(self, asset_data: Dict[str, Union[int, str, bool, dict]], kind: Literal["markdown", "html"]) -> List[str]:
         """All URLs for this asset that may appear in an exported page.
 
-        Canonical node.url always included — the per-asset content API
+        Canonical page_url always included — the per-asset content API
         may omit it (e.g. anchor href wrapping a scaled img src).
+        AttachmentNode.page_url is empty string (filtered by callers).
         """
         extracted = (
             self._get_md_url_strs(asset_data)
             if kind == "markdown"
             else self._get_html_url_strs(asset_data)
         )
-        return list(dict.fromkeys([*extracted, self.url]))
+        return list(dict.fromkeys([*extracted, self.page_url]))
 
     @staticmethod
     def _get_md_url_strs(asset_data: Dict[str, Union[int, str]]) -> list[str]:
@@ -107,9 +109,10 @@ class ImageNode(AssetNode):
     """
     def __init__(self, meta_data: Dict[str, Union[int, str]]):
         super().__init__(meta_data)
-        self.url: str = meta_data['url']
-        self.name: str = self.url.split('/')[-1]
-        log.debug("Image node has generated url: %s", self.url)
+        self.download_url: str = meta_data['url']
+        self.page_url: str = meta_data['url']
+        self.name: str = self.download_url.split('/')[-1]
+        log.debug("Image node has generated url: %s", self.download_url)
         self._relative_path_prefix = f"{_IMAGE_DIR_NAME}"
 
 class AttachmentNode(AssetNode):
@@ -126,9 +129,10 @@ class AttachmentNode(AssetNode):
     def __init__(self, meta_data: Dict[str, Union[int, str, bool]],
                  base_url: str):
         super().__init__(meta_data)
-        self.url: str = f"{base_url}/{self.id_}"
+        self.download_url: str = f"{base_url}/{self.id_}"
+        self.page_url: str = ""
         self.name = meta_data['name']
-        log.debug("Attachment node has generated url: %s", self.url)
+        log.debug("Attachment node has generated url: %s", self.download_url)
         self._relative_path_prefix = f"{_ATTACHMENT_DIR_NAME}"
 
     @staticmethod
@@ -264,7 +268,7 @@ class AssetArchiver:
         body to rewrite remote links to local relative paths.
 
         all_urls() on each node returns both extracted content URLs and the
-        canonical node.url, ensuring anchor-wrapped images are fully rewritten.
+        canonical node.page_url, ensuring anchor-wrapped images are fully rewritten.
         """
         url_map: dict[str, str] = {}
         for asset_node in asset_nodes:

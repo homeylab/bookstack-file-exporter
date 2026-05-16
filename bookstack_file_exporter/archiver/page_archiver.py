@@ -177,12 +177,12 @@ class PageArchiver:
         node_base_path = f"{self.archive_base_path}/{parent_path}"
         for asset_node in asset_nodes:
             try:
-                asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.url)
+                asset_data = self.asset_archiver.get_asset_bytes(asset_type, asset_node.download_url)
             except (HTTPError, RetryError):
                 if asset_node.id_ not in failed_assets:
                     failed_assets[asset_node.id_] = 0
                 log.error("Failed to get image or attachment data " \
-                          "for asset located at: %s - skipping", asset_node.url)
+                          "for asset located at: %s - skipping", asset_node.download_url)
                 continue
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
