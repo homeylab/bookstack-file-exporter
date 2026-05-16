@@ -128,21 +128,43 @@ class TestPhase0BaselineMd:
         result = asset_archiver.update_asset_links("images", "my-page", original, [image_node])
         assert result == original
 
-    def test_update_asset_links_excludes_failed_assets(
+    def test_update_asset_links_rewrites_only_urls_from_passed_nodes(
         self, asset_archiver, image_node, image_api_content
     ):
-        """Failed assets should not appear in the rewritten page."""
-        inner_url = "https://wiki.example.com/uploads/images/gallery/2024-01/scaled-1680-/screenshot.png"
-        page_data = b"[![alt](" + inner_url.encode() + b")](https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png)"
+        """Filtered-out (failed) assets stay in page_data; passed assets get rewritten.
 
+        Models the upstream contract: PageArchiver.archive_pages drops failed-asset
+        nodes from page_images before calling update_asset_links. Only the URLs
+        of the surviving (passed) nodes should be rewritten — URLs of dropped
+        nodes must remain untouched.
+        """
+        success_url = (
+            "https://wiki.example.com/uploads/images/gallery/2024-01/"
+            "scaled-1680-/screenshot.png"
+        )
+        failed_url = (
+            "https://wiki.example.com/uploads/images/gallery/2024-01/failed-image.png"
+        )
+        page_data = (
+            b"[![ok](" + success_url.encode() + b")]"
+            b"(https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png)\n"
+            b"[![bad](" + failed_url.encode() + b")](" + failed_url.encode() + b")"
+        )
+
+        # image_node corresponds to success_url; the "failed" node is never passed in.
         asset_archiver.http_client.http_get_request.return_value.json.return_value = (
             image_api_content
         )
 
-        # Pass empty list (failed assets filtered out before calling update_asset_links)
-        result = asset_archiver.update_asset_links("images", "my-page", page_data, [])
-        # With empty list, page_data unchanged
-        assert result == page_data
+        result = asset_archiver.update_asset_links(
+            "images", "my-page", page_data, [image_node]
+        )
+
+        # Passed node's URLs rewritten to local path
+        assert success_url.encode() not in result
+        assert b"images/my-page/screenshot.png" in result
+        # Filtered node's URL must remain — never reached the substitution loop
+        assert failed_url.encode() in result
 
 
 # ---------------------------------------------------------------------------
