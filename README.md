@@ -581,7 +581,7 @@ Below are versions that have major changes to the way configuration or exporter 
 | Start Version | Target Version | Description |
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
-| `1.6.X` | `1.7.0` | Behavior change: with `modify_links: true` (or legacy `modify_markdown: true`) and `formats: [html]` only, link rewriting now activates for HTML exports. Previously, `modify_markdown: true` was silently a no-op when `markdown` was absent from `formats`. |
+| `1.6.X` | `v2.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key still works but will be removed in a future release. |
 
 ## Running Tests
 
