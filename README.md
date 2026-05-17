@@ -494,7 +494,9 @@ Attachment links are rewritten from the live URL to a local relative path.
 
 #### Known limitations
 
-- **Literal byte substitution**: URL rewriting replaces every occurrence of the URL bytes in the page, including inside `<code>`, `<pre>`, and HTML comments. Pages that quote their own asset URLs as documentation text (e.g., in code blocks) will have those occurrences rewritten too. If this causes problems, please open an issue — targeted node substitution is out of scope for 1.7.0.
+Markdown exports use raw `bytes.replace` — no structural awareness (e.g. DOM). If an attachment URL for some reason appears verbatim anywhere in the markdown source (code block, pre, comment, plain text), it gets replaced.
+
+HTML exports are safe because bs4 filters to only <img src> / <a href> attributes before replacing.
 
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
@@ -581,7 +583,7 @@ Below are versions that have major changes to the way configuration or exporter 
 | Start Version | Target Version | Description |
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
-| `1.6.X` | `v2.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key still works but will be removed in a future release. |
+| `1.6.X` | `vX.X.X` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key still works but will be removed in a future release. |
 
 ## Running Tests
 

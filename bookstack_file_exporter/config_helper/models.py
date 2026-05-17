@@ -22,6 +22,8 @@ class BookstackAccess(BaseModel):
 # pylint: disable=too-few-public-methods
 class Assets(BaseModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
+    # Allow Pydantic to populate this field by Python name and by alias
+    # so legacy config key `modify_markdown` can still be accepted.
     model_config = ConfigDict(populate_by_name=True)
 
     export_images: Optional[bool] = False
