@@ -20,7 +20,7 @@ pip_build:
 	python -m build
 
 lint:
-	pylint bookstack_file_exporter
+	pylint bookstack_file_exporter tests
 
 upload_testpypi:
 	python -m pip install --upgrade twine
