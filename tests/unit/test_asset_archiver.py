@@ -619,6 +619,33 @@ class TestPhase3HtmlRewrite:
         debug_msgs = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
         assert any("zero matches" in m.lower() for m in debug_msgs)
 
+    def test_apply_url_substitutions_prefix_overlapping_urls_no_corruption(
+        self, asset_archiver
+    ):
+        """Two attachment URLs where one is a prefix of the other (IDs 6 vs 60)
+        must both rewrite cleanly. Insertion-order iteration would replace the
+        shorter URL first and orphan the trailing '0' from ID 60, producing
+        e.g. 'local/a.dat0'. Length-descending sort prevents this."""
+        url_map = {
+            "https://wiki.example.com/attachments/6":  "attachments/page/a.dat",
+            "https://wiki.example.com/attachments/60": "attachments/page/b.dat",
+        }
+        page_data = (
+            b"[a](https://wiki.example.com/attachments/6) "
+            b"text "
+            b"[b](https://wiki.example.com/attachments/60)"
+        )
+        result = asset_archiver._apply_url_substitutions(page_data, url_map)
+
+        assert b"attachments/page/a.dat0" not in result, (
+            "shorter URL replaced first corrupts longer URL's trailing chars"
+        )
+        assert b"[a](attachments/page/a.dat)" in result
+        assert b"[b](attachments/page/b.dat)" in result
+        assert b"https://wiki.example.com/attachments/" not in result, (
+            "no remote URL fragments should remain"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 4 — PageArchiver dispatch

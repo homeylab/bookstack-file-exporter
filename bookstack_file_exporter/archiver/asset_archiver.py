@@ -82,8 +82,9 @@ class AssetNode:
         #   full-res URL (e.g. simple `![alt](full)` markdown without anchor
         #   wrap) would have nothing to match against and never get rewritten.
         #
-        #   `*extracted` unpacks the list; [*extracted, page_url] = new list: [1, 2] => [1, 2, page_url]
-        #   with page_url tacked on the end.
+        #   `*extracted` unpacks the list — [*extracted, page_url] builds a
+        #   new list with page_url tacked on the end.
+        #   Example: extracted=[1, 2] -> [*extracted, page_url] -> [1, 2, page_url]
         #
         # Why dedup:
         #   ImageNode.page_url IS the full-res URL, which `extracted` already
@@ -376,32 +377,40 @@ class AssetArchiver:
     def _apply_url_substitutions(page_data: bytes, url_map: dict[str, str]) -> bytes:
         """Apply literal bytes.replace substitutions for each URL in url_map.
 
-        Iteration order is url_map insertion order. BookStack's URL shapes
-        don't overlap — full vs scaled differ in a middle path segment, not
-        by prefix/suffix, so neither is a substring of the other:
+        Replace longest URLs first to avoid prefix-corruption. Attachment URLs
+        use sequential IDs (`.../attachments/6`, `.../attachments/60`), so a
+        shorter URL CAN be a prefix of a longer one when both attachments
+        appear on the same page. Without sort:
 
-          full:    https://wiki/uploads/images/gallery/2024-01/foo.png
-          scaled:  https://wiki/uploads/images/gallery/2024-01/scaled-1680-/foo.png
+          page:    "[a](.../attachments/6) [b](.../attachments/60)"
+          replace .../attachments/6  first -> "[a](local/a.dat) [b](local/a.dat0)"
+                                                                            ^^^
+                                                  orphaned "0" from ID 60 — corruption
 
-        Replace order therefore doesn't affect the result. If a future
-        BookStack version introduces overlapping URL forms (e.g. query-string
-        variants like foo.png?w=200, or suffix-token variants like foo.scaled),
-        revisit — a length-descending sort would be needed to prevent the
-        shorter URL from corrupting the longer one mid-loop.
+        With longest-first sort:
+
+          replace .../attachments/60 first -> "[a](.../attachments/6) [b](local/b.dat)"
+          replace .../attachments/6  next  -> "[a](local/a.dat) [b](local/b.dat)"  ✓
+
+        Same risk applies to image filenames that share prefixes
+        (`foo.png` vs `foo.png.thumb`), though BookStack's standard image
+        URLs don't exhibit this. `sorted(dict, key=len, reverse=True)`
+        iterates the dict's keys in descending length order.
 
         Logs debug when a URL has zero matches in page_data (silent-miss surface).
         """
-        for url, local_path in url_map.items():
+        for url in sorted(url_map, key=len, reverse=True):
             if not url:
                 # bytes.replace(b"", ...) inserts replacement between every byte —
                 # guard here even though _build_url_map already filters empties.
                 continue
             url_bytes = url.encode()
+            local_path_bytes = url_map[url].encode()
             # isEnabledFor short-circuits the `not in` scan when debug is off,
             # avoiding a redundant O(n) pass before replace() runs.
             if log.isEnabledFor(logging.DEBUG) and url_bytes not in page_data:
                 log.debug("URL has zero matches in page data (no substitution made): %s", url)
-            page_data = page_data.replace(url_bytes, local_path.encode())
+            page_data = page_data.replace(url_bytes, local_path_bytes)
         return page_data
 
     @staticmethod
