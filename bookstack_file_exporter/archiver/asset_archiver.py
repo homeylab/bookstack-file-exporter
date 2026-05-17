@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import base64
-import html
 from typing import Union, Literal
 
 from markdown_it import MarkdownIt
@@ -314,12 +313,17 @@ class AssetArchiver:
         matched_urls: dict[str, str] = {}
 
         def _add_url(url: str, local_path: str) -> None:
-            """Add URL and its HTML entity-encoded form — bs4 decodes &amp; to & but
-            raw page bytes may still contain &amp;, causing bytes.replace to miss."""
+            """Add URL and its HTML-entity-encoded form. bs4 decodes &amp; to &
+            when parsing, but the raw page bytes still contain &amp;, so we need
+            both forms as keys for bytes.replace to find the right occurrence.
+
+            Only & needs escaping here — < and > are invalid in valid URLs (per
+            RFC 3986, must be percent-encoded as %3C / %3E), so html.escape's
+            broader behavior was dead code for any real URL.
+            """
             matched_urls[url] = local_path
-            escaped = html.escape(url, quote=False)
-            if escaped != url:
-                matched_urls[escaped] = local_path
+            if "&" in url:
+                matched_urls[url.replace("&", "&amp;")] = local_path
 
         # Anchor-wrapped images: check img src and parent href
         for img in soup.find_all("img", src=True):
@@ -365,8 +369,7 @@ class AssetArchiver:
                 asset_data = self.get_asset_data(asset_type, asset_node)
             local_path = asset_node.get_relative_path(page_name)
             for url in asset_node.all_urls(asset_data, kind):
-                if url:
-                    url_map[url] = local_path
+                url_map[url] = local_path
         return url_map
 
     @staticmethod

@@ -168,20 +168,18 @@ class PageArchiver:
                                                            asset_nodes)
 
     def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
-                            asset_nodes: List[ImageNode | AttachmentNode]) -> Dict[int, int]:
+                            asset_nodes: List[ImageNode | AttachmentNode]) -> set[int]:
         """pull images locally into a directory based on page"""
         if not asset_nodes:
-            return {}
-        # use a map for faster lookup
-        failed_assets = {}
+            return set()
+        failed_assets: set[int] = set()
         node_base_path = f"{self.archive_base_path}/{parent_path}"
         for asset_node in asset_nodes:
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(
                     asset_type, asset_node.download_url)
             except (HTTPError, RetryError):
-                if asset_node.id_ not in failed_assets:
-                    failed_assets[asset_node.id_] = 0
+                failed_assets.add(asset_node.id_)
                 log.error("Failed to get image or attachment data " \
                           "for asset located at: %s - skipping", asset_node.download_url)
                 continue

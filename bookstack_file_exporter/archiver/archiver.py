@@ -125,6 +125,9 @@ class Archiver:
         file_dict = {file: os.stat(file).st_ctime for file in file_list}
         ordered = sorted(file_dict.items(), key=lambda item: item[1])
         to_delete = len(ordered) - self.config.user_inputs.keep_last
+        # Guard against negative slice when caller invokes us directly with
+        # keep_last >= len(file_list). Negative `to_delete` makes ordered[:to_delete]
+        # return the first N items instead of an empty list — wrong files deleted.
         if to_delete <= 0:
             return []
         files_to_clean = [key for key, _ in ordered[:to_delete]]

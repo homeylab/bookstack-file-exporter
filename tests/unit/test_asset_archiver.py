@@ -301,7 +301,7 @@ class TestPhase1MdFixes:
         with caplog.at_level(logging.DEBUG, logger="bookstack_file_exporter.archiver.asset_archiver"):
             asset_archiver.update_asset_links("images", "my-page", page_data, [image_node])
 
-        assert any("zero" in r.message.lower() or "no match" in r.message.lower()
+        assert any("no substitution" in r.message.lower()
                    for r in caplog.records if r.levelno == logging.DEBUG)
 
 
