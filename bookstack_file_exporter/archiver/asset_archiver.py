@@ -57,6 +57,64 @@ class AssetNode:
             if kind == "markdown"
             else self._get_html_url_strs(asset_data)
         )
+        # Build the full set of URLs that could appear in the exported page so
+        # _build_url_map can map every variant to the same local path.
+        #
+        # Why append page_url:
+        #   BookStack's per-asset content API can omit the canonical (full-res)
+        #   URL — only the variants it embeds in content.markdown/content.html
+        #   show up in `extracted`. Examples:
+        #
+        #     ImageNode (markdown): "[![alt](.../scaled-1680-/foo.png)](.../foo.png)"
+        #       extracted = [".../foo.png", ".../scaled-1680-/foo.png"]
+        #                    ^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^^^^^
+        #                    link_open href  inner image src
+        #       page_url  =  ".../foo.png"
+        #
+        #     ImageNode (html): '<a href=".../foo.png"><img src="data:image/png;base64,..."></a>'
+        #       extracted = [".../foo.png"]      # base64 src skipped by _get_html_url_strs
+        #       page_url  =  ".../foo.png"
+        #
+        #     AttachmentNode (markdown): "[file.dat](.../attachments/6)"
+        #       extracted = [".../attachments/6"]
+        #       page_url  =  ""                  # attachments have no "view" URL
+        #
+        #   If page_url were missing, an exported page that contained ONLY the
+        #   full-res URL (e.g. simple `![alt](full)` markdown without anchor
+        #   wrap) would have nothing to match against and never get rewritten.
+        #
+        #   `*extracted` unpacks the list; [*extracted, page_url] = new list: [1, 2] => [1, 2, page_url]
+        #   with page_url tacked on the end.
+        #
+        # Why dedup:
+        #   ImageNode.page_url IS the full-res URL, which `extracted` already
+        #   contains for any anchor-wrapped markdown image. So the combined
+        #   list typically has the full-res URL twice:
+        #
+        #     [*extracted, page_url]
+        #       = [".../foo.png", ".../scaled-1680-/foo.png", ".../foo.png"]
+        #          ^^^^^^^^^^^^^                              ^^^^^^^^^^^^^
+        #          from extracted (link href)                 appended page_url (duplicate)
+        #
+        #   Dedup collapses it to one entry per URL:
+        #     [".../foo.png", ".../scaled-1680-/foo.png"]
+        #
+        #   Functionally harmless to leave duplicates (every URL maps to the
+        #   same local_path, so _build_url_map just overwrites the slot), but
+        #   dedup keeps url_map clean and debug logs readable.
+        #
+        # Why dict.fromkeys instead of set():
+        #   set() iteration order is implementation-defined and not stable
+        #   across runs — log lines and any failure traces would shuffle.
+        #   dict.fromkeys creates a dict using each URL as a key (value=None)
+        #   and preserves insertion order, so output is deterministic.
+        #
+        # Why filter empties (the trailing `if u`):
+        #   AttachmentNode.page_url is "" by design (no canonical view URL).
+        #   An empty key here would land in url_map and trigger
+        #   bytes.replace(b"", b"attachments/page/file.dat") downstream, which
+        #   inserts the replacement BETWEEN EVERY BYTE of the page and
+        #   destroys it.
         return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
@@ -72,8 +130,21 @@ class AssetNode:
         urls = []
         for block_token in _md.parse(md_str):
             for token in (block_token.children or []):
+                # `image` = single self-contained token for a markdown image.
+                #   markdown: ![alt](URL)
+                #   tokens:   image(src=URL, alt=alt)
                 if token.type == 'image':
                     urls.append(token.attrs['src'])
+                # `link_open` = opening half of a link pair; text and link_close
+                # follow. We only need the opener's href; link_close has no attrs.
+                #   markdown: [text](URL)
+                #   tokens:   link_open(href=URL), text("text"), link_close
+                #
+                # For BookStack's anchor-wrapped image (click-to-zoom) shape,
+                # both branches fire on the same construct:
+                #   markdown: [![alt](inner)](outer)
+                #   tokens:   link_open(href=outer), image(src=inner), link_close
+                #   result:   [outer, inner]
                 elif token.type == 'link_open':
                     urls.append(token.attrs['href'])
         return urls
@@ -149,8 +220,17 @@ class AttachmentNode(AssetNode):
         urls = []
         for block_token in _md.parse(md_str):
             for token in (block_token.children or []):
+                # `image` = single self-contained token for a markdown image.
+                # Attachments don't normally render as images, but links.markdown
+                # is user-controllable so we handle defensively.
+                #   markdown: ![alt](URL)
+                #   tokens:   image(src=URL, alt=alt)
                 if token.type == 'image':
                     urls.append(token.attrs['src'])
+                # `link_open` = opening half of a link pair; this is the normal
+                # shape BookStack returns for attachment links.
+                #   markdown: [file.dat](URL)
+                #   tokens:   link_open(href=URL), text("file.dat"), link_close
                 elif token.type == 'link_open':
                     urls.append(token.attrs['href'])
         return urls
@@ -293,12 +373,22 @@ class AssetArchiver:
     def _apply_url_substitutions(page_data: bytes, url_map: dict[str, str]) -> bytes:
         """Apply literal bytes.replace substitutions for each URL in url_map.
 
+        Iteration order is url_map insertion order. BookStack's URL shapes
+        don't overlap — full vs scaled differ in a middle path segment, not
+        by prefix/suffix, so neither is a substring of the other:
+
+          full:    https://wiki/uploads/images/gallery/2024-01/foo.png
+          scaled:  https://wiki/uploads/images/gallery/2024-01/scaled-1680-/foo.png
+
+        Replace order therefore doesn't affect the result. If a future
+        BookStack version introduces overlapping URL forms (e.g. query-string
+        variants like foo.png?w=200, or suffix-token variants like foo.scaled),
+        revisit — a length-descending sort would be needed to prevent the
+        shorter URL from corrupting the longer one mid-loop.
+
         Logs debug when a URL has zero matches in page_data (silent-miss surface).
         """
-        # Sort by URL length descending so longer/more-specific URLs replace first.
-        # Prevents shorter URLs that are substrings of longer ones from corrupting
-        # subsequent matches.
-        for url, local_path in sorted(url_map.items(), key=lambda item: len(item[0]), reverse=True):
+        for url, local_path in url_map.items():
             if not url:
                 # bytes.replace(b"", ...) inserts replacement between every byte —
                 # guard here even though _build_url_map already filters empties.
