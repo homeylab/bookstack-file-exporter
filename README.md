@@ -450,7 +450,7 @@ If an API call to get an attachment or its metadata fails, the exporter will ski
 
 The configuration item, `assets.modify_links`, can be set to `true` to rewrite image and attachment URL links in exported files to local relative paths. This feature makes your `markdown` and `html` exports fully portable — assets resolve locally without a network connection to the Bookstack instance.
 
-- **Eligible formats**: `markdown` and `html` only. PDF, plaintext, and zip exports are not rewritten.
+- **Eligible formats**: `markdown` and `html` only. PDF, plaintext, and zip exports are not yet requested/implemented.
 - **Scope**: rewrites image `src` attributes and their outer anchor `href` wrappers; rewrites attachment `<a href>` links. Does **not** rewrite inter-page, inter-book, inter-chapter, or inter-shelf links (deferred to a future issue).
 - **Legacy alias**: the old key `modify_markdown` will be removed in a future version. Rename to `modify_links` in your configuration.
 
