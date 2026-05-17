@@ -1,11 +1,11 @@
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument,protected-access
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
 """Happy-path unit tests for PageArchiver."""
-from typing import Dict, List
-from unittest.mock import MagicMock, call, patch
+from typing import Dict
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bookstack_file_exporter.archiver.page_archiver import PageArchiver, _FILE_EXTENSION_MAP
+from bookstack_file_exporter.archiver.page_archiver import PageArchiver
 from bookstack_file_exporter.exporter.node import Node
 
 
@@ -13,28 +13,7 @@ from bookstack_file_exporter.exporter.node import Node
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
-def _make_config(formats: List[str] = None, export_images: bool = False,
-                 export_attachments: bool = False, export_meta: bool = False,
-                 modify_links: bool = False,
-                 modify_markdown: bool = False) -> MagicMock:
-    """Build a minimal ConfigNode mock that satisfies PageArchiver.__init__.
-
-    Accepts both modify_links (preferred) and legacy modify_markdown kwarg.
-    modify_links wins when both are provided.
-    """
-    config = MagicMock()
-    config.urls = {
-        "pages": "https://wiki.test.example/api/pages",
-        "images": "https://wiki.test.example/api/image-gallery",
-        "attachments": "https://wiki.test.example/api/attachments",
-    }
-    config.user_inputs.formats = formats or ["markdown"]
-    config.user_inputs.assets.export_images = export_images
-    config.user_inputs.assets.export_attachments = export_attachments
-    config.user_inputs.assets.export_meta = export_meta
-    # modify_links is the canonical flag; accept legacy kwarg for backward compat test coverage
-    config.user_inputs.assets.modify_links = modify_links or modify_markdown
-    return config
+from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 def _make_page_node(build_node, page_id: int, slug: str, parent: Node) -> Node:
@@ -102,7 +81,7 @@ class TestConstruction:
 # 2. Export URL formation (_get_page_data)
 # ---------------------------------------------------------------------------
 
-class TestGetPageData:
+class TestGetPageData:  # pylint: disable=too-few-public-methods  # test scaffolding stub
     @pytest.mark.parametrize("export_format", ["markdown", "html", "pdf", "plaintext", "zip"])
     def test_url_contains_export_api_path(self, page_archiver, export_format):
         """_get_page_data should call http_client with the correct export URL."""
@@ -151,7 +130,7 @@ class TestFileExtensionMap:
 # 4. gzip_archive delegates to archiver_util.create_gzip
 # ---------------------------------------------------------------------------
 
-class TestGzipArchive:
+class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffolding stub
     def test_create_gzip_called_with_tar_and_archive_file(self, page_archiver):
         with patch(
             "bookstack_file_exporter.archiver.page_archiver.archiver_util.create_gzip"
@@ -166,7 +145,7 @@ class TestGzipArchive:
 # 5. write_data delegates to archiver_util.write_tar
 # ---------------------------------------------------------------------------
 
-class TestWriteData:
+class TestWriteData:  # pylint: disable=too-few-public-methods  # test scaffolding stub
     def test_write_tar_called_with_correct_args(self, page_archiver):
         with patch(
             "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"

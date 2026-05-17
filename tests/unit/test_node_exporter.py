@@ -1,7 +1,6 @@
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
 """Unit tests for NodeExporter."""
 import logging
-from typing import Dict, List
 
 import pytest
 
@@ -49,7 +48,7 @@ def test_get_all_shelves_empty_logs_warning_and_returns_empty(
     exporter = _exporter(api_urls, mock_http_client)
     caplog.set_level(logging.WARNING, logger=_LOGGER_NAME)
     result = exporter.get_all_shelves()
-    assert result == {}
+    assert not result
     warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert any("No shelves" in m for m in warning_messages)
 
@@ -85,7 +84,7 @@ def test_get_all_shelves_multiple_ids_each_fetched(api_urls, mock_http_client, s
 def test_get_chapter_nodes_empty_book_nodes_returns_empty(api_urls, mock_http_client):
     exporter = _exporter(api_urls, mock_http_client)
     result = exporter.get_chapter_nodes({})
-    assert result == {}
+    assert not result
     mock_http_client.http_get_request.assert_not_called()
 
 
@@ -101,7 +100,7 @@ def test_get_chapter_nodes_book_with_only_pages_returns_empty(
     )
     exporter = _exporter(api_urls, mock_http_client)
     result = exporter.get_chapter_nodes({10: book_node})
-    assert result == {}
+    assert not result
     mock_http_client.http_get_request.assert_not_called()
 
 
@@ -182,7 +181,7 @@ def test_get_unassigned_books_all_assigned_returns_empty(
     mock_http_client.http_get_all.return_value = [{"id": 10}]
     exporter = _exporter(api_urls, mock_http_client)
     result = exporter.get_unassigned_books(existing, "unassigned/")
-    assert result == {}
+    assert not result
     mock_http_client.http_get_request.assert_not_called()
 
 

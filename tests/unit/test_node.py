@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 """Unit tests for the Node class."""
 import pytest
 from bookstack_file_exporter.exporter.node import Node
