@@ -496,7 +496,7 @@ Attachment links are rewritten from the live URL to a local relative path.
 
 Markdown exports use raw `bytes.replace` — no structural awareness (e.g. DOM). If an attachment URL for some reason appears verbatim anywhere in the markdown source (code block, pre, comment, plain text), it gets replaced.
 
-HTML exports are safe because bs4 filters to only <img src> / <a href> attributes before replacing.
+HTML exports are safe because bs4 filters to only `<img src> / <a href>` attributes before replacing.
 
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
