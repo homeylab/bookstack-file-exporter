@@ -1,5 +1,5 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument
 """regression test: empty bookstack instance exports nothing cleanly"""
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument
 
 import logging
 from typing import Dict
@@ -21,9 +21,9 @@ def test_full_traversal_empty_bookstack(mock_http_client, api_urls, caplog):
     books: Dict[int, Node] = exporter.get_all_books(shelves, "unassigned")
     pages: Dict[int, Node] = exporter.get_all_pages(books)
 
-    assert shelves == {}
-    assert books == {}
-    assert pages == {}
+    assert not shelves
+    assert not books
+    assert not pages
 
     # warning logged for empty shelf list (matches existing get_all_shelves behavior)
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]

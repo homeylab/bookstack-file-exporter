@@ -9,18 +9,15 @@ DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
 
-pip_build:
-	python -m pip install .
-
 pip_local_dev:
-	python -m pip install -e .
+	python -m pip install -e ".[dev]"
 
 pip_build:
 	python -m pip install --upgrade build
 	python -m build
 
 lint:
-	pylint bookstack_file_exporter
+	pylint bookstack_file_exporter tests
 
 upload_testpypi:
 	python -m pip install --upgrade twine

@@ -1,0 +1,12 @@
+{
+  "id": 42,
+  "name": "screenshot.png",
+  "url": "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png",
+  "path": "/uploads/images/gallery/2024-01/screenshot.png",
+  "type": "gallery",
+  "uploaded_to": 7,
+  "content": {
+    "html": "<a href=\"https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png\"><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\" alt=\"screenshot\"></a>",
+    "markdown": "[![screenshot](https://wiki.example.com/uploads/images/gallery/2024-01/scaled-1680-/screenshot.png)](https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png)"
+  }
+}

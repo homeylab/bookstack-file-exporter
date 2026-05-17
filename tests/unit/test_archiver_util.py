@@ -1,3 +1,5 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
+"""Unit tests for archiver utility functions (scan, compress, delete)."""
 import gzip
 import json
 import os
@@ -181,7 +183,7 @@ def test_scan_archives_excludes_non_matching_files(tmp_path):
 def test_scan_archives_empty_when_no_matches(tmp_path):
     base = str(tmp_path / "backup")
     results = util.scan_archives(base, ".tar.gz")
-    assert results == []
+    assert not results
 
 
 def test_scan_archives_extension_filter(tmp_path):

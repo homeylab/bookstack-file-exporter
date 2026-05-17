@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
 """Shared test helpers (non-fixture)."""
 from unittest.mock import MagicMock
 

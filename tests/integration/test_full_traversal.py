@@ -1,4 +1,4 @@
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument
 """Integration regression test for GitHub issue #74.
 
 Exercises NodeExporter.get_all_pages end-to-end with a mocked HttpHelper using
@@ -13,18 +13,12 @@ import pytest
 
 from bookstack_file_exporter.exporter.exporter import NodeExporter
 from bookstack_file_exporter.exporter.node import Node
+from tests.helpers import make_response
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def make_response(payload: Dict) -> MagicMock:
-    """Return a MagicMock that mimics requests.Response for the given payload."""
-    resp = MagicMock()
-    resp.json.return_value = payload
-    return resp
-
 
 def _make_page(page_id: int, book_id: int = 10,
                chapter_id: Union[int, None] = None) -> Dict:
@@ -87,7 +81,8 @@ _CHAPTER_PAGE_IDS: List[int] = [
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_get_all_pages_mixed_book(
+# integration test reads multi-level fixtures; splitting hurts clarity
+def test_get_all_pages_mixed_book(  # pylint: disable=too-many-locals
     mock_http_client, api_urls, book_detail_mixed
 ):
     """get_all_pages must return direct pages AND all chapter pages for a

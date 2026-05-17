@@ -1,10 +1,18 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
+"""Pytest fixtures shared across all tests."""
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from tests.helpers import make_response  # noqa: F401  re-export
+from bookstack_file_exporter.archiver.asset_archiver import (
+    AssetArchiver,
+    AttachmentNode,
+    ImageNode,
+)
+from bookstack_file_exporter.config_helper.models import HttpConfig
+from bookstack_file_exporter.exporter.node import Node
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -61,7 +69,6 @@ def api_urls():
 @pytest.fixture
 def http_config():
     """minimal HttpConfig for HttpHelper construction"""
-    from bookstack_file_exporter.config_helper.models import HttpConfig
     return HttpConfig(
         timeout=10,
         verify_ssl=True,
@@ -78,6 +85,66 @@ def books_list_paginated():
 
 
 @pytest.fixture
+def image_api_content():
+    """image gallery API response for screenshot.png"""
+    return _load_fixture("api_image_content.json")
+
+
+@pytest.fixture
+def attachment_api_content():
+    """attachment API response for project-spec.pdf"""
+    return _load_fixture("api_attachment_content.json")
+
+
+@pytest.fixture
+def html_anchor_wrapped_page():
+    """HTML page bytes with anchor-wrapped image"""
+    with open(FIXTURES_DIR / "html_page_anchor_wrapped_image.html", "rb") as fh:
+        return fh.read()
+
+
+@pytest.fixture
+def html_attachment_page():
+    """HTML page bytes with attachment link"""
+    with open(FIXTURES_DIR / "html_page_attachment.html", "rb") as fh:
+        return fh.read()
+
+
+@pytest.fixture
+def image_node():
+    """ImageNode for screenshot.png, page id=7"""
+    meta = {
+        "id": 42,
+        "uploaded_to": 7,
+        "url": "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png",
+    }
+    return ImageNode(meta)
+
+
+@pytest.fixture
+def attachment_node():
+    """AttachmentNode for project-spec.pdf"""
+    meta = {
+        "id": 99,
+        "uploaded_to": 7,
+        "name": "project-spec.pdf",
+        "external": False,
+    }
+    return AttachmentNode(meta, "https://wiki.example.com/attachments")
+
+
+@pytest.fixture
+def asset_archiver():
+    """AssetArchiver with MagicMock http_client"""
+    urls = {
+        "images": "https://wiki.example.com/api/image-gallery",
+        "attachments": "https://wiki.example.com/api/attachments",
+    }
+    http_client = MagicMock()
+    return AssetArchiver(urls, http_client)
+
+
+@pytest.fixture
 def build_node():
     """factory for constructing Node instances inline with minimal boilerplate
 
@@ -88,8 +155,6 @@ def build_node():
     The factory returns a Node whose meta dict is `kwargs` minus reserved
     keys `parent` and `path_prefix`, which are forwarded to Node().
     """
-    from bookstack_file_exporter.exporter.node import Node
-
     def _build(parent=None, path_prefix="", **meta):
         # required defaults so Node init succeeds even when caller omits them
         meta.setdefault("id", 1)

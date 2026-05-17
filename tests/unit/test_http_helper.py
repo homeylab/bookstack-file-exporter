@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
 """Unit tests for HttpHelper in bookstack_file_exporter.common.util."""
 import logging
 
@@ -7,6 +8,7 @@ import responses
 from responses import matchers
 
 from bookstack_file_exporter.common.util import HttpHelper
+from bookstack_file_exporter.config_helper.models import HttpConfig
 
 BASE = "https://wiki.test.example/api"
 
@@ -73,7 +75,7 @@ def test_http_get_all_empty_result(http_config):
     client = HttpHelper(headers={}, config=http_config)
     responses.get(f"{BASE}/books", json={"data": [], "total": 0})
     result = client.http_get_all(f"{BASE}/books")
-    assert result == []
+    assert not result
     assert len(responses.calls) == 1
 
 
@@ -205,9 +207,6 @@ def test_http_get_request_non_2xx_raises_http_error(http_config, status_code, ca
 # ---------------------------------------------------------------------------
 # http_get_request — retry logic
 # ---------------------------------------------------------------------------
-
-from bookstack_file_exporter.config_helper.models import HttpConfig  # noqa: E402
-
 
 def _retry_config(retry_count=2, retry_codes=None):
     """Helper to build an HttpConfig with retries enabled."""

@@ -56,7 +56,7 @@ class Archiver:
         """export all page content"""
         log.info("Exporting all bookstack page contents")
         # get images first if requested
-        # this is because we may want to manipulate page data with modify_markdown flag
+        # this is because we may want to manipulate page data with modify_links flag
         self._page_archiver.archive_pages(page_nodes)
 
     def create_archive(self):
@@ -69,8 +69,14 @@ class Archiver:
         """for each target, do their respective tasks"""
         if not self.config.object_storage_config:
             return
+        # dict built per-call so instance-level monkey-patching of handlers
+        # propagates during tests (class-level dict captures pre-patch values)
+        handlers = {
+            "minio": self._archive_minio,
+            "s3": self._archive_s3,
+        }
         for key, value in self.config.object_storage_config.items():
-            handler = getattr(self, f"_archive_{key}", None)
+            handler = handlers.get(key)
             if handler is None:
                 raise ValueError(f"unsupported remote storage type: {key}")
             handler(value)
@@ -119,6 +125,9 @@ class Archiver:
         file_dict = {file: os.stat(file).st_ctime for file in file_list}
         ordered = sorted(file_dict.items(), key=lambda item: item[1])
         to_delete = len(ordered) - self.config.user_inputs.keep_last
+        # Guard against negative slice when caller invokes us directly with
+        # keep_last >= len(file_list). Negative `to_delete` makes ordered[:to_delete]
+        # return the first N items instead of an empty list — wrong files deleted.
         if to_delete <= 0:
             return []
         files_to_clean = [key for key, _ in ordered[:to_delete]]

@@ -1,3 +1,5 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
+"""Unit tests for common utility functions."""
 import pytest
 
 from bookstack_file_exporter.common.util import check_var

@@ -1,6 +1,6 @@
 from typing import Dict, Literal, List, Optional
 # pylint: disable=import-error
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 
 # pylint: disable=too-few-public-methods
 class ObjectStorageConfig(BaseModel):
@@ -22,9 +22,16 @@ class BookstackAccess(BaseModel):
 # pylint: disable=too-few-public-methods
 class Assets(BaseModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
+    # Allow Pydantic to populate this field by Python name and by alias
+    # so legacy config key `modify_markdown` can still be accepted.
+    model_config = ConfigDict(populate_by_name=True)
+
     export_images: Optional[bool] = False
     export_attachments: Optional[bool] = False
-    modify_markdown: Optional[bool] = False
+    modify_links: Optional[bool] = Field(
+        default=False,
+        validation_alias=AliasChoices("modify_links", "modify_markdown"),
+    )
     export_meta: Optional[bool] = False
 
 class HttpConfig(BaseModel):

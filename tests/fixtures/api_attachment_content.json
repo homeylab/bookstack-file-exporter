@@ -1,0 +1,11 @@
+{
+  "id": 99,
+  "name": "project-spec.pdf",
+  "extension": "pdf",
+  "uploaded_to": 7,
+  "external": false,
+  "links": {
+    "html": "<a href=\"https://wiki.example.com/attachments/99\">project-spec.pdf</a>",
+    "markdown": "[project-spec.pdf](https://wiki.example.com/attachments/99)"
+  }
+}

@@ -1,14 +1,13 @@
-# pylint: disable=missing-function-docstring,redefined-outer-name,unused-argument,protected-access
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
+"""Unit tests for Archiver archive and clean-up behavior."""
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List
-from unittest.mock import MagicMock, patch
+from typing import List
+from unittest.mock import MagicMock
 
 import pytest
 
-from bookstack_file_exporter.archiver import archiver as archiver_module
-from bookstack_file_exporter.archiver import util
 from bookstack_file_exporter.archiver.archiver import Archiver
 
 
@@ -79,7 +78,7 @@ def one_file():
 _real_os_stat = os.stat
 
 
-def _make_stat_patcher(mapping: Dict[str, int]):
+def _make_stat_patcher(mapping: dict):
     """Return a callable that intercepts only known filenames; falls back to real os.stat."""
     stats = {f: MagicMock(st_ctime=ct) for f, ct in mapping.items()}
 
@@ -120,7 +119,7 @@ def test_filter_archives_3_files_keep_5(
     fake_ctimes = {"oldest.tgz": 100, "mid.tgz": 200, "newest.tgz": 300}
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._filter_archives(three_files)
-    assert result == []
+    assert not result
 
 
 def test_filter_archives_3_files_keep_3(
@@ -131,7 +130,7 @@ def test_filter_archives_3_files_keep_3(
     fake_ctimes = {"oldest.tgz": 100, "mid.tgz": 200, "newest.tgz": 300}
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._filter_archives(three_files)
-    assert result == []
+    assert not result
 
 
 def test_filter_archives_1_file_keep_1(
@@ -142,7 +141,7 @@ def test_filter_archives_1_file_keep_1(
     fake_ctimes = {"only.tgz": 100}
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._filter_archives(one_file)
-    assert result == []
+    assert not result
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +197,7 @@ def test_get_stale_archives_count_lte_keep_last(
     mock_config.user_inputs.keep_last = 5
     patch_scan_archives(["a.tgz", "b.tgz"])
     result = archiver_instance._get_stale_archives()
-    assert result == []
+    assert not result
 
 
 def test_get_stale_archives_count_gt_keep_last(
@@ -221,7 +220,7 @@ def test_get_stale_archives_empty_list(
     mock_config.user_inputs.keep_last = 3
     patch_scan_archives([])
     result = archiver_instance._get_stale_archives()
-    assert result == []
+    assert not result
 
 
 # ---------------------------------------------------------------------------
@@ -236,10 +235,10 @@ def test_create_export_dir_empty_path_skips_create_dir(
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
-        lambda path: calls.append(path),
+        calls.append,
     )
     archiver_instance.create_export_dir()
-    assert calls == []
+    assert not calls
 
 
 def test_create_export_dir_with_path_calls_create_dir(
@@ -250,7 +249,7 @@ def test_create_export_dir_with_path_calls_create_dir(
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
-        lambda path: calls.append(path),
+        calls.append,
     )
     archiver_instance.create_export_dir()
     assert calls == ["x/y"]
@@ -289,7 +288,9 @@ def test_archive_remote_dispatches_minio(monkeypatch, archiver_instance, mock_co
     minio_handler.assert_called_once_with(minio_mock)
 
 
-def test_archive_remote_raises_on_unknown_storage_type(patched_page_archiver, mock_config, mock_http_client):
+def test_archive_remote_raises_on_unknown_storage_type(
+    patched_page_archiver, mock_config, mock_http_client
+):
     """object_storage_config has unknown key → ValueError raised."""
     mock_config.object_storage_config = {"gcs": MagicMock()}
     archiver = Archiver(mock_config, mock_http_client)
@@ -297,7 +298,9 @@ def test_archive_remote_raises_on_unknown_storage_type(patched_page_archiver, mo
         archiver.archive_remote()
 
 
-def test_archive_remote_s3_raises_not_implemented(patched_page_archiver, mock_config, mock_http_client):
+def test_archive_remote_s3_raises_not_implemented(
+    patched_page_archiver, mock_config, mock_http_client
+):
     """archive_remote routes 's3' to _archive_s3 which is intentionally not implemented"""
     config = MagicMock()
     config.object_storage_config = {"s3": MagicMock()}
@@ -332,10 +335,12 @@ def test_clean_up_keep_last_zero_returns_early(
         "bookstack_file_exporter.archiver.archiver.util.scan_archives",
         lambda *a, **kw: scan_calls.append(a) or [],
     )
-    archiver_instance._delete_files = MagicMock(side_effect=lambda f: delete_calls.extend(f))
+    archiver_instance._delete_files = MagicMock(
+        side_effect=lambda f: delete_calls.extend(f)  # pylint: disable=unnecessary-lambda
+    )
     archiver_instance.clean_up()
-    assert scan_calls == []
-    assert delete_calls == []
+    assert not scan_calls
+    assert not delete_calls
 
 
 def test_clean_up_with_stale_archives_calls_delete(

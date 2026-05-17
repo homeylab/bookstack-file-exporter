@@ -1,8 +1,8 @@
 import logging
 import os
 from typing import Dict, List, Union
-import urllib3
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+import urllib3
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
