@@ -9,9 +9,6 @@ DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
 
-pip_build:
-	python -m pip install .
-
 pip_local_dev:
 	python -m pip install -e .
 
