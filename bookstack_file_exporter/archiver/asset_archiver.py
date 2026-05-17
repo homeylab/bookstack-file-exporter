@@ -313,35 +313,22 @@ class AssetArchiver:
         soup = BeautifulSoup(page_data, "html.parser", parse_only=strainer)
         matched_urls: dict[str, str] = {}
 
-        def _add_url(url: str, local_path: str) -> None:
-            """Add URL and its HTML-entity-encoded form. bs4 decodes &amp; to &
-            when parsing, but the raw page bytes still contain &amp;, so we need
-            both forms as keys for bytes.replace to find the right occurrence.
-
-            Only & needs escaping here — < and > are invalid in valid URLs (per
-            RFC 3986, must be percent-encoded as %3C / %3E), so html.escape's
-            broader behavior was dead code for any real URL.
-            """
-            matched_urls[url] = local_path
-            if "&" in url:
-                matched_urls[url.replace("&", "&amp;")] = local_path
-
         # Anchor-wrapped images: check img src and parent href
         for img in soup.find_all("img", src=True):
             src = img["src"]
             if src in url_map:
-                _add_url(src, url_map[src])
+                matched_urls[src] = url_map[src]
             parent = img.parent
             if parent and parent.name == "a":
                 href = parent.get("href", "")
                 if href in url_map:
-                    _add_url(href, url_map[href])
+                    matched_urls[href] = url_map[href]
         # Catch-all for attachments and any anchor-wrapped image hrefs not captured above.
         # Dict assignment is idempotent for hrefs already seen in the img-parent branch.
         for anchor in soup.find_all("a", href=True):
             href = anchor["href"]
             if href in url_map:
-                _add_url(href, url_map[href])
+                matched_urls[href] = url_map[href]
         return self._apply_url_substitutions(page_data, matched_urls)
 
     def _build_url_map(self, asset_type: str, page_name: str,
