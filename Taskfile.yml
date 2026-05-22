@@ -1,0 +1,101 @@
+version: '3'
+
+vars:
+  BASE_IMAGE: '{{.BASE_IMAGE | default "python"}}'
+  BASE_IMAGE_TAG: '{{.BASE_IMAGE_TAG | default "3.13.2-slim-bookworm"}}'
+  IMAGE_NAME: '{{.IMAGE_NAME | default "homeylab/bookstack-file-exporter"}}'
+  IMAGE_TAG: '{{.IMAGE_TAG | default "main"}}'
+  DOCKER_WORK_DIR: '{{.DOCKER_WORK_DIR | default "/export"}}'
+  DOCKER_CONFIG_DIR: '{{.DOCKER_CONFIG_DIR | default "/export/config"}}'
+  DOCKER_EXPORT_DIR: '{{.DOCKER_EXPORT_DIR | default "/export/dump"}}'
+
+tasks:
+  sync:
+    desc: Install all dep groups via uv
+    cmd: uv sync --all-groups
+
+  build:
+    desc: Build sdist + wheel via uv
+    cmd: uv build
+
+  lint:
+    desc: Run pylint over package + tests
+    cmd: uv run pylint bookstack_file_exporter tests
+
+  test:
+    desc: Run pytest
+    cmd: uv run pytest
+
+  test:cov:
+    desc: Run pytest with HTML coverage report
+    cmd: uv run pytest --cov-report=html
+
+  publish:
+    desc: Publish to PyPI (uv publish)
+    interactive: true
+    cmd: uv publish
+
+  publish:test:
+    desc: Publish to Test PyPI
+    interactive: true
+    cmd: uv publish --publish-url https://test.pypi.org/legacy/
+
+  docker:build:simple:
+    desc: Single-arch local docker build, no push
+    cmd: |
+      docker build \
+        --build-arg BASE_IMAGE={{.BASE_IMAGE}} \
+        --build-arg BASE_IMAGE_TAG={{.BASE_IMAGE_TAG}} \
+        --build-arg DOCKER_WORK_DIR={{.DOCKER_WORK_DIR}} \
+        --build-arg DOCKER_CONFIG_DIR={{.DOCKER_CONFIG_DIR}} \
+        --build-arg DOCKER_EXPORT_DIR={{.DOCKER_EXPORT_DIR}} \
+        -t {{.IMAGE_NAME}}:{{.IMAGE_TAG}} \
+        --no-cache .
+
+  docker:build:
+    desc: Multi-arch buildx, no push
+    cmd: |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --output "type=image,push=false" \
+        --build-arg BASE_IMAGE={{.BASE_IMAGE}} \
+        --build-arg BASE_IMAGE_TAG={{.BASE_IMAGE_TAG}} \
+        --build-arg DOCKER_WORK_DIR={{.DOCKER_WORK_DIR}} \
+        --build-arg DOCKER_CONFIG_DIR={{.DOCKER_CONFIG_DIR}} \
+        --build-arg DOCKER_EXPORT_DIR={{.DOCKER_EXPORT_DIR}} \
+        -t {{.IMAGE_NAME}}:{{.IMAGE_TAG}} \
+        --no-cache .
+
+  docker:build:latest:
+    desc: Multi-arch buildx, push with :latest + :IMAGE_TAG
+    cmd: |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --output "type=image,push=true" \
+        --build-arg BASE_IMAGE={{.BASE_IMAGE}} \
+        --build-arg BASE_IMAGE_TAG={{.BASE_IMAGE_TAG}} \
+        --build-arg DOCKER_WORK_DIR={{.DOCKER_WORK_DIR}} \
+        --build-arg DOCKER_CONFIG_DIR={{.DOCKER_CONFIG_DIR}} \
+        --build-arg DOCKER_EXPORT_DIR={{.DOCKER_EXPORT_DIR}} \
+        -t {{.IMAGE_NAME}}:{{.IMAGE_TAG}} \
+        -t {{.IMAGE_NAME}}:latest \
+        --no-cache .
+
+  docker:push:
+    desc: Push :IMAGE_TAG to registry
+    cmd: docker push {{.IMAGE_NAME}}:{{.IMAGE_TAG}}
+
+  docker:push:latest:
+    desc: Push all local tags of image (intentional --all-tags; do NOT add :IMAGE_TAG suffix)
+    cmd: docker push {{.IMAGE_NAME}} --all-tags
+
+  docker:test:
+    desc: Run built image against local config (rancher-desktop -i workaround retained)
+    interactive: true
+    cmd: |
+      docker run -i \
+        -e LOG_LEVEL='debug' \
+        --user 1000:1000 \
+        -v {{.TASKFILE_DIR}}/local/config.yml:{{.DOCKER_CONFIG_DIR}}/config.yml:ro \
+        -v {{.TASKFILE_DIR}}/bkps:{{.DOCKER_EXPORT_DIR}} \
+        {{.IMAGE_NAME}}:{{.IMAGE_TAG}}

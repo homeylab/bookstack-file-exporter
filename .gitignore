@@ -165,3 +165,6 @@ local/
 
 ## test outputs
 bkps/
+
+## Taskfile cache
+.task/
