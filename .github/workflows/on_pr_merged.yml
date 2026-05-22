@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Python Tests
       uses: ./.github/actions/tests
   # push to `main` image for testing/most up to date
@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 10
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Run Docker Build
       uses: ./.github/actions/docker
       with:
