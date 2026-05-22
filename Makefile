@@ -9,27 +9,20 @@ DOCKER_WORK_DIR=/export
 DOCKER_CONFIG_DIR=/export/config
 DOCKER_EXPORT_DIR=/export/dump
 
-pip_local_dev:
-	python -m pip install -e ".[dev]"
+sync:
+	uv sync --all-groups
 
-pip_build:
-	python -m pip install --upgrade build
-	python -m build
+build:
+	uv build
 
 lint:
-	pylint bookstack_file_exporter tests
+	uv run pylint bookstack_file_exporter tests
 
-upload_testpypi:
-	python -m pip install --upgrade twine
-	python -m twine upload --repository testpypi dist/*
+publish-test:
+	uv publish --publish-url https://test.pypi.org/legacy/
 
-# extra-url is for dependencies using real pypi
-download_testpypi:
-	python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bookstack-file-exporter
-
-upload_realpypi:
-	python -m pip install --upgrade twine
-	python -m twine upload dist/*
+publish:
+	uv publish
 
 docker_build_simple:
 	docker build \
@@ -73,12 +66,12 @@ docker_push_latest:
 	docker push ${IMAGE_NAME} --all-tags
 
 test:
-	pytest
+	uv run pytest
 
 test-cov:
-	pytest --cov-report=html
+	uv run pytest --cov-report=html
 
-.PHONY: test test-cov
+.PHONY: sync build lint test test-cov publish-test publish
 
 # add -i option due to bug in rancher desktop: https://github.com/rancher-sandbox/rancher-desktop/issues/3239
 docker_test:
