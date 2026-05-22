@@ -91,14 +91,17 @@ assets:
 ```
 
 ### Run via Pip
-The exporter can be installed via pip and run directly.
+The exporter can be installed via pip (or [uv](https://docs.astral.sh/uv/)) and run directly.
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.13.2`. The min required version is >= `3.8` but is recommended to install (or set up a venv) a `3.13.2` version._
+_Note: This application is tested and developed on Python version `3.13.2`. The min required version is >= `3.11` but is recommended to install (or set up a venv) a `3.13.2` version._
 
 #### Examples
 ```bash
 python -m pip install bookstack-file-exporter
+
+# or with uv:
+uv pip install bookstack-file-exporter
 
 # if you prefer a specific version, example:
 python -m pip install bookstack-file-exporter==X.X.X
@@ -587,24 +590,30 @@ Below are versions that have major changes to the way configuration or exporter 
 
 ## Running Tests
 
-Install dev dependencies and run the test suite:
+This project uses [uv](https://docs.astral.sh/uv/) for development. Sync dev dependencies and run the test suite:
 
 ```bash
-pip install -e ".[dev]"
-pytest
+uv sync --all-groups
+uv run pytest
+```
+
+Or via the [Taskfile](https://taskfile.dev) target:
+
+```bash
+task test
 ```
 
 The pytest run includes coverage by default (configured in `pyproject.toml`). For an HTML coverage report:
 
 ```bash
-pytest --cov-report=html
+uv run pytest --cov-report=html
 open htmlcov/index.html
 ```
 
 To run only unit tests (skipping integration tests):
 
 ```bash
-pytest tests/unit
+uv run pytest tests/unit
 ```
 
 To run only the integration tests:
