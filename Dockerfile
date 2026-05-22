@@ -25,9 +25,19 @@ ENV DOCKER_EXPORT_DIR=${DOCKER_EXPORT_DIR}
 
 WORKDIR ${DOCKER_WORK_DIR}
 
-COPY . .
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /bin/
 
-RUN pip install .
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev --no-editable --no-install-project
+
+COPY . .
+RUN uv sync --frozen --no-dev --no-editable
+
+ENV PATH="/opt/venv/bin:$PATH"
 
 RUN install -d -m 0755 -o exporter -g exporter ${DOCKER_CONFIG_DIR} && \
     install -d -m 0755 -o exporter -g exporter ${DOCKER_EXPORT_DIR}
