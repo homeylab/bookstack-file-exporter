@@ -1,5 +1,5 @@
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "prConcurrentLimit": 3,
   "prHourlyLimit": 0,
   "packageRules": [
@@ -10,7 +10,7 @@
     },
     {
       "matchUpdateTypes": ["major"],
-      "stabilityDays": 3
+      "minimumReleaseAge": "3 days"
     }
   ],
   "timezone": "UTC"
