@@ -1,0 +1,17 @@
+{
+  "extends": ["config:base"],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 0,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "chore(deps): minor & patch updates",
+      "groupSlug": "minor-patch"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "stabilityDays": 3
+    }
+  ],
+  "timezone": "UTC"
+}
