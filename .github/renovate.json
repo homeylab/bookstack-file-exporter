@@ -1,7 +1,9 @@
 {
-  "extends": ["config:recommended"],
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":configMigration"],
   "prConcurrentLimit": 5,
   "prHourlyLimit": 0,
+  "minimumReleaseAge": "3 days",
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
@@ -9,13 +11,10 @@
       "groupSlug": "github-actions"
     },
     {
+      "matchManagers": ["!github-actions"],
       "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "chore(deps): minor & patch updates",
+      "groupName": "minor & patch updates",
       "groupSlug": "minor-patch"
-    },
-    {
-      "matchUpdateTypes": ["major"],
-      "minimumReleaseAge": "3 days"
     }
   ],
   "timezone": "UTC"
