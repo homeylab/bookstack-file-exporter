@@ -1,6 +1,6 @@
 {
   "extends": ["config:recommended"],
-  "prConcurrentLimit": 3,
+  "prConcurrentLimit": 5,
   "prHourlyLimit": 0,
   "packageRules": [
     {
