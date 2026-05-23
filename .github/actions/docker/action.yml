@@ -59,7 +59,7 @@ runs:
 
   - name: Login to Dockerhub
     if: github.event_name != 'pull_request'
-    uses: docker/login-action@v3
+    uses: docker/login-action@v4
     with:
       username: ${{ inputs.dockerhub_username }}
       password: ${{ inputs.dockerhub_token }}
