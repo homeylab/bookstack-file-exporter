@@ -40,7 +40,7 @@ tasks:
     interactive: true
     cmd: uv publish --publish-url https://test.pypi.org/legacy/
 
-  docker:build:simple:
+  docker:build:local:
     desc: Single-arch local docker build, no push
     cmd: |
       docker build \
@@ -71,7 +71,7 @@ tasks:
     cmd: |
       docker buildx build \
         --platform linux/amd64,linux/arm64 \
-        --output "type=image,push=true" \
+        --output "type=image,push=false" \
         --build-arg BASE_IMAGE={{.BASE_IMAGE}} \
         --build-arg BASE_IMAGE_TAG={{.BASE_IMAGE_TAG}} \
         --build-arg DOCKER_WORK_DIR={{.DOCKER_WORK_DIR}} \
