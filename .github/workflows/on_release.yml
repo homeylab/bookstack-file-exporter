@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# never cancel a release mid-flight (partial artifacts); tags are unique so this only guards dup runs
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   tests:
     runs-on: ubuntu-latest
