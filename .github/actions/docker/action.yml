@@ -76,7 +76,7 @@ runs:
       labels: ${{ steps.meta.outputs.labels }}
 
   - name: Update Dockerhub Documentation
-    uses: peter-evans/dockerhub-description@v3
+    uses: peter-evans/dockerhub-description@v5
     if: ${{ (fromJSON(inputs.latest) == true) && (github.event_name != 'pull_request') }}
     with:
       username: ${{ inputs.dockerhub_username }}
