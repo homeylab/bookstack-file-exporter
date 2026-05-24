@@ -17,11 +17,17 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Tests
         uses: ./.github/actions/tests
+        with:
+          python-version: ${{ matrix.python-version }}
+          run-lint: ${{ matrix.python-version == '3.14' && 'true' || 'false' }}
   create_release:
     runs-on: ubuntu-latest
     needs: tests
