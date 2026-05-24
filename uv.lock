@@ -123,21 +123,21 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apprise", specifier = ">=1.9.4" },
+    { name = "apprise", specifier = ">=1.10.0" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
-    { name = "markdown-it-py", specifier = ">=3.0.0" },
-    { name = "minio", specifier = ">=7.2.15" },
+    { name = "markdown-it-py", specifier = ">=4.2.0" },
+    { name = "minio", specifier = ">=7.2.20" },
     { name = "pydantic", specifier = ">=2.13.4" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "requests", specifier = ">=2.32.3" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "requests", specifier = ">=2.34.2" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pylint" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "responses", specifier = ">=0.25" },
+    { name = "pylint", specifier = ">=4.0.5" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "responses", specifier = ">=0.26.1" },
 ]
 
 [[package]]

@@ -16,13 +16,13 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "Pyyaml>=6.0.2",
+    "Pyyaml>=6.0.3",
     "Pydantic>=2.13.4",
     "beautifulsoup4>=4.14.3",
-    "requests>=2.32.3",
-    "minio>=7.2.15",
-    "apprise>=1.9.4",
-    "markdown-it-py>=3.0.0",
+    "requests>=2.34.2",
+    "minio>=7.2.20",
+    "apprise>=1.10.0",
+    "markdown-it-py>=4.2.0",
 ]
 
 [project.urls]
@@ -33,10 +33,10 @@ bookstack-file-exporter = "bookstack_file_exporter.__main__:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "responses>=0.25",
-    "pylint",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "responses>=0.26.1",
+    "pylint>=4.0.5",
 ]
 
 [tool.setuptools.packages.find]
