@@ -11,8 +11,14 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
     - name: Checkout
       uses: actions/checkout@v6
     - name: Python Tests
       uses: ./.github/actions/tests
+      with:
+        python-version: ${{ matrix.python-version }}
+        run-lint: ${{ matrix.python-version == '3.14' && 'true' || 'false' }}

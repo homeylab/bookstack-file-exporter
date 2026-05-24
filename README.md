@@ -94,7 +94,7 @@ assets:
 The exporter can be installed via pip (or [uv](https://docs.astral.sh/uv/)) and run directly.
 
 #### Python Version
-_Note: This application is tested and developed on Python version `3.13.2`. The min required version is >= `3.11` but is recommended to install (or set up a venv) a `3.13.2` version._
+_Note: This application is tested and developed on Python version `3.14.5`. The min required version is >= `3.11` but is recommended to install (or set up a venv) a `3.14.5` version._
 
 #### Examples
 ```bash

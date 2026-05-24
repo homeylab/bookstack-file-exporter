@@ -1,15 +1,23 @@
 version: '3'
 
+# Loads local/creds.env (BOOKSTACK_TOKEN_*, MINIO_*) when present.
+# Gitignored + optional: go-task silently skips it if missing, so build/lint/test
+# stay usable without creds. Only run:local and docker:test actually consume it.
+dotenv: ['local/creds.env']
+
 vars:
   BASE_IMAGE: '{{.BASE_IMAGE | default "python"}}'
-  BASE_IMAGE_TAG: '{{.BASE_IMAGE_TAG | default "3.13.2-slim-bookworm"}}'
+  BASE_IMAGE_TAG: '{{.BASE_IMAGE_TAG | default "3.14.5-slim-bookworm"}}'
   IMAGE_NAME: '{{.IMAGE_NAME | default "homeylab/bookstack-file-exporter"}}'
   IMAGE_TAG: '{{.IMAGE_TAG | default "main"}}'
+  TEST_IMAGE_NAME: '{{.TEST_IMAGE_NAME | default "docker.homeylab.org/bookstack-file-exporter"}}'
+  TEST_IMAGE_TAG: '{{.TEST_IMAGE_TAG | default "test"}}'
   DOCKER_WORK_DIR: '{{.DOCKER_WORK_DIR | default "/export"}}'
   DOCKER_CONFIG_DIR: '{{.DOCKER_CONFIG_DIR | default "/export/config"}}'
   DOCKER_EXPORT_DIR: '{{.DOCKER_EXPORT_DIR | default "/export/dump"}}'
 
 tasks:
+  # build/install project into local uv venv
   sync:
     desc: Install all dep groups via uv
     cmd: uv sync --all-groups
@@ -30,6 +38,11 @@ tasks:
     desc: Run pytest with HTML coverage report
     cmd: uv run pytest --cov-report=html
 
+  run:local:
+    desc: Smoke-test the installed entrypoint against local/config.yml (live BookStack)
+    interactive: true
+    cmd: uv run bookstack-file-exporter -c {{.TASKFILE_DIR}}/local/config.yml
+
   publish:
     desc: Publish to PyPI (uv publish)
     interactive: true
@@ -49,7 +62,7 @@ tasks:
         --build-arg DOCKER_WORK_DIR={{.DOCKER_WORK_DIR}} \
         --build-arg DOCKER_CONFIG_DIR={{.DOCKER_CONFIG_DIR}} \
         --build-arg DOCKER_EXPORT_DIR={{.DOCKER_EXPORT_DIR}} \
-        -t {{.IMAGE_NAME}}:{{.IMAGE_TAG}} \
+        -t {{.TEST_IMAGE_NAME}}:{{.TEST_IMAGE_TAG}} \
         --no-cache .
 
   docker:build:
@@ -90,12 +103,14 @@ tasks:
     cmd: docker push {{.IMAGE_NAME}} --all-tags
 
   docker:test:
-    desc: Run built image against local config (rancher-desktop -i workaround retained)
+    desc: Run built image against local config + creds (rancher-desktop -i workaround retained)
     interactive: true
     cmd: |
       docker run -i \
         -e LOG_LEVEL='debug' \
+        -e BOOKSTACK_TOKEN_ID -e BOOKSTACK_TOKEN_SECRET \
+        -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY \
         --user 1000:1000 \
         -v {{.TASKFILE_DIR}}/local/config.yml:{{.DOCKER_CONFIG_DIR}}/config.yml:ro \
         -v {{.TASKFILE_DIR}}/bkps:{{.DOCKER_EXPORT_DIR}} \
-        {{.IMAGE_NAME}}:{{.IMAGE_TAG}}
+        {{.TEST_IMAGE_NAME}}:{{.TEST_IMAGE_TAG}}

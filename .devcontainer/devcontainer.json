@@ -3,11 +3,11 @@
 {
 	"name": "Python 3",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/python:2-3.12-bullseye",
+	"image": "mcr.microsoft.com/devcontainers/python:2-3.14-bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/python:1": {
 			"installTools": true,
-			"version": "3.13.2"
+			"version": "3.14.5"
 		}
 	},
 	"customizations": {
