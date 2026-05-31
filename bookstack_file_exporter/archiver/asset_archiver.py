@@ -289,6 +289,8 @@ class AssetArchiver:
                 asset_data = asset_response.content
             case "attachments":
                 asset_data = self._decode_attachment_data(asset_response.json()['content'])
+            case _:
+                raise ValueError(f"unsupported asset type: {asset_type}")
         return asset_data
 
     def update_asset_links(self, asset_type: str, page_name: str, page_data: bytes,

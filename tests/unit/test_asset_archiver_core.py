@@ -3,6 +3,8 @@
 """Unit tests for AssetArchiver markdown link-rewrite behavior (Phase 0 + Phase 1)."""
 import logging
 
+import pytest
+
 from bookstack_file_exporter.archiver.asset_archiver import (
     AttachmentNode,
     ImageNode,
@@ -251,3 +253,8 @@ class TestPhase1MdFixes:
 
         assert any("no substitution" in r.message.lower()
                    for r in caplog.records if r.levelno == logging.DEBUG)
+
+
+def test_get_asset_bytes_unknown_type_raises_valueerror(asset_archiver):
+    with pytest.raises(ValueError, match="unsupported asset type"):
+        asset_archiver.get_asset_bytes("widgets", "https://wiki.example.com/x")
