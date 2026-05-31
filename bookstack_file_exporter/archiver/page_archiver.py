@@ -213,5 +213,3 @@ class PageArchiver:
     def export_attachments(self) -> bool:
         """return whether or not to export attachments"""
         return self.asset_config.export_attachments
-
-
