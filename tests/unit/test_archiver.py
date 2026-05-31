@@ -2,6 +2,7 @@
 """Unit tests for Archiver archive and clean-up behavior."""
 import logging
 import os
+import re
 from datetime import datetime
 from typing import List
 from unittest.mock import MagicMock
@@ -55,6 +56,11 @@ def test_generate_root_folder_format(monkeypatch, base_name):
     result = Archiver._generate_root_folder(base_name)
     expected = f"{base_name}_2024-03-15_10-30-45"
     assert result == expected
+
+
+def test_archive_dir_has_timestamp_suffix(archiver_instance):
+    """Archiver.archive_dir must end with _YYYY-MM-DD_HH-MM-SS."""
+    assert re.search(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", archiver_instance.archive_dir)
 
 
 # ---------------------------------------------------------------------------
