@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Union
 from apprise import Apprise, AppriseAsset, AppriseConfig
 
 from bookstack_file_exporter.config_helper import notifications
@@ -42,14 +41,14 @@ class AppRiseNotify:
         client.asset=asset
         return client
 
-    def _get_title(self, excep: Union[None, Exception]) -> str:
+    def _get_title(self, excep: None | Exception) -> str:
         if self.config.custom_title:
             return self.config.custom_title
         if excep:
             return _DEFAULT_TITLE_PREFIX + "Failed"
         return _DEFAULT_TITLE_PREFIX + "Success"
 
-    def _get_message_text(self, error_msg: Union[None, Exception]) -> str:
+    def _get_message_text(self, error_msg: None | Exception) -> str:
         timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         if error_msg:
             error_str = str(error_msg)

@@ -1,4 +1,3 @@
-from typing import Union, List
 import logging
 
 # pylint: disable=import-error
@@ -42,12 +41,8 @@ class MinioArchiver:
         if not self._client.bucket_exists(self.bucket):
             raise ValueError(f"Given bucket does not exist: {self.bucket}")
 
-    def _generate_path(self, path_name: Union[str, None]) -> str:
-        if path_name:
-            if path_name[-1] == '/':
-                return path_name[:-1]
-            return path_name
-        return ""
+    def _generate_path(self, path_name: str | None) -> str:
+        return path_name.rstrip('/') if path_name else ""
 
     def upload_backup(self, local_file_path: str):
         """upload archive file to minio bucket"""
@@ -72,19 +67,19 @@ class MinioArchiver:
         if to_delete:
             self._delete_objects(to_delete)
 
-    def _scan_objects(self, file_extension: str) -> List[MinioObject]:
+    def _scan_objects(self, file_extension: str) -> list[MinioObject]:
         filter_str = "bookstack_export_"
         # prefix should end in '/' for minio
         # ref: https://min.io/docs/minio/linux/developers/python/API.html#list_objects
         path_prefix = self.path + "/"
         # get all objects in archive path/directory
-        full_list: List[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
+        full_list: list[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
         # validate and filter out non managed objects
         return [object for object in full_list
                 if object.object_name.endswith(file_extension)
                     and filter_str in object.object_name]
 
-    def _get_stale_objects(self, file_extension: str) -> List[MinioObject]:
+    def _get_stale_objects(self, file_extension: str) -> list[MinioObject]:
         minio_objects = self._scan_objects(file_extension)
         if not minio_objects:
             log.debug("No minio objects found to clean up")
@@ -101,7 +96,7 @@ class MinioArchiver:
             to_delete = self._filter_objects(minio_objects)
         return to_delete
 
-    def _filter_objects(self, minio_objects: List[MinioObject]) -> List[MinioObject]:
+    def _filter_objects(self, minio_objects: list[MinioObject]) -> list[MinioObject]:
         # sort by minio datetime 'last_modified' time
         # ascending order
         sorted_objects = sorted(minio_objects, key=lambda d: d.last_modified)
@@ -117,6 +112,6 @@ class MinioArchiver:
         log.debug("%d minio objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 
-    def _delete_objects(self, minio_objects: List[MinioObject]):
+    def _delete_objects(self, minio_objects: list[MinioObject]):
         for item in minio_objects:
             self._client.remove_object(self.bucket, item.object_name)

@@ -1,5 +1,4 @@
 import logging
-from typing import Union
 
 from bookstack_file_exporter.config_helper import models, notifications
 from bookstack_file_exporter.notify import notifiers
@@ -32,7 +31,7 @@ class NotifyHandler:
 
         return targets
 
-    def do_notify(self, excep: Union[None, Exception] = None) -> None:
+    def do_notify(self, excep: None | Exception = None) -> None:
         """handle notification sending for all configured targets"""
         if len(self.targets) == 0:
             log.debug("No notification targets found")

@@ -1,4 +1,3 @@
-from typing import Union, List, Dict
 import logging
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
@@ -73,7 +72,7 @@ class PageArchiver:
             return False
         return True
 
-    def archive_pages(self, page_nodes: Dict[int, Node]):
+    def archive_pages(self, page_nodes: dict[int, Node]):
         """export page contents and their images/attachments"""
         # get assets first if requested
         # this is because we may want to manipulate page data with modify_links flag
@@ -109,7 +108,7 @@ class PageArchiver:
                 self._archive_page_meta(page.file_path, page.meta)
 
     def _rewrite_page_data(self, export_format: str, page_name: str,
-                           page_data: bytes, page_assets: Dict[str, list]) -> bytes:
+                           page_data: bytes, page_assets: dict[str, list]) -> bytes:
         """Dispatch link rewriting for the given export format. No-op for non-rewritable formats."""
         if export_format == 'markdown':
             rewriter = self._modify_links
@@ -132,18 +131,18 @@ class PageArchiver:
         return archiver_util.get_byte_response(url=url,
                                                http_client=self.http_client)
 
-    def _archive_page_meta(self, page_path: str, meta_data: Dict[str, Union[str, int]]):
+    def _archive_page_meta(self, page_path: str, meta_data: dict[str, str | int]):
         meta_file_name = f"{self.archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(file_path=meta_file_name, data=bytes_meta)
 
-    def _get_image_meta(self) -> Dict[int, List[ImageNode]]:
+    def _get_image_meta(self) -> dict[int, list[ImageNode]]:
         """Get all image metadata into a {page_number: [image_url]} format"""
         if not self.asset_config.export_images:
             return {}
         return self.asset_archiver.get_asset_nodes('images')
 
-    def _get_attachment_meta(self) -> Dict[int, List[AttachmentNode]]:
+    def _get_attachment_meta(self) -> dict[int, list[AttachmentNode]]:
         """Get all attachment metadata into a {page_number: [attachment_url]} format"""
         if not self.asset_config.export_attachments:
             return {}
@@ -151,7 +150,7 @@ class PageArchiver:
 
     def _modify_links(self, asset_type: str,
                       page_name: str, page_data: bytes,
-                      asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+                      asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
         """Markdown link rewriting. Short-circuits when modify_links is False."""
         if not self.modify_links:
             return page_data
@@ -160,7 +159,7 @@ class PageArchiver:
 
     def _modify_html(self, asset_type: str,
                      page_name: str, page_data: bytes,
-                     asset_nodes: List[ImageNode | AttachmentNode]) -> bytes:
+                     asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
         """HTML link rewriting. Short-circuits when modify_links is False (no bs4 parse)."""
         if not self.modify_links:
             return page_data
@@ -168,7 +167,7 @@ class PageArchiver:
                                                            asset_nodes)
 
     def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
-                            asset_nodes: List[ImageNode | AttachmentNode]) -> set[int]:
+                            asset_nodes: list[ImageNode | AttachmentNode]) -> set[int]:
         """pull images locally into a directory based on page"""
         if not asset_nodes:
             return set()
@@ -201,7 +200,7 @@ class PageArchiver:
         archiver_util.create_gzip(self.tar_file, self.archive_file)
 
     @property
-    def file_extension_map(self) -> Dict[str, str]:
+    def file_extension_map(self) -> dict[str, str]:
         """file extension metadata"""
         return _FILE_EXTENSION_MAP
 
@@ -214,8 +213,3 @@ class PageArchiver:
     def export_attachments(self) -> bool:
         """return whether or not to export attachments"""
         return self.asset_config.export_attachments
-
-    @property
-    def verify_ssl(self) -> bool:
-        """return whether or not to verify ssl for http requests"""
-        return self.asset_config.verify_ssl

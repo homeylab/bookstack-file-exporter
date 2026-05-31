@@ -1,4 +1,3 @@
-from typing import Dict, List, Union
 import logging
 
 # pylint: disable=import-error
@@ -19,32 +18,32 @@ class NodeExporter():
     Returns:
         NodeExporter instance to handle building shelve/book/chapter/page relations.
     """
-    def __init__(self, api_urls: Dict[str, str], http_client: HttpHelper):
+    def __init__(self, api_urls: dict[str, str], http_client: HttpHelper):
         self.api_urls = api_urls
         self.http_client = http_client
 
-    def get_all_shelves(self) -> Dict[int, Node]:
+    def get_all_shelves(self) -> dict[int, Node]:
         """
         Function to get all shelf Node instances 
         :returns: Dict[int, Node] for all shelf nodes
         """
         base_url = self.api_urls["shelves"]
-        all_parents: List[int] = self._get_all_ids(base_url)
+        all_parents: list[int] = self._get_all_ids(base_url)
         if not all_parents:
             log.warning("No shelves found in given Bookstack instance")
             return {}
         return self._get_parents(base_url, all_parents)
 
-    def _get_json_response(self, url: str) -> List[Dict[str, Union[str,int]]]:
+    def _get_json_response(self, url: str) -> list[dict[str, str |int]]:
         """get http response data in json format"""
         response: Response = self.http_client.http_get_request(url=url)
         return response.json()
 
-    def _get_all_ids(self, url: str) -> List[int]:
+    def _get_all_ids(self, url: str) -> list[int]:
         return [item['id'] for item in self.http_client.http_get_all(url)]
 
-    def _get_parents(self, base_url: str, parent_ids: List[int],
-                      path_prefix: str = "") -> Dict[int, Node]:
+    def _get_parents(self, base_url: str, parent_ids: list[int],
+                      path_prefix: str = "") -> dict[int, Node]:
         parent_nodes = {}
         for parent_id in parent_ids:
             parent_url = f"{base_url}/{parent_id}"
@@ -52,7 +51,7 @@ class NodeExporter():
             parent_nodes[parent_id] = Node(parent_data, path_prefix=path_prefix)
         return parent_nodes
 
-    def get_chapter_nodes(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
+    def get_chapter_nodes(self, book_nodes: dict[int, Node]) -> dict[int, Node]:
         """build chapter nodes by walking each book's contents"""
         base_url = self.api_urls["chapters"]
         chapter_nodes = {}
@@ -65,14 +64,14 @@ class NodeExporter():
                 chapter_nodes[chapter_id] = Node(chapter_data, book_node)
         return chapter_nodes
 
-    def get_child_nodes(self, resource_type: str, parent_nodes: Dict[int, Node],
-                        filter_empty: bool = True, node_type: str = "") -> Dict[int, Node]:
+    def get_child_nodes(self, resource_type: str, parent_nodes: dict[int, Node],
+                        filter_empty: bool = True, node_type: str = "") -> dict[int, Node]:
         """get child nodes from a book/chapter/shelf"""
         base_url = self.api_urls[resource_type]
         return self._get_children(base_url, parent_nodes, filter_empty, node_type)
 
-    def _get_children(self, base_url: str, parent_nodes: Dict[int, Node],
-                       filter_empty: bool, node_type: str = "") -> Dict[int, Node]:
+    def _get_children(self, base_url: str, parent_nodes: dict[int, Node],
+                       filter_empty: bool, node_type: str = "") -> dict[int, Node]:
         child_nodes = {}
         for _, parent in parent_nodes.items():
             if parent.children:
@@ -98,11 +97,11 @@ class NodeExporter():
                         child_nodes[child_id] = child_node
         return child_nodes
 
-    def get_unassigned_books(self, existing_books: Dict[int, Node],
-                              path_prefix: str) -> Dict[int, Node]:
+    def get_unassigned_books(self, existing_books: dict[int, Node],
+                              path_prefix: str) -> dict[int, Node]:
         """get books not under a shelf"""
         book_url = self.api_urls["books"]
-        all_books: List[int] = self._get_all_ids(book_url)
+        all_books: list[int] = self._get_all_ids(book_url)
         unassigned = []
         # get all existing ones and compare against current known books
         for book in all_books:
@@ -114,7 +113,7 @@ class NodeExporter():
         return self._get_parents(book_url, unassigned, path_prefix)
 
     # convenience function
-    def get_all_books(self, shelve_nodes: Dict[int, Node], unassigned_dir: str) -> Dict[int, Node]:
+    def get_all_books(self, shelve_nodes: dict[int, Node], unassigned_dir: str) -> dict[int, Node]:
         """get all books"""
         book_nodes = {}
         # get books in shelves
@@ -128,13 +127,12 @@ class NodeExporter():
         # these should not already be present in map
         # since we started with shelves first and then moved our way down.
         if books_no_shelf:
-            for key, value in books_no_shelf.items():
-                book_nodes[key] = value
+            book_nodes.update(books_no_shelf)
 
         return book_nodes
 
     # convenience function
-    def get_all_pages(self, book_nodes: Dict[int, Node]) -> Dict[int, Node]:
+    def get_all_pages(self, book_nodes: dict[int, Node]) -> dict[int, Node]:
         """get all pages and their content"""
         ## pages
         page_nodes = {}
@@ -142,19 +140,18 @@ class NodeExporter():
             # add `page` flag, we only want pages
             # filter out chapters for now
             # chapters can have their own children/pages
-            page_nodes: Dict[int, Node] = self.get_child_nodes("pages",
+            page_nodes: dict[int, Node] = self.get_child_nodes("pages",
                                                 book_nodes, node_type="page")
         ## chapters (if exists)
         # chapter nodes are treated a little differently
         # chapters are children under books
-        chapter_nodes: Dict[int, Node] = self.get_chapter_nodes(book_nodes)
+        chapter_nodes: dict[int, Node] = self.get_chapter_nodes(book_nodes)
         # add chapter node pages
         # replace existing page node if found with proper chapter parent
         if chapter_nodes:
-            page_chapter_nodes: Dict[int, Node] = self.get_child_nodes("pages", chapter_nodes)
+            page_chapter_nodes: dict[int, Node] = self.get_child_nodes("pages", chapter_nodes)
             ## since we filter empty, check if there is any content
             ## add all chapter pages to existing page nodes
             if page_chapter_nodes:
-                for key, value in page_chapter_nodes.items():
-                    page_nodes[key] = value
+                page_nodes.update(page_chapter_nodes)
         return page_nodes

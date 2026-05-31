@@ -3,6 +3,8 @@
 """Unit tests for AssetArchiver markdown link-rewrite behavior (Phase 0 + Phase 1)."""
 import logging
 
+import pytest
+
 from bookstack_file_exporter.archiver.asset_archiver import (
     AttachmentNode,
     ImageNode,
@@ -251,3 +253,28 @@ class TestPhase1MdFixes:
 
         assert any("no substitution" in r.message.lower()
                    for r in caplog.records if r.levelno == logging.DEBUG)
+
+
+def test_get_asset_bytes_unknown_type_raises_valueerror(asset_archiver):
+    with pytest.raises(ValueError, match="unsupported asset type"):
+        asset_archiver.get_asset_bytes("widgets", "https://wiki.example.com/x")
+
+
+def test_create_attachment_map_skips_external(asset_archiver):
+    json_data = [
+        {"id": 1, "uploaded_to": 7, "name": "a.pdf", "external": False},
+        {"id": 2, "uploaded_to": 7, "name": "ext", "external": True},
+        {"id": 3, "uploaded_to": 9, "name": "b.pdf", "external": False},
+    ]
+    result = asset_archiver._create_attachment_map(json_data)
+    assert set(result.keys()) == {7, 9}
+    assert [n.id_ for n in result[7]] == [1]
+
+
+def test_create_image_map_groups_by_page(asset_archiver):
+    json_data = [
+        {"id": 1, "uploaded_to": 7, "url": "https://x/a.png"},
+        {"id": 2, "uploaded_to": 7, "url": "https://x/b.png"},
+    ]
+    result = asset_archiver._create_image_map(json_data)
+    assert [n.id_ for n in result[7]] == [1, 2]

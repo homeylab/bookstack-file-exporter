@@ -2,6 +2,7 @@
 """Unit tests for Archiver archive and clean-up behavior."""
 import logging
 import os
+import re
 from datetime import datetime
 from typing import List
 from unittest.mock import MagicMock
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
+from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +56,11 @@ def test_generate_root_folder_format(monkeypatch, base_name):
     result = Archiver._generate_root_folder(base_name)
     expected = f"{base_name}_2024-03-15_10-30-45"
     assert result == expected
+
+
+def test_archive_dir_has_timestamp_suffix(archiver_instance):
+    """Archiver.archive_dir must end with _YYYY-MM-DD_HH-MM-SS."""
+    assert re.search(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", archiver_instance.archive_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -353,3 +360,21 @@ def test_clean_up_with_stale_archives_calls_delete(
     archiver_instance._delete_files = MagicMock()
     archiver_instance.clean_up()
     archiver_instance._delete_files.assert_called_once_with(stale)
+
+
+# ---------------------------------------------------------------------------
+# MinioArchiver._generate_path — trailing-slash normalisation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("input_path,expected", [
+    ("backups/",   "backups"),
+    ("backups//",  "backups"),   # double-slash: old code leaves one slash, new code strips all
+    ("backups",    "backups"),
+    ("a/b/c/",     "a/b/c"),
+    (None,         ""),
+    ("",           ""),
+])
+def test_generate_path_strips_all_trailing_slashes(input_path, expected):
+    """_generate_path must strip ALL trailing slashes, not just one."""
+    result = MinioArchiver._generate_path(None, input_path)
+    assert result == expected

@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Dict, List, Union
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
 # pylint: disable=import-error
@@ -26,7 +25,7 @@ class HttpHelper:
     Returns:
         :HttpHelper: instance with methods to help with http requests.
     """
-    def __init__(self, headers: Dict[str, str],
+    def __init__(self, headers: dict[str, str],
                  config: HttpConfig):
         self.backoff_factor = config.backoff_factor
         self.retry_codes = config.retry_codes
@@ -34,24 +33,30 @@ class HttpHelper:
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
         self._headers = headers
+        self._session = self._build_session()
+
+    def _build_session(self) -> requests.Session:
+        """build a requests Session with retry adapters mounted for http and https"""
+        session = requests.Session()
+        # {backoff factor} * (2 ** ({number of previous retries}))
+        # {raise_on_status} if status falls in status_forcelist range
+        #  and retries have been exhausted.
+        # {status_force_list} 413, 429, 503 defaults are overwritten with additional ones
+        retries = Retry(total=self.retry_count,
+                        backoff_factor=self.backoff_factor,
+                        raise_on_status=True,
+                        status_forcelist=self.retry_codes)
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
 
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
-        url_prefix = self.should_verify(url)
         try:
-            with requests.Session() as session:
-                # {backoff factor} * (2 ** ({number of previous retries}))
-                # {raise_on_status} if status falls in status_forcelist range
-                #  and retries have been exhausted.
-                # {status_force_list} 413, 429, 503 defaults are overwritten with additional ones
-                retries = Retry(total=self.retry_count,
-                                backoff_factor=self.backoff_factor,
-                                raise_on_status=True,
-                                status_forcelist=self.retry_codes)
-                session.mount(url_prefix, HTTPAdapter(max_retries=retries))
-                response = session.get(url, headers=self._headers, verify=self.verify_ssl,
-                                       timeout=self.http_timeout)
+            response = self._session.get(url, headers=self._headers,
+                                         verify=self.verify_ssl, timeout=self.http_timeout)
         except Exception as req_err:
             log.error("Failed to make request for %s", url)
             raise req_err
@@ -62,16 +67,16 @@ class HttpHelper:
             # this means it either exceeded 50X retries in `http_get_request` handler
             # or it returned a 40X which is not expected
             log.error("Bookstack request failed with status code: %d on url: %s",
-                    response.status_code, url)
+                      response.status_code, url)
             raise e
         return response
 
-    def http_get_all(self, url: str, count: int = 500) -> List[Dict]:
+    def http_get_all(self, url: str, count: int = 500) -> list[dict]:
         """fetch all items from a paginated bookstack list endpoint"""
         parsed = urlparse(url)
         base_query = [(k, v) for k, v in parse_qsl(parsed.query)
                       if k not in ('count', 'offset')]
-        all_data: List[Dict] = []
+        all_data: list[dict] = []
         offset = 0
         while True:
             query = urlencode(base_query + [('count', count), ('offset', offset)])
@@ -86,33 +91,23 @@ class HttpHelper:
             offset += count
         return all_data
 
-    @staticmethod
-    def should_verify(url: str) -> str:
-        """check if http or https"""
-        if url.startswith("https"):
-            return "https://"
-        return "http://"
-
-def check_var(env_key: str, default_val: Union[list[str],str], can_error: bool = False) -> str:
+def check_var(env_key: str, default_val: list[str] | str,
+              required: bool = True) -> list[str] | str:
     """
-    :param: env_key = the environment variable to check
-    :param: default_val = the default value if any to set if env variable not set
-    :param: can_error = whether or not missing both env_key and default_val should
-            trigger an exception
-    
-    :return: env_key if present or default_val if not
-    :throws: ValueError if both parameters are empty.
+    :param env_key: environment variable to check (takes precedence)
+    :param default_val: fallback value if the env var is unset
+    :param required: if True, raise when both env var and default are empty
+
+    :return: env var value if set, else default_val
+    :raises ValueError: if required and both env var and default_val are empty
     """
     env_value = os.environ.get(env_key, "")
-    # env value takes precedence
     if env_value:
-        log.debug("""env key: %s specified.
-                    Will override configuration file value if set.""", env_key)
+        log.debug("env key: %s specified; overrides configuration file value if set.", env_key)
         return env_value
-    # check for optional inputs, if env and input is missing
-    if not can_error:
-        if not env_value and not default_val:
-            raise ValueError(f"""{env_key} is not specified in env and is
-                                missing from configuration - at least one should be set""")
-    # fall back to configuration file value if present
+    if required and not default_val:
+        raise ValueError(
+            f"{env_key} is not specified in env and is missing from configuration "
+            "- at least one should be set"
+        )
     return default_val

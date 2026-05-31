@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import base64
-from typing import Union, Literal
+from typing import Literal
 
 from markdown_it import MarkdownIt
 # pylint: disable=import-error
@@ -43,7 +43,7 @@ class AssetNode:
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
     def all_urls(
-            self, asset_data: dict[str, Union[int, str, bool, dict]],
+            self, asset_data: dict[str, int | str | bool | dict],
             kind: Literal["markdown", "html"]) -> list[str]:
         """All URLs for this asset that may appear in an exported page.
 
@@ -118,7 +118,7 @@ class AssetNode:
         return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
-    def _get_md_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
+    def _get_md_url_strs(asset_data: dict[str, int | str]) -> list[str]:
         """Extract image src and link href values from content.markdown.
         Uses markdown-it-py for spec-compliant parsing — handles URLs with
         parentheses and alt-text containing parens without regex brittleness."""
@@ -150,7 +150,7 @@ class AssetNode:
         return urls
 
     @staticmethod
-    def _get_html_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
+    def _get_html_url_strs(asset_data: dict[str, int | str]) -> list[str]:
         """Extract URLs from content.html using bs4. Skips data: URIs."""
         html_str = ""
         if 'content' in asset_data and 'html' in asset_data['content']:
@@ -181,7 +181,7 @@ class ImageNode(AssetNode):
     Returns:
         ImageNode instance for use in archiving images for a page
     """
-    def __init__(self, meta_data: dict[str, Union[int, str]]):
+    def __init__(self, meta_data: dict[str, int | str]):
         super().__init__(meta_data)
         self.download_url: str = meta_data['url']
         self.page_url: str = meta_data['url']
@@ -200,7 +200,7 @@ class AttachmentNode(AssetNode):
     Returns:
         AttachmentNode instance for use in archiving attachments for a page
     """
-    def __init__(self, meta_data: dict[str, Union[int, str, bool]],
+    def __init__(self, meta_data: dict[str, int | str | bool],
                  base_url: str):
         super().__init__(meta_data)
         self.download_url: str = f"{base_url}/{self.id_}"
@@ -273,7 +273,7 @@ class AssetArchiver:
         return self._asset_map[asset_type](asset_json)
 
     def get_asset_data(self, asset_type: str,
-            meta_data: Union[AttachmentNode, ImageNode]) -> dict[str, str | bool | int | dict]:
+            meta_data: AttachmentNode | ImageNode) -> dict[str, str | bool | int | dict]:
         """Get asset data based on type"""
         data_url = f"{self.api_urls[asset_type]}/{meta_data.id_}"
         asset_data_response: Response = self.http_client.http_get_request(
@@ -289,6 +289,8 @@ class AssetArchiver:
                 asset_data = asset_response.content
             case "attachments":
                 asset_data = self._decode_attachment_data(asset_response.json()['content'])
+            case _:
+                raise ValueError(f"unsupported asset type: {asset_type}")
         return asset_data
 
     def update_asset_links(self, asset_type: str, page_name: str, page_data: bytes,
@@ -401,32 +403,21 @@ class AssetArchiver:
         return page_data
 
     @staticmethod
-    def _create_image_map(json_data: dict[str,
-            list[dict[str, str | int | bool | dict]]]) -> dict[int, list[ImageNode]]:
-        image_page_map = {}
-        for img_meta in json_data:
-            img_node = ImageNode(img_meta)
-            if img_node.page_id in image_page_map:
-                image_page_map[img_node.page_id].append(img_node)
-            else:
-                image_page_map[img_node.page_id] = [img_node]
-        return image_page_map
+    def _group_by_page(nodes: list[ImageNode | AttachmentNode]
+                       ) -> dict[int, list[ImageNode | AttachmentNode]]:
+        grouped: dict[int, list] = {}
+        for node in nodes:
+            grouped.setdefault(node.page_id, []).append(node)
+        return grouped
 
-    def _create_attachment_map(
-            self,
-            json_data: dict[str, list[dict[str, str | int | bool | dict]]]
-            ) -> dict[int, list[AttachmentNode]]:
-        asset_nodes = {}
-        for asset_meta in json_data:
-            asset_node = None
-            if asset_meta['external']:
-                continue # skip external link, only get attachments
-            asset_node = AttachmentNode(asset_meta, self.api_urls['attachments'])
-            if asset_node.page_id in asset_nodes:
-                asset_nodes[asset_node.page_id].append(asset_node)
-            else:
-                asset_nodes[asset_node.page_id] = [asset_node]
-        return asset_nodes
+    @classmethod
+    def _create_image_map(cls, json_data) -> dict[int, list[ImageNode]]:
+        return cls._group_by_page([ImageNode(meta) for meta in json_data])
+
+    def _create_attachment_map(self, json_data) -> dict[int, list[AttachmentNode]]:
+        nodes = [AttachmentNode(meta, self.api_urls['attachments'])
+                 for meta in json_data if not meta['external']]
+        return self._group_by_page(nodes)
 
     @staticmethod
     def _decode_attachment_data(b64encoded_data: str) -> bytes:

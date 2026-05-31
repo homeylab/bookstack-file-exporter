@@ -1,6 +1,5 @@
 import os
 import argparse
-from typing import Dict, Tuple
 import logging
 # pylint: disable=import-error
 import yaml
@@ -63,7 +62,7 @@ class ConfigNode:
     def _generate_config(self, config_file: str) -> models.UserInput:
         if not os.path.isfile(config_file):
             raise FileNotFoundError(config_file)
-        with open(config_file, "r", encoding="utf-8") as yaml_stream:
+        with open(config_file, encoding="utf-8") as yaml_stream:
             try:
                 yaml_input = yaml.safe_load(yaml_stream)
             except Exception as load_err:
@@ -102,7 +101,7 @@ class ConfigNode:
                 "the legacy 'assets.modify_markdown' value is ignored."
             )
 
-    def _generate_credentials(self) -> Tuple[str, str]:
+    def _generate_credentials(self) -> tuple[str, str]:
         # if user provided credentials in config file, load them
         token_id = self.user_inputs.credentials.token_id
         token_secret = self.user_inputs.credentials.token_secret
@@ -112,7 +111,7 @@ class ConfigNode:
         token_secret = check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
         return token_id, token_secret
 
-    def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
+    def _generate_remote_config(self) -> dict[str, StorageProviderConfig]:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
         if self.user_inputs.minio:
@@ -129,7 +128,7 @@ class ConfigNode:
                 raise ValueError(error_str)
         return object_config
 
-    def _generate_headers(self) -> Dict[str, str]:
+    def _generate_headers(self) -> dict[str, str]:
         headers = {}
         # add additional_headers provided by user
         if self.user_inputs.http_config.additional_headers:
@@ -147,48 +146,36 @@ class ConfigNode:
             headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
         return headers
 
-    def _generate_urls(self) -> Dict[str, str]:
+    def _generate_urls(self) -> dict[str, str]:
         urls = {}
         # remove trailing slash
-        host = self.user_inputs.host
-        if host[-1] == '/':
-            host = host[:-1]
+        host = self.user_inputs.host.rstrip('/')
         # check to see if http protocol is defined
-        if "http" not in self.user_inputs.host:
+        if "http" not in host:
             # use https by default
             url_prefix = "https://"
         else:
             url_prefix = ""
         for key, value in _API_PATHS.items():
-            urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
+            urls[key] = f"{url_prefix}{host}/{value}"
         log.debug("api urls: %s", urls)
         return urls
 
     def _set_base_dir(self, cmd_output_dir: str) -> str:
-        output_dir = self.user_inputs.output_path
-        # override if command line specified
+        output_dir = cmd_output_dir or self.user_inputs.output_path
         if cmd_output_dir:
             log.debug("Output directory overwritten by command line option")
-            output_dir = cmd_output_dir
-        # check if user provided an output path
-        if output_dir:
-            # detect trailing slash
-            # normalize to no trailing slash for later consistency
-            if output_dir[-1] == '/':
-                base_dir = f"{output_dir}{_BASE_DIR_NAME}"
-            else:
-                base_dir = f"{output_dir}/{_BASE_DIR_NAME}"
-        else:
-            base_dir = _BASE_DIR_NAME
-        return base_dir
+        if not output_dir:
+            return _BASE_DIR_NAME
+        return f"{output_dir.rstrip('/')}/{_BASE_DIR_NAME}"
 
     @property
-    def headers(self) -> Dict[str, str]:
+    def headers(self) -> dict[str, str]:
         """get generated headers"""
         return self._headers
 
     @property
-    def urls(self) -> Dict[str, str]:
+    def urls(self) -> dict[str, str]:
         """get generated urls"""
         return self._urls
 
@@ -198,28 +185,6 @@ class ConfigNode:
         return self._base_dir_name
 
     @property
-    def object_storage_config(self) -> Dict[str, StorageProviderConfig]:
+    def object_storage_config(self) -> dict[str, StorageProviderConfig]:
         """return remote storage configuration"""
         return self._object_storage_config
-
-    # @staticmethod
-    # def _check_var(env_key: str, default_val: str) -> str:
-    #     """
-    #     :param: env_key = the environment variable to check
-    #     :param: default_val = the default value if any to set if env variable not set
-
-    #     :return: env_key if present or default_val if not
-    #     :throws: ValueError if both parameters are empty.
-    #     """
-    #     env_value = os.environ.get(env_key, "")
-    #     # env value takes precedence
-    #     if env_value:
-    #         log.debug("""env key: %s specified.
-    #                    Will override configuration file value if set.""", env_key)
-    #         return env_value
-    #     # check for optional inputs, if env and input is missing
-    #     if not env_value and not default_val:
-    #         raise ValueError(f"""{env_key} is not specified in env and is
-    #                           missing from configuration - at least one should be set""")
-    #     # fall back to configuration file value if present
-    #     return default_val
