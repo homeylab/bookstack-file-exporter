@@ -150,37 +150,25 @@ class ConfigNode:
     def _generate_urls(self) -> Dict[str, str]:
         urls = {}
         # remove trailing slash
-        host = self.user_inputs.host
-        if host[-1] == '/':
-            host = host[:-1]
+        host = self.user_inputs.host.rstrip('/')
         # check to see if http protocol is defined
-        if "http" not in self.user_inputs.host:
+        if "http" not in host:
             # use https by default
             url_prefix = "https://"
         else:
             url_prefix = ""
         for key, value in _API_PATHS.items():
-            urls[key] = f"{url_prefix}{self.user_inputs.host}/{value}"
+            urls[key] = f"{url_prefix}{host}/{value}"
         log.debug("api urls: %s", urls)
         return urls
 
     def _set_base_dir(self, cmd_output_dir: str) -> str:
-        output_dir = self.user_inputs.output_path
-        # override if command line specified
+        output_dir = cmd_output_dir or self.user_inputs.output_path
         if cmd_output_dir:
             log.debug("Output directory overwritten by command line option")
-            output_dir = cmd_output_dir
-        # check if user provided an output path
-        if output_dir:
-            # detect trailing slash
-            # normalize to no trailing slash for later consistency
-            if output_dir[-1] == '/':
-                base_dir = f"{output_dir}{_BASE_DIR_NAME}"
-            else:
-                base_dir = f"{output_dir}/{_BASE_DIR_NAME}"
-        else:
-            base_dir = _BASE_DIR_NAME
-        return base_dir
+        if not output_dir:
+            return _BASE_DIR_NAME
+        return f"{output_dir.rstrip('/')}/{_BASE_DIR_NAME}"
 
     @property
     def headers(self) -> Dict[str, str]:

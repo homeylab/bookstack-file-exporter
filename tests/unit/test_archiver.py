@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
+from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 
 
 # ---------------------------------------------------------------------------
@@ -353,3 +354,21 @@ def test_clean_up_with_stale_archives_calls_delete(
     archiver_instance._delete_files = MagicMock()
     archiver_instance.clean_up()
     archiver_instance._delete_files.assert_called_once_with(stale)
+
+
+# ---------------------------------------------------------------------------
+# MinioArchiver._generate_path — trailing-slash normalisation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("input_path,expected", [
+    ("backups/",   "backups"),
+    ("backups//",  "backups"),   # double-slash: old code leaves one slash, new code strips all
+    ("backups",    "backups"),
+    ("a/b/c/",     "a/b/c"),
+    (None,         ""),
+    ("",           ""),
+])
+def test_generate_path_strips_all_trailing_slashes(input_path, expected):
+    """_generate_path must strip ALL trailing slashes, not just one."""
+    result = MinioArchiver._generate_path(None, input_path)
+    assert result == expected

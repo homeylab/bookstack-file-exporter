@@ -43,11 +43,7 @@ class MinioArchiver:
             raise ValueError(f"Given bucket does not exist: {self.bucket}")
 
     def _generate_path(self, path_name: Union[str, None]) -> str:
-        if path_name:
-            if path_name[-1] == '/':
-                return path_name[:-1]
-            return path_name
-        return ""
+        return path_name.rstrip('/') if path_name else ""
 
     def upload_backup(self, local_file_path: str):
         """upload archive file to minio bucket"""
