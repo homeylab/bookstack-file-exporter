@@ -250,6 +250,14 @@ def test_get_all_books_adds_unassigned_books(
     assert result[99].file_path.startswith("unassigned/")
 
 
+def test_get_all_books_merges_unassigned(api_urls, mock_http_client, monkeypatch):
+    exporter_obj = NodeExporter(api_urls, mock_http_client)
+    monkeypatch.setattr(exporter_obj, "get_child_nodes", lambda *a, **k: {1: "shelf-book"})
+    monkeypatch.setattr(exporter_obj, "get_unassigned_books", lambda *a, **k: {2: "loose-book"})
+    result = exporter_obj.get_all_books({10: "shelf"}, "unassigned/")
+    assert result == {1: "shelf-book", 2: "loose-book"}
+
+
 # ---------------------------------------------------------------------------
 # get_child_nodes / _get_children
 # ---------------------------------------------------------------------------

@@ -128,8 +128,7 @@ class NodeExporter():
         # these should not already be present in map
         # since we started with shelves first and then moved our way down.
         if books_no_shelf:
-            for key, value in books_no_shelf.items():
-                book_nodes[key] = value
+            book_nodes.update(books_no_shelf)
 
         return book_nodes
 
@@ -155,6 +154,5 @@ class NodeExporter():
             ## since we filter empty, check if there is any content
             ## add all chapter pages to existing page nodes
             if page_chapter_nodes:
-                for key, value in page_chapter_nodes.items():
-                    page_nodes[key] = value
+                page_nodes.update(page_chapter_nodes)
         return page_nodes
