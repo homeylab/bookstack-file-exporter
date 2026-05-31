@@ -15,15 +15,14 @@ log = logging.getLogger(__name__)
 
 def entrypoint(args: argparse.Namespace):
     """entrypoint for export process"""
-    # get configuration from helper
     config = ConfigNode(args)
-    if config.user_inputs.run_interval:
-        while True:
-            run(config)
-            log.info("Waiting %s seconds for next run", config.user_inputs.run_interval)
-            # sleep process state
-            time.sleep(config.user_inputs.run_interval)
-    run(config)
+    if not config.user_inputs.run_interval:
+        run(config)
+        return
+    while True:
+        run(config)
+        log.info("Waiting %s seconds for next run", config.user_inputs.run_interval)
+        time.sleep(config.user_inputs.run_interval)
 
 def run(config: ConfigNode):
     """run export process with error handling and notification support"""
