@@ -10,9 +10,6 @@ log = logging.getLogger(__name__)
 
 _APPRISE_FIELDS = {
     "urls": "APPRISE_URLS",
-    # "config_path": "APPRISE_CONFIG_PATH",
-    # "plugin_paths": "APPRISE_PLUGIN_PATHS",
-    # "storage_path": "APPRISE_STORAGE_PATH"
 }
 
 # pylint: disable=too-few-public-methods, too-many-instance-attributes

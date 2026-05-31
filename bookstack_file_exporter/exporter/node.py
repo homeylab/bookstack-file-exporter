@@ -36,7 +36,6 @@ class Node():
         self._parent = parent
         self._path_prefix = path_prefix
         # for convenience/usage for exporter
-        # self.name: str = self.meta['slug']
         self.name = self.get_name(self.meta['slug'], self.meta['name'])
         # id() is a built-in function and should not be used as a variable name
         self.id_: int = self.meta['id']
@@ -56,9 +55,6 @@ class Node():
 
     def _get_file_path(self) -> str:
         if self._parent:
-            # page node
-            # if not self._children:
-            #     return f"{self._parent.file_path}/{self.name}/{self.name}"
             return f"{self._parent.file_path}/{self.name}"
         return ""
 
