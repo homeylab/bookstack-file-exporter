@@ -171,19 +171,6 @@ def test_http_get_request_404_raises_http_error(http_config):
 
 
 # ---------------------------------------------------------------------------
-# should_verify (static method)
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("url,expected", [
-    ("https://x.com", "https://"),
-    ("http://x.com", "http://"),
-    ("https://example.org/api/path", "https://"),
-])
-def test_should_verify(url, expected):
-    assert HttpHelper.should_verify(url) == expected
-
-
-# ---------------------------------------------------------------------------
 # http_get_request — error responses
 # ---------------------------------------------------------------------------
 
@@ -253,3 +240,30 @@ def test_http_get_request_does_not_retry_non_retryable_code():
         client.http_get_request(f"{BASE}/books")
     # only one HTTP call should have been made (no retries for 404)
     assert len(responses.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# session reuse
+# ---------------------------------------------------------------------------
+
+@responses.activate
+def test_http_get_request_returns_response(http_config):
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200)
+    helper = HttpHelper({"Authorization": "Token x:y"}, http_config)
+    resp = helper.http_get_request("https://wiki.test.example/api/books")
+    assert resp.status_code == 200
+    assert resp.json() == {"data": []}
+
+
+@responses.activate
+def test_http_get_request_reuses_session(http_config):
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200)
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200)
+    helper = HttpHelper({}, http_config)
+    first = helper._session
+    helper.http_get_request("https://wiki.test.example/api/books")
+    helper.http_get_request("https://wiki.test.example/api/books")
+    assert helper._session is first  # session persists across calls

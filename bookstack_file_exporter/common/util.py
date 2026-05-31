@@ -34,24 +34,30 @@ class HttpHelper:
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
         self._headers = headers
+        self._session = self._build_session()
+
+    def _build_session(self) -> requests.Session:
+        """build a requests Session with retry adapters mounted for http and https"""
+        session = requests.Session()
+        # {backoff factor} * (2 ** ({number of previous retries}))
+        # {raise_on_status} if status falls in status_forcelist range
+        #  and retries have been exhausted.
+        # {status_force_list} 413, 429, 503 defaults are overwritten with additional ones
+        retries = Retry(total=self.retry_count,
+                        backoff_factor=self.backoff_factor,
+                        raise_on_status=True,
+                        status_forcelist=self.retry_codes)
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
 
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
-        url_prefix = self.should_verify(url)
         try:
-            with requests.Session() as session:
-                # {backoff factor} * (2 ** ({number of previous retries}))
-                # {raise_on_status} if status falls in status_forcelist range
-                #  and retries have been exhausted.
-                # {status_force_list} 413, 429, 503 defaults are overwritten with additional ones
-                retries = Retry(total=self.retry_count,
-                                backoff_factor=self.backoff_factor,
-                                raise_on_status=True,
-                                status_forcelist=self.retry_codes)
-                session.mount(url_prefix, HTTPAdapter(max_retries=retries))
-                response = session.get(url, headers=self._headers, verify=self.verify_ssl,
-                                       timeout=self.http_timeout)
+            response = self._session.get(url, headers=self._headers,
+                                         verify=self.verify_ssl, timeout=self.http_timeout)
         except Exception as req_err:
             log.error("Failed to make request for %s", url)
             raise req_err
@@ -62,7 +68,7 @@ class HttpHelper:
             # this means it either exceeded 50X retries in `http_get_request` handler
             # or it returned a 40X which is not expected
             log.error("Bookstack request failed with status code: %d on url: %s",
-                    response.status_code, url)
+                      response.status_code, url)
             raise e
         return response
 
@@ -85,13 +91,6 @@ class HttpHelper:
                 break
             offset += count
         return all_data
-
-    @staticmethod
-    def should_verify(url: str) -> str:
-        """check if http or https"""
-        if url.startswith("https"):
-            return "https://"
-        return "http://"
 
 def check_var(env_key: str, default_val: Union[list[str], str],
               required: bool = True) -> Union[list[str], str]:
