@@ -403,32 +403,21 @@ class AssetArchiver:
         return page_data
 
     @staticmethod
-    def _create_image_map(json_data: dict[str,
-            list[dict[str, str | int | bool | dict]]]) -> dict[int, list[ImageNode]]:
-        image_page_map = {}
-        for img_meta in json_data:
-            img_node = ImageNode(img_meta)
-            if img_node.page_id in image_page_map:
-                image_page_map[img_node.page_id].append(img_node)
-            else:
-                image_page_map[img_node.page_id] = [img_node]
-        return image_page_map
+    def _group_by_page(nodes: list["ImageNode | AttachmentNode"]
+                       ) -> dict[int, list["ImageNode | AttachmentNode"]]:
+        grouped: dict[int, list] = {}
+        for node in nodes:
+            grouped.setdefault(node.page_id, []).append(node)
+        return grouped
 
-    def _create_attachment_map(
-            self,
-            json_data: dict[str, list[dict[str, str | int | bool | dict]]]
-            ) -> dict[int, list[AttachmentNode]]:
-        asset_nodes = {}
-        for asset_meta in json_data:
-            asset_node = None
-            if asset_meta['external']:
-                continue # skip external link, only get attachments
-            asset_node = AttachmentNode(asset_meta, self.api_urls['attachments'])
-            if asset_node.page_id in asset_nodes:
-                asset_nodes[asset_node.page_id].append(asset_node)
-            else:
-                asset_nodes[asset_node.page_id] = [asset_node]
-        return asset_nodes
+    @classmethod
+    def _create_image_map(cls, json_data) -> dict[int, list[ImageNode]]:
+        return cls._group_by_page([ImageNode(meta) for meta in json_data])
+
+    def _create_attachment_map(self, json_data) -> dict[int, list[AttachmentNode]]:
+        nodes = [AttachmentNode(meta, self.api_urls['attachments'])
+                 for meta in json_data if not meta['external']]
+        return self._group_by_page(nodes)
 
     @staticmethod
     def _decode_attachment_data(b64encoded_data: str) -> bytes:
