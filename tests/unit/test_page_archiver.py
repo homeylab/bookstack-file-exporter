@@ -221,3 +221,12 @@ class TestArchivePages:
 
         # 1 page × 2 formats = 2 write_tar calls
         assert mock_write_tar.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# 7. Regression: broken verify_ssl property must not exist on PageArchiver
+# ---------------------------------------------------------------------------
+
+def test_page_archiver_has_no_verify_ssl_property():
+    """verify_ssl was broken (read nonexistent Assets field); confirm it is gone."""
+    assert not hasattr(PageArchiver, "verify_ssl")

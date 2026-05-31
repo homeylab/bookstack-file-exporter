@@ -215,7 +215,4 @@ class PageArchiver:
         """return whether or not to export attachments"""
         return self.asset_config.export_attachments
 
-    @property
-    def verify_ssl(self) -> bool:
-        """return whether or not to verify ssl for http requests"""
-        return self.asset_config.verify_ssl
+
