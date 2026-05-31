@@ -39,7 +39,7 @@ class StorageProviderConfig:
 
     def is_valid(self, storage_type: str) -> bool:
         """check if object storage config is valid"""
-        return self._valid_checker[storage_type]
+        return self._valid_checker[storage_type]()
 
     def _is_minio_valid(self) -> bool:
         """check if minio config is valid"""
