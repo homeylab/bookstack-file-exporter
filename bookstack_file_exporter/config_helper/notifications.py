@@ -25,7 +25,7 @@ class AppRiseNotifyConfig:
     """
     def __init__(self, config: models.AppRiseNotifyConfig):
         self.service_urls: Union[str, list] = check_var(_APPRISE_FIELDS["urls"],
-                                  config.service_urls, can_error=True)
+                                  config.service_urls, required=False)
         self.config_path = config.config_path
         self.plugin_paths = config.plugin_paths
         self.storage_path = config.storage_path

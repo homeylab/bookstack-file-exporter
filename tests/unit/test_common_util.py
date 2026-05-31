@@ -24,14 +24,14 @@ def test_check_var_env_set_no_default(monkeypatch):
 
 
 def test_check_var_unset_no_default_can_error_true(monkeypatch):
-    """Env var unset, no default, can_error=True → returns empty string, no exception."""
+    """Env var unset, no default, required=False → returns empty string, no exception."""
     monkeypatch.delenv("MY_TEST_CAN_ERROR_TRUE", raising=False)
-    result = check_var("MY_TEST_CAN_ERROR_TRUE", "", can_error=True)
+    result = check_var("MY_TEST_CAN_ERROR_TRUE", "", required=False)
     assert result == ""
 
 
 def test_check_var_unset_no_default_raises(monkeypatch):
-    """Env var unset, no default, can_error=False → ValueError raised."""
+    """Env var unset, no default, required=True (default) → ValueError raised."""
     monkeypatch.delenv("MY_TEST_RAISES", raising=False)
     with pytest.raises(ValueError):
         check_var("MY_TEST_RAISES", "")
@@ -40,5 +40,26 @@ def test_check_var_unset_no_default_raises(monkeypatch):
 def test_check_var_unset_list_default_returns_list(monkeypatch):
     """Env var unset, list default → list returned as-is."""
     monkeypatch.delenv("MY_TEST_LIST_DEFAULT", raising=False)
-    result = check_var("MY_TEST_LIST_DEFAULT", ["a", "b"], can_error=False)
+    result = check_var("MY_TEST_LIST_DEFAULT", ["a", "b"], required=True)
     assert result == ["a", "b"]
+
+
+def test_check_var_env_takes_precedence(monkeypatch):
+    monkeypatch.setenv("MY_KEY", "from-env")
+    assert check_var("MY_KEY", "from-config") == "from-env"
+
+
+def test_check_var_falls_back_to_default(monkeypatch):
+    monkeypatch.delenv("MY_KEY", raising=False)
+    assert check_var("MY_KEY", "from-config") == "from-config"
+
+
+def test_check_var_required_missing_raises(monkeypatch):
+    monkeypatch.delenv("MY_KEY", raising=False)
+    with pytest.raises(ValueError):
+        check_var("MY_KEY", "", required=True)
+
+
+def test_check_var_optional_missing_returns_default(monkeypatch):
+    monkeypatch.delenv("MY_KEY", raising=False)
+    assert check_var("MY_KEY", [], required=False) == []
