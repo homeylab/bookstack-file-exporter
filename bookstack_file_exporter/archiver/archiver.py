@@ -1,4 +1,3 @@
-from typing import List, Dict
 from datetime import datetime
 import logging
 import os
@@ -52,7 +51,7 @@ class Archiver:
                         "attempting to skip this step")
             return
 
-    def get_bookstack_exports(self, page_nodes: Dict[int, Node]):
+    def get_bookstack_exports(self, page_nodes: dict[int, Node]):
         """export all page content"""
         log.info("Exporting all bookstack page contents")
         # get images first if requested
@@ -99,10 +98,10 @@ class Archiver:
         if to_delete:
             self._delete_files(to_delete)
 
-    def _get_stale_archives(self) -> List[str]:
+    def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
-        archive_list: List[str] = util.scan_archives(self.base_dir,
+        archive_list: list[str] = util.scan_archives(self.base_dir,
                                                      self._page_archiver.file_extension_map['tgz'])
         if not archive_list:
             log.debug("No archive files found to clean up")
@@ -120,7 +119,7 @@ class Archiver:
             to_delete = self._filter_archives(archive_list)
         return to_delete
 
-    def _filter_archives(self, file_list: List[str]) -> List[str]:
+    def _filter_archives(self, file_list: list[str]) -> list[str]:
         """get older archives based on keep number"""
         file_dict = {file: os.stat(file).st_ctime for file in file_list}
         ordered = sorted(file_dict.items(), key=lambda item: item[1])
@@ -134,7 +133,7 @@ class Archiver:
         log.debug("%d local archives will be cleaned up", len(files_to_clean))
         return files_to_clean
 
-    def _delete_files(self, file_list: List[str]):
+    def _delete_files(self, file_list: list[str]):
         for file in file_list:
             util.remove_file(file)
 

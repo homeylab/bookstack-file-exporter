@@ -1,6 +1,5 @@
 import os
 import argparse
-from typing import Dict, Tuple
 import logging
 # pylint: disable=import-error
 import yaml
@@ -63,7 +62,7 @@ class ConfigNode:
     def _generate_config(self, config_file: str) -> models.UserInput:
         if not os.path.isfile(config_file):
             raise FileNotFoundError(config_file)
-        with open(config_file, "r", encoding="utf-8") as yaml_stream:
+        with open(config_file, encoding="utf-8") as yaml_stream:
             try:
                 yaml_input = yaml.safe_load(yaml_stream)
             except Exception as load_err:
@@ -102,7 +101,7 @@ class ConfigNode:
                 "the legacy 'assets.modify_markdown' value is ignored."
             )
 
-    def _generate_credentials(self) -> Tuple[str, str]:
+    def _generate_credentials(self) -> tuple[str, str]:
         # if user provided credentials in config file, load them
         token_id = self.user_inputs.credentials.token_id
         token_secret = self.user_inputs.credentials.token_secret
@@ -112,7 +111,7 @@ class ConfigNode:
         token_secret = check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
         return token_id, token_secret
 
-    def _generate_remote_config(self) -> Dict[str, StorageProviderConfig]:
+    def _generate_remote_config(self) -> dict[str, StorageProviderConfig]:
         object_config = {}
         # check for optional minio credentials if configuration is set in yaml configuration file
         if self.user_inputs.minio:
@@ -129,7 +128,7 @@ class ConfigNode:
                 raise ValueError(error_str)
         return object_config
 
-    def _generate_headers(self) -> Dict[str, str]:
+    def _generate_headers(self) -> dict[str, str]:
         headers = {}
         # add additional_headers provided by user
         if self.user_inputs.http_config.additional_headers:
@@ -147,7 +146,7 @@ class ConfigNode:
             headers['Authorization'] = f"Token {self._token_id}:{self._token_secret}"
         return headers
 
-    def _generate_urls(self) -> Dict[str, str]:
+    def _generate_urls(self) -> dict[str, str]:
         urls = {}
         # remove trailing slash
         host = self.user_inputs.host.rstrip('/')
@@ -171,12 +170,12 @@ class ConfigNode:
         return f"{output_dir.rstrip('/')}/{_BASE_DIR_NAME}"
 
     @property
-    def headers(self) -> Dict[str, str]:
+    def headers(self) -> dict[str, str]:
         """get generated headers"""
         return self._headers
 
     @property
-    def urls(self) -> Dict[str, str]:
+    def urls(self) -> dict[str, str]:
         """get generated urls"""
         return self._urls
 
@@ -186,6 +185,6 @@ class ConfigNode:
         return self._base_dir_name
 
     @property
-    def object_storage_config(self) -> Dict[str, StorageProviderConfig]:
+    def object_storage_config(self) -> dict[str, StorageProviderConfig]:
         """return remote storage configuration"""
         return self._object_storage_config

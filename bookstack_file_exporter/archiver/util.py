@@ -1,4 +1,3 @@
-from typing import Dict, Union
 import json
 import os
 import logging
@@ -28,7 +27,7 @@ def write_tar(base_tar_dir: str, file_path: str, data: bytes):
         log.debug("Adding file: %s with size: %d bytes to tar file", tar_info.name, tar_info.size)
         tar.addfile(tar_info, fileobj=data_obj)
 
-def get_json_bytes(data: Dict[str, Union[str, int]]) -> bytes:
+def get_json_bytes(data: dict[str, str | int]) -> bytes:
     """dump dict to json file"""
     return json.dumps(data, indent=4).encode('utf-8')
 

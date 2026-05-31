@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import base64
-from typing import Union, Literal
+from typing import Literal
 
 from markdown_it import MarkdownIt
 # pylint: disable=import-error
@@ -43,7 +43,7 @@ class AssetNode:
         return f"{self._relative_path_prefix}/{page_name}/{self.name}"
 
     def all_urls(
-            self, asset_data: dict[str, Union[int, str, bool, dict]],
+            self, asset_data: dict[str, int | str | bool | dict],
             kind: Literal["markdown", "html"]) -> list[str]:
         """All URLs for this asset that may appear in an exported page.
 
@@ -118,7 +118,7 @@ class AssetNode:
         return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
-    def _get_md_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
+    def _get_md_url_strs(asset_data: dict[str, int | str]) -> list[str]:
         """Extract image src and link href values from content.markdown.
         Uses markdown-it-py for spec-compliant parsing — handles URLs with
         parentheses and alt-text containing parens without regex brittleness."""
@@ -150,7 +150,7 @@ class AssetNode:
         return urls
 
     @staticmethod
-    def _get_html_url_strs(asset_data: dict[str, Union[int, str]]) -> list[str]:
+    def _get_html_url_strs(asset_data: dict[str, int | str]) -> list[str]:
         """Extract URLs from content.html using bs4. Skips data: URIs."""
         html_str = ""
         if 'content' in asset_data and 'html' in asset_data['content']:
@@ -181,7 +181,7 @@ class ImageNode(AssetNode):
     Returns:
         ImageNode instance for use in archiving images for a page
     """
-    def __init__(self, meta_data: dict[str, Union[int, str]]):
+    def __init__(self, meta_data: dict[str, int | str]):
         super().__init__(meta_data)
         self.download_url: str = meta_data['url']
         self.page_url: str = meta_data['url']
@@ -200,7 +200,7 @@ class AttachmentNode(AssetNode):
     Returns:
         AttachmentNode instance for use in archiving attachments for a page
     """
-    def __init__(self, meta_data: dict[str, Union[int, str, bool]],
+    def __init__(self, meta_data: dict[str, int | str | bool],
                  base_url: str):
         super().__init__(meta_data)
         self.download_url: str = f"{base_url}/{self.id_}"
@@ -273,7 +273,7 @@ class AssetArchiver:
         return self._asset_map[asset_type](asset_json)
 
     def get_asset_data(self, asset_type: str,
-            meta_data: Union[AttachmentNode, ImageNode]) -> dict[str, str | bool | int | dict]:
+            meta_data: AttachmentNode | ImageNode) -> dict[str, str | bool | int | dict]:
         """Get asset data based on type"""
         data_url = f"{self.api_urls[asset_type]}/{meta_data.id_}"
         asset_data_response: Response = self.http_client.http_get_request(
@@ -403,8 +403,8 @@ class AssetArchiver:
         return page_data
 
     @staticmethod
-    def _group_by_page(nodes: list["ImageNode | AttachmentNode"]
-                       ) -> dict[int, list["ImageNode | AttachmentNode"]]:
+    def _group_by_page(nodes: list[ImageNode | AttachmentNode]
+                       ) -> dict[int, list[ImageNode | AttachmentNode]]:
         grouped: dict[int, list] = {}
         for node in nodes:
             grouped.setdefault(node.page_id, []).append(node)

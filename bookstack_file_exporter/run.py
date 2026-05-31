@@ -2,7 +2,6 @@ import argparse
 import sys
 import logging
 import time
-from typing import Dict
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
@@ -56,12 +55,12 @@ def exporter(config: ConfigNode):
     log.info("Building shelve/book/chapter/page relationships")
     export_helper = NodeExporter(config.urls, http_client)
     ## shelves
-    shelve_nodes: Dict[int, Node] = export_helper.get_all_shelves()
+    shelve_nodes: dict[int, Node] = export_helper.get_all_shelves()
     ## books
-    book_nodes: Dict[int, Node] = export_helper.get_all_books(shelve_nodes,
+    book_nodes: dict[int, Node] = export_helper.get_all_books(shelve_nodes,
                                                               config.unassigned_book_dir)
     ## pages
-    page_nodes: Dict[int, Node] = export_helper.get_all_pages(book_nodes)
+    page_nodes: dict[int, Node] = export_helper.get_all_pages(book_nodes)
     if not page_nodes:
         log.warning("No page data available from given Bookstack instance. Nothing to archive")
         sys.exit(0)

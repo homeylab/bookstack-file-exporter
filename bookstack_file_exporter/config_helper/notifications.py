@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from typing import Union
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.common.util import check_var
@@ -24,7 +23,7 @@ class AppRiseNotifyConfig:
         AppRiseNotifyConfig instance for holding configuration
     """
     def __init__(self, config: models.AppRiseNotifyConfig):
-        self.service_urls: Union[str, list] = check_var(_APPRISE_FIELDS["urls"],
+        self.service_urls: str | list = check_var(_APPRISE_FIELDS["urls"],
                                   config.service_urls, required=False)
         self.config_path = config.config_path
         self.plugin_paths = config.plugin_paths

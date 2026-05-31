@@ -1,4 +1,4 @@
-from typing import Dict, Union, List
+from typing import Union
 import unicodedata
 from re import sub as re_sub
 
@@ -30,7 +30,7 @@ class Node():
         relationships for resources like pages, books, chapters, and shelves.
 
     """
-    def __init__(self, meta: Dict[str, Union[str, int]],
+    def __init__(self, meta: dict[str, str | int],
                  parent: Union['Node', None] = None, path_prefix: str = ""):
         self.meta = meta
         self._parent = parent
@@ -58,7 +58,7 @@ class Node():
             return f"{self._parent.file_path}/{self.name}"
         return ""
 
-    def _get_children(self) -> List[Dict[str, Union[str, int]]]:
+    def _get_children(self) -> list[dict[str, str | int]]:
         children = []
         # find first match
         for match in _CHILD_KEYS:

@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Dict, List, Union
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
 # pylint: disable=import-error
@@ -26,7 +25,7 @@ class HttpHelper:
     Returns:
         :HttpHelper: instance with methods to help with http requests.
     """
-    def __init__(self, headers: Dict[str, str],
+    def __init__(self, headers: dict[str, str],
                  config: HttpConfig):
         self.backoff_factor = config.backoff_factor
         self.retry_codes = config.retry_codes
@@ -72,12 +71,12 @@ class HttpHelper:
             raise e
         return response
 
-    def http_get_all(self, url: str, count: int = 500) -> List[Dict]:
+    def http_get_all(self, url: str, count: int = 500) -> list[dict]:
         """fetch all items from a paginated bookstack list endpoint"""
         parsed = urlparse(url)
         base_query = [(k, v) for k, v in parse_qsl(parsed.query)
                       if k not in ('count', 'offset')]
-        all_data: List[Dict] = []
+        all_data: list[dict] = []
         offset = 0
         while True:
             query = urlencode(base_query + [('count', count), ('offset', offset)])
@@ -92,8 +91,8 @@ class HttpHelper:
             offset += count
         return all_data
 
-def check_var(env_key: str, default_val: Union[list[str], str],
-              required: bool = True) -> Union[list[str], str]:
+def check_var(env_key: str, default_val: list[str] | str,
+              required: bool = True) -> list[str] | str:
     """
     :param env_key: environment variable to check (takes precedence)
     :param default_val: fallback value if the env var is unset
