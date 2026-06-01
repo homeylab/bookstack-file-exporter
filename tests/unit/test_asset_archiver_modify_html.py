@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from requests.exceptions import HTTPError
 
 from bookstack_file_exporter.archiver.asset_archiver import ImageNode
-from bookstack_file_exporter.archiver.page_archiver import PageArchiver
+from bookstack_file_exporter.archiver.node_archiver import PageArchiver
 from bookstack_file_exporter.common.util import HttpHelper
 
 from tests.fixtures.mock_config import make_mock_config
@@ -19,14 +19,14 @@ from tests.fixtures.mock_config import make_mock_config
 # ---------------------------------------------------------------------------
 
 class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
-    """Tests for _check_links_modify, _modify_html, and archive_pages dispatch.
+    """Tests for _check_links_modify, _modify_html, and archive dispatch.
 
     test scaffolding stub — PageArchiver tests intentionally cover a single entry point.
     """
 
     def _make_archiver(self, tmp_path, monkeypatch, **config_kwargs):
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         config = make_mock_config(**config_kwargs)
@@ -82,7 +82,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
     def test_warning_when_modify_links_true_but_no_rewritable_format(
         self, tmp_path, monkeypatch, caplog
     ):
-        logger_name = "bookstack_file_exporter.archiver.page_archiver"
+        logger_name = "bookstack_file_exporter.archiver.node_archiver"
         with caplog.at_level(logging.WARNING, logger=logger_name):
             self._make_archiver(
                 tmp_path, monkeypatch,
@@ -93,13 +93,13 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
         assert any("MODIFY_LINKS" in m or "rewritable" in m.lower() for m in warning_msgs)
 
-    def test_archive_pages_dispatches_html_branch(
+    def test_archive_dispatches_html_branch(
         self, tmp_path, monkeypatch, build_node
     ):
-        """archive_pages should call _modify_html when format='html' and modify_links=True."""
+        """archive should call _modify_html when format='html' and modify_links=True."""
         mock_asset_archiver_class = MagicMock()
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             mock_asset_archiver_class,
         )
         config = make_mock_config(
@@ -125,14 +125,14 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         page = build_node(id=5, name="test-page", slug="test-page", parent=parent_node)
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ), patch.object(
             archiver, "_modify_html", wraps=archiver._modify_html
         ) as mock_modify_html:
-            archiver.archive_pages({5: page})
+            archiver.archive({5: page})
 
         mock_modify_html.assert_called_once()
 
@@ -141,7 +141,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
     ):
         """_modify_html should return page_data unchanged when modify_links is False."""
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         config = make_mock_config(formats=["html"], modify_links=False)
@@ -165,7 +165,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         """Failed assets should be excluded from both md and html rewrite paths."""
         mock_asset_archiver_class = MagicMock()
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             mock_asset_archiver_class,
         )
         config = make_mock_config(
@@ -191,12 +191,12 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         page = build_node(id=5, name="test-page", slug="test-page", parent=parent_node)
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ):
-            archiver.archive_pages({5: page})
+            archiver.archive({5: page})
 
         # When all assets fail, _rewrite_page_data short-circuits on empty nodes list
         # and never calls update_asset_links_html.
@@ -211,7 +211,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         """When some assets fail, only successful nodes are passed to update_asset_links_html."""
         mock_asset_archiver_class = MagicMock()
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             mock_asset_archiver_class,
         )
         config = make_mock_config(
@@ -247,12 +247,12 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         page = build_node(id=5, name="test-page", slug="test-page", parent=parent_node)
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ):
-            archiver.archive_pages({5: page})
+            archiver.archive({5: page})
 
         calls = mock_asset.update_asset_links_html.call_args_list
         assert len(calls) >= 1, (
@@ -273,7 +273,7 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
 
     test scaffolding stub — this class covers the single end-to-end pipeline scenario.
 
-    Verifies that archive_pages rewrites image URLs in HTML exports
+    Verifies that archive rewrites image URLs in HTML exports
     to local relative paths end-to-end without mocking internal components.
     Requires Task 1 fix (skip redundant API call for ImageNode in HTML mode).
 
@@ -341,13 +341,13 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
         archiver = PageArchiver(archive_dir, config, http_client)
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=self.PAGE_HTML.encode(),
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar",
             side_effect=capture_write,
         ):
-            archiver.archive_pages({self.PAGE_ID: page})
+            archiver.archive({self.PAGE_ID: page})
 
         html_files = {k: v for k, v in written.items() if k.endswith(".html")}
         assert len(html_files) == 1, (

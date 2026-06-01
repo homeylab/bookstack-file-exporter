@@ -19,6 +19,11 @@ formats:
   - pdf
   - plaintext
   - zip
+# optional - export granularity
+# "pages" (default): one file per page; supports assets.export_images/attachments/modify_links
+# "books": one combined file per book (assets embedded server-side; asset options ignored)
+# "chapters": one combined file per chapter (same; loose pages not under a chapter are skipped)
+# export_level: pages
 # optional how to handle additional content for pages
 assets:
   # optional export of all the images used in a page(s).

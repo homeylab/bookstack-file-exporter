@@ -4,8 +4,9 @@ from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
+from requests.exceptions import HTTPError
 
-from bookstack_file_exporter.archiver.page_archiver import PageArchiver
+from bookstack_file_exporter.archiver.node_archiver import PageArchiver
 from bookstack_file_exporter.exporter.node import Node
 
 
@@ -25,7 +26,7 @@ def _make_page_node(build_node, page_id: int, slug: str, parent: Node) -> Node:
 def page_archiver(tmp_path, monkeypatch):
     """Construct a PageArchiver with all external collaborators mocked."""
     monkeypatch.setattr(
-        "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+        "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
         MagicMock(),
     )
     config = _make_config()
@@ -41,7 +42,7 @@ def page_archiver(tmp_path, monkeypatch):
 class TestConstruction:
     def test_archive_file_ends_with_tgz(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         archive_dir = str(tmp_path / "bookstack-20260514")
@@ -50,7 +51,7 @@ class TestConstruction:
 
     def test_tar_file_ends_with_tar(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         archive_dir = str(tmp_path / "bookstack-20260514")
@@ -59,7 +60,7 @@ class TestConstruction:
 
     def test_archive_base_path_is_last_segment(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         archive_dir = str(tmp_path / "bookstack-20260514")
@@ -68,7 +69,7 @@ class TestConstruction:
 
     def test_http_client_stored(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         http_client = MagicMock()
@@ -88,7 +89,7 @@ class TestGetPageData:  # pylint: disable=too-few-public-methods  # test scaffol
         page_archiver.http_client.http_get_request.return_value.content = b"data"
         # patch archiver_util.get_byte_response to capture the url argument
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response"
         ) as mock_get_bytes:
             mock_get_bytes.return_value = b"page content"
             page_archiver._get_page_data(42, export_format)
@@ -133,7 +134,7 @@ class TestFileExtensionMap:
 class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffolding stub
     def test_create_gzip_called_with_tar_and_archive_file(self, page_archiver):
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.create_gzip"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.create_gzip"
         ) as mock_create_gzip:
             page_archiver.gzip_archive()
             mock_create_gzip.assert_called_once_with(
@@ -148,7 +149,7 @@ class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffol
 class TestWriteData:  # pylint: disable=too-few-public-methods  # test scaffolding stub
     def test_write_tar_called_with_correct_args(self, page_archiver):
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ) as mock_write_tar:
             page_archiver.write_data("some/path/file.md", b"content")
             mock_write_tar.assert_called_once_with(
@@ -157,14 +158,14 @@ class TestWriteData:  # pylint: disable=too-few-public-methods  # test scaffoldi
 
 
 # ---------------------------------------------------------------------------
-# 6. archive_pages iterates every page node
+# 6. archive iterates every page node
 # ---------------------------------------------------------------------------
 
 class TestArchivePages:
     def test_each_page_node_written_once_per_format(self, tmp_path, monkeypatch, build_node):
-        """archive_pages should write one file per page per format."""
+        """archive should write one file per page per format."""
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         config = _make_config(formats=["markdown"], export_images=False,
@@ -184,20 +185,20 @@ class TestArchivePages:
         page_nodes: Dict[int, Node] = {10: page1, 11: page2}
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"page bytes",
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ) as mock_write_tar:
-            archiver.archive_pages(page_nodes)
+            archiver.archive(page_nodes)
 
         # 2 pages × 1 format = 2 write_tar calls
         assert mock_write_tar.call_count == 2
 
-    def test_archive_pages_respects_multiple_formats(self, tmp_path, monkeypatch, build_node):
-        """archive_pages should call write_tar once per page per format."""
+    def test_archive_respects_multiple_formats(self, tmp_path, monkeypatch, build_node):
+        """archive should call write_tar once per page per format."""
         monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.page_archiver.AssetArchiver",
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
             MagicMock(),
         )
         config = _make_config(formats=["markdown", "html"], export_images=False,
@@ -212,15 +213,46 @@ class TestArchivePages:
         page_nodes = {20: page1}
 
         with patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.get_byte_response",
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"content",
         ), patch(
-            "bookstack_file_exporter.archiver.page_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
         ) as mock_write_tar:
-            archiver.archive_pages(page_nodes)
+            archiver.archive(page_nodes)
 
         # 1 page × 2 formats = 2 write_tar calls
         assert mock_write_tar.call_count == 2
+
+    def test_failed_page_format_skipped_run_continues(self, tmp_path, monkeypatch, build_node):
+        """A 403/404 on one page-format export is skipped, not fatal; others still written."""
+        monkeypatch.setattr(
+            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
+            MagicMock(),
+        )
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-skip"), config, MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        good = build_node(id=30, name="ok", slug="ok", parent=parent_node)
+        forbidden = build_node(id=3, name="secret", slug="secret", parent=parent_node)
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            if "/pages/3/" in url:
+                raise HTTPError("403 Forbidden")
+            return b"page bytes"
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ) as mock_write_tar:
+            archiver.archive({30: good, 3: forbidden})  # must not raise
+
+        # forbidden page skipped, good page written → 1 write
+        assert mock_write_tar.call_count == 1
 
 
 # ---------------------------------------------------------------------------

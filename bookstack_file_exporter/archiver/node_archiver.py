@@ -28,8 +28,123 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
+
+class NodeArchiver:
+    """
+    NodeArchiver is the base class for all level-specific archivers.
+
+    Holds level-agnostic primitives: tar/gzip helpers, a generic export loop,
+    and shared file-path/extension logic. Subclasses add level-specific
+    state (e.g. asset handling for pages) and implement ``archive``.
+
+    Args:
+        :archive_dir: <str> = directory where data will be put into.
+        :api_urls: <dict> = map of resource type to base API URL.
+        :export_formats: <list[str]> = formats to export.
+        :http_client: <HttpHelper> = http helper for API requests.
+        :export_meta: <bool> = whether to write metadata JSON alongside exports.
+    """
+    def __init__(self, archive_dir: str, api_urls: dict[str, str],  # pylint: disable=too-many-arguments,too-many-positional-arguments
+                 export_formats: list[str], http_client: HttpHelper,
+                 export_meta: bool) -> None:
+        self.api_urls = api_urls
+        self.export_formats = export_formats
+        self.http_client = http_client
+        self.export_meta = export_meta
+        # full path with .tgz extension
+        self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
+        # intermediate tar before gzip
+        self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
+        # base folder name inside the tgz archive
+        self.archive_base_path = archive_dir.split("/")[-1]
+
+    def _get_node_data(self, url: str) -> bytes:
+        return archiver_util.get_byte_response(url=url, http_client=self.http_client)
+
+    def _archive_node(self, node: Node, export_format: str, data: bytes):
+        file_name = (
+            f"{self.archive_base_path}/"
+            f"{node.file_path}{_FILE_EXTENSION_MAP[export_format]}"
+        )
+        self.write_data(file_name, data)
+
+    def _archive_node_meta(self, node_path: str, meta_data: dict):
+        meta_file_name = f"{self.archive_base_path}/{node_path}{_FILE_EXTENSION_MAP['meta']}"
+        bytes_meta = archiver_util.get_json_bytes(meta_data)
+        self.write_data(file_path=meta_file_name, data=bytes_meta)
+
+    def _export_nodes(self, nodes: dict[int, Node], resource_type: str):
+        """Fetch and archive each node in every requested format."""
+        for _, node in nodes.items():
+            for fmt in self.export_formats:
+                url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
+                try:
+                    data = self._get_node_data(url)
+                except (HTTPError, RetryError):
+                    log.error(
+                        "Failed to get %s data for node id=%d format=%s - skipping",
+                        resource_type, node.id_, fmt,
+                    )
+                    continue
+                self._archive_node(node, fmt, data)
+            if self.export_meta:
+                self._archive_node_meta(node.file_path, node.meta)
+
+    def _archive_level(self, nodes: dict[int, Node],
+                       resource_type: str, label: str):
+        """Shared entry point for book/chapter archivers."""
+        if not nodes:
+            log.warning("No %s nodes available. Nothing to archive", label)
+            return
+        # Filter nodes with no children (empty books/chapters)
+        non_empty = {}
+        for node_id, node in nodes.items():
+            if not node.children:
+                log.info("Skipping empty %s '%s' (no children)", label, node.name)
+                continue
+            non_empty[node_id] = node
+        if not non_empty:
+            log.warning("No non-empty %s nodes available. Nothing to archive", label)
+            return
+        self._export_nodes(non_empty, resource_type)
+
+    def write_data(self, file_path: str, data: bytes):
+        """Write data to a tar file.
+
+        Args:
+            :file_path: <str> path of file relative to tar file inner directory
+            :data: <bytes> data to write to that file_path within the tar
+        """
+        archiver_util.write_tar(self.tar_file, file_path, data)
+
+    def gzip_archive(self):
+        """Provide the tar to gzip and the name of the gzip output file."""
+        archiver_util.create_gzip(self.tar_file, self.archive_file)
+
+    @property
+    def file_extension_map(self) -> dict[str, str]:
+        """File extension metadata."""
+        return _FILE_EXTENSION_MAP
+
+
+class BookArchiver(NodeArchiver):
+    """Archives one combined export file per book per format."""
+
+    def archive(self, book_nodes: dict[int, Node]):
+        """Export book contents for each book node."""
+        self._archive_level(book_nodes, "books", "book")
+
+
+class ChapterArchiver(NodeArchiver):
+    """Archives one combined export file per chapter per format."""
+
+    def archive(self, chapter_nodes: dict[int, Node]):
+        """Export chapter contents for each chapter node."""
+        self._archive_level(chapter_nodes, "chapters", "chapter")
+
+
 # pylint: disable=too-many-instance-attributes
-class PageArchiver:
+class PageArchiver(NodeArchiver):
     """
     PageArchiver handles all data extraction and modifications
     to Bookstack page contents including assets like images or attachments.
@@ -44,18 +159,15 @@ class PageArchiver:
     """
     def __init__(self, archive_dir: str, config: ConfigNode, http_client: HttpHelper) -> None:
         self.asset_config = config.user_inputs.assets
-        self.export_formats = config.user_inputs.formats
-        self.api_urls = config.urls
-        # full path, bookstack-<timestamp>, and .tgz extension
-        self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
-        # name of intermediate tar file before gzip
-        self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
-        # name of the base folder to use within the tgz archive (internal tar layout)
-        self.archive_base_path = archive_dir.split("/")[-1]
+        super().__init__(
+            archive_dir=archive_dir,
+            api_urls=config.urls,
+            export_formats=config.user_inputs.formats,
+            http_client=http_client,
+            export_meta=config.user_inputs.assets.export_meta,
+        )
         self.modify_links: bool = self._check_links_modify()
-        self.asset_archiver = AssetArchiver(self.api_urls,
-                                            http_client)
-        self.http_client = http_client
+        self.asset_archiver = AssetArchiver(self.api_urls, http_client)
 
     def _check_links_modify(self) -> bool:
         """Return True iff modify_links AND asset export enabled AND a rewritable format present."""
@@ -67,13 +179,13 @@ class PageArchiver:
         if not has_rewritable:
             log.warning(
                 "MODIFY_LINKS ENABLED BUT NO REWRITABLE FORMAT (markdown, html) CONFIGURED "
-                "— NO LINK REWRITING WILL OCCUR"
+                "- NO LINK REWRITING WILL OCCUR"
             )
             return False
         return True
 
-    def archive_pages(self, page_nodes: dict[int, Node]):
-        """export page contents and their images/attachments"""
+    def archive(self, page_nodes: dict[int, Node]):
+        """Export page contents and their images/attachments."""
         # get assets first if requested
         # this is because we may want to manipulate page data with modify_links flag
         image_nodes = self._get_image_meta()
@@ -100,7 +212,16 @@ class PageArchiver:
                                     if attach.id_ not in failed_attach]
             page_assets = {"images": page_images, "attachments": page_attachments}
             for export_format in self.export_formats:
-                page_data = self._get_page_data(page.id_, export_format)
+                try:
+                    page_data = self._get_page_data(page.id_, export_format)
+                except (HTTPError, RetryError):
+                    # one restricted/failed page export must not abort the whole run
+                    # (mirrors NodeArchiver._export_nodes for book/chapter levels)
+                    log.error(
+                        "Failed to get page data for page id=%d format=%s - skipping",
+                        page.id_, export_format,
+                    )
+                    continue
                 page_data = self._rewrite_page_data(export_format, page.name,
                                                     page_data, page_assets)
                 self._archive_page(page, export_format, page_data)
@@ -185,24 +306,6 @@ class PageArchiver:
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
         return failed_assets
-
-    def write_data(self, file_path: str, data: bytes):
-        """write data to a tar file
-        Args:
-            :file_path: <str> path of file relative to tar file inner directory
-
-            :data: <bytes> data to write to that file_path within the tar
-        """
-        archiver_util.write_tar(self.tar_file, file_path, data)
-
-    def gzip_archive(self):
-        """provide the tar to gzip and the name of the gzip output file"""
-        archiver_util.create_gzip(self.tar_file, self.archive_file)
-
-    @property
-    def file_extension_map(self) -> dict[str, str]:
-        """file extension metadata"""
-        return _FILE_EXTENSION_MAP
 
     @property
     def export_images(self) -> bool:

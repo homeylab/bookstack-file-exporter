@@ -4,7 +4,12 @@ import os
 
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util
-from bookstack_file_exporter.archiver.page_archiver import PageArchiver
+from bookstack_file_exporter.archiver.node_archiver import (
+    NodeArchiver,
+    BookArchiver,
+    ChapterArchiver,
+    PageArchiver,
+)
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
@@ -17,7 +22,7 @@ _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
 # pylint: disable=too-many-instance-attributes
 class Archiver:
     """
-    Archiver helps handle archive duties: pulls all the necessary files from upstream 
+    Archiver helps handle archive duties: pulls all the necessary files from upstream
     and then pushes them to the specified backup location(s)
 
     Args:
@@ -25,15 +30,39 @@ class Archiver:
         :http_client: <HttpHelper> = http helper functions with config from user inputs
 
     Returns:
-        Archiver instance with attributes that are accessible 
+        Archiver instance with attributes that are accessible
         for use for handling bookstack exports and remote uploads.
     """
     def __init__(self, config: ConfigNode, http_client: HttpHelper):
         self.config = config
         # for convenience
-        self.base_dir = config.base_dir_name
+        self.base_dir = self._level_base_dir(config.base_dir_name,
+                                             config.user_inputs.export_level)
         self.archive_dir = self._generate_root_folder(self.base_dir)
-        self._page_archiver = PageArchiver(self.archive_dir, self.config, http_client)
+        self._archiver: NodeArchiver = self._build_archiver(http_client)
+
+    def _build_archiver(self, http_client: HttpHelper) -> NodeArchiver:
+        """Return the appropriate archiver based on the configured export level."""
+        export_level = self.config.user_inputs.export_level
+        export_meta: bool = self.config.user_inputs.assets.export_meta
+        if export_level == "books":
+            return BookArchiver(
+                archive_dir=self.archive_dir,
+                api_urls=self.config.urls,
+                export_formats=self.config.user_inputs.formats,
+                http_client=http_client,
+                export_meta=export_meta,
+            )
+        if export_level == "chapters":
+            return ChapterArchiver(
+                archive_dir=self.archive_dir,
+                api_urls=self.config.urls,
+                export_formats=self.config.user_inputs.formats,
+                http_client=http_client,
+                export_meta=export_meta,
+            )
+        # default: "pages"
+        return PageArchiver(self.archive_dir, self.config, http_client)
 
     def create_export_dir(self):
         """create directory for archiving"""
@@ -51,17 +80,23 @@ class Archiver:
                         "attempting to skip this step")
             return
 
-    def get_bookstack_exports(self, page_nodes: dict[int, Node]):
-        """export all page content"""
-        log.info("Exporting all bookstack page contents")
-        # get images first if requested
-        # this is because we may want to manipulate page data with modify_links flag
-        self._page_archiver.archive_pages(page_nodes)
+    def get_bookstack_exports(self, nodes: dict[int, Node]):
+        """export all node content (polymorphic: pages, books, or chapters)"""
+        log.info("Exporting all bookstack contents")
+        self._archiver.archive(nodes)
+
+    @property
+    def has_exported_content(self) -> bool:
+        """True if the intermediate tar exists, i.e. at least one file was written.
+
+        Checked against the tar on disk (ground truth) rather than a flag threaded
+        up from the archivers, so it cannot drift from what was actually archived.
+        """
+        return os.path.exists(self._archiver.tar_file)
 
     def create_archive(self):
         """create tgz archive"""
-        # check if tar needs to be created first
-        self._page_archiver.gzip_archive()
+        self._archiver.gzip_archive()
 
     # send to remote systems
     def archive_remote(self):
@@ -83,8 +118,8 @@ class Archiver:
     def _archive_minio(self, obj_config: StorageProviderConfig):
         minio_archiver = MinioArchiver(obj_config.access_key,
                                        obj_config.secret_key, obj_config.config)
-        minio_archiver.upload_backup(self._page_archiver.archive_file)
-        minio_archiver.clean_up(self._page_archiver.file_extension_map['tgz'])
+        minio_archiver.upload_backup(self._archiver.archive_file)
+        minio_archiver.clean_up(self._archiver.file_extension_map['tgz'])
 
     def _archive_s3(self, obj_config: StorageProviderConfig):
         raise NotImplementedError("S3 remote storage is not yet implemented")
@@ -102,7 +137,7 @@ class Archiver:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
         archive_list: list[str] = util.scan_archives(self.base_dir,
-                                                     self._page_archiver.file_extension_map['tgz'])
+                                                     self._archiver.file_extension_map['tgz'])
         if not archive_list:
             log.debug("No archive files found to clean up")
             return []
@@ -136,6 +171,18 @@ class Archiver:
     def _delete_files(self, file_list: list[str]):
         for file in file_list:
             util.remove_file(file)
+
+    @staticmethod
+    def _level_base_dir(base_dir: str, export_level: str) -> str:
+        """Append the export level to the archive base name for non-default levels.
+
+        `pages` (the default) stays byte-identical to prior behavior; `books` and
+        `chapters` get a distinguishable name (e.g. `bkps_books`). Because keep_last
+        cleanup globs on this base, retention is naturally scoped per level.
+        """
+        if export_level == "pages":
+            return base_dir
+        return f"{base_dir}_{export_level}"
 
     @staticmethod
     def _generate_root_folder(base_folder_name: str) -> str:

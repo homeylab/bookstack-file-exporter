@@ -282,13 +282,14 @@ More descriptions can be found for each section below:
 | `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](#authentication) for more details. |
 | `credentials.token_id` | `str`| `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenId. |
 | `credentials.token_secret` | `str` | `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenSecret. |
-| `formats` | `list<str>` | `true` | Which export formats to use for Bookstack page content. Valid options are: `["markdown", "html", "pdf", "plaintext", "zip"]`|
+| `formats` | `list<str>` | `true` | Which export formats to use for BookStack content. Valid options are: `["markdown", "html", "pdf", "plaintext", "zip"]`|
+| `export_level` | `str` | `false` | Optional (default: `pages`). Export granularity. See [Export Level](#export-level) for details. Valid options: `pages`, `books`, `chapters`. |
 | `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. This directory and any parent directories will be attempted to be created if they do not exist. If not provided, will use current run directory by default. If using docker, this option can be omitted. |
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images for a page to an `image` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments for a page to an `attachments` directory within page directory. See [Backup Behavior](#backup-behavior) for more information on layout |
 | `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. Legacy key `modify_markdown` still accepted (deprecated); will be removed in a future version. See [Modify Links](#modify-links) for more information. |
-| `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export of metadata about the page in a json file. |
+| `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export metadata about each archived page, book, or chapter in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
 | `http_config.timeout` | `int` | `false` | Optional (default: `30`), set the timeout, in seconds, for http requests. |
@@ -312,6 +313,24 @@ General
 [Minio Credentials](#authentication-1)
 - `MINIO_ACCESS_KEY`
 - `MINIO_SECRET_KEY`
+
+## Export Level
+
+The `export_level` configuration option controls the granularity of exports:
+
+| Value | Description |
+| ----- | ----------- |
+| `pages` (default) | One file per page. Supports `assets.export_images`, `assets.export_attachments`, and `assets.modify_links`. |
+| `books` | One combined file per book per format. BookStack assembles all content server-side. Asset options (`export_images`, `export_attachments`, `modify_links`) are ignored at this level; images and attachments are embedded by the server. |
+| `chapters` | One combined file per chapter per format. Same server-side asset embedding as `books`. **Note:** pages that are not under any chapter are not captured at this level. If a book has no chapters, no output is produced for that book. |
+
+**Example:** `formats: [pdf]` + `export_level: books` exports one PDF per book through the server-side BookStack API export.
+
+The shelf/book/chapter hierarchy is preserved as directories inside the archive regardless of level — e.g. `books` produces `<shelf>/<book>.pdf` and `chapters` produces `<shelf>/<book>/<chapter>.pdf` (books without a shelf go under the unassigned directory).
+
+`assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
+
+For non-default levels the archive filename is suffixed with the level (e.g. `bkps_books_<timestamp>.tgz`, `bkps_chapters_<timestamp>.tgz`); `pages` keeps the unsuffixed `bkps_<timestamp>.tgz`. Because `keep_last` cleanup matches on this prefix, archive retention is scoped independently per level.
 
 ## Backup Behavior
 
