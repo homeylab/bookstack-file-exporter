@@ -209,3 +209,13 @@ Lint must stay 10.00/10; full suite green.
   must cover attachments with mocked data.
 - The combined-export markdown's `scaled-1680-` URL variant is already handled by
   `all_urls`; verified identical to page-level URLs, so no rewriter change needed.
+- **Descendant-page walk must not rely on a `type` key for pages.** Verified
+  against fixtures: book `contents` top-level children carry `type`
+  ('page'|'chapter'), but chapter-nested pages and `chapter_detail.json` `pages`
+  entries have **no** `type` key. The walk treats a child as a chapter iff it has
+  a nested `pages` list (or `type == 'chapter'`), otherwise a page. A naive
+  `type == 'page'` check silently yields an empty set for the `chapters` level
+  (no-op). This is covered by a fixture-backed regression test.
+- **No silent dead state:** if `modify_links` is on but `markdown` is not in
+  `formats` at book/chapter level, the run logs a warning (html/pdf embed assets
+  server-side, so there is nothing to localize).

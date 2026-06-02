@@ -129,9 +129,21 @@ Now delete the duplicate `_check_links_modify`, `export_images`, `export_attachm
 
 (Leave the rest of `PageArchiver` — `archive`, `_modify_links`, etc. — as is for now; they reference `self.asset_archiver`/`self.modify_links` which now live on the base.)
 
+**Ordering constraint (do not reorder):** base `__init__` must set `self.asset_config`
+BEFORE calling `self._check_links_modify()` (which reads `self.export_images` →
+`self.asset_config`). The body above already orders it correctly. A slip yields
+`AttributeError: asset_config` at construction.
+
+**Pylint budget:** moving asset state into the base may trip
+`too-many-instance-attributes` / `too-many-public-methods` on `NodeArchiver`. If
+lint drops below 10.00, add the same `# pylint: disable=too-many-instance-attributes`
+already used on `PageArchiver` to the `NodeArchiver` class line. Do not lower the
+project lint threshold.
+
 - [ ] **Step 4: Run, verify pass + full suite green**
 
 Run: `python -m pytest tests/unit/test_book_archiver.py::TestAssetConfigDefaults -v` → PASS
+Run: `python -m pytest tests/unit/test_page_archiver.py -v` → all pass (page construction + asset paths unchanged — this is the regression guard for the `PageArchiver.__init__` rewrite).
 Run: `task test` → all pass (page behavior unchanged). Run: `task lint` → 10.00/10.
 
 - [ ] **Step 5: Commit**
@@ -231,23 +243,39 @@ git commit -m "feat: folder-per-node layout for books/chapters export"
 
 Map `{page_id: page_name}` for every page under a node, so assets (keyed by `uploaded_to` page id) get the correct per-page subdir name. `page_name` uses the same slug logic as `Node.get_name` (slug if present, else slugify(name)).
 
-- [ ] **Step 1: Write failing test** — book with a direct page and a chapter-nested page.
+- [ ] **Step 1: Write failing test** — load the REAL fixtures so the page-shape
+matches production (top children have `type`, chapter-nested pages do NOT).
+
+First inspect `tests/fixtures/book_detail_mixed.json` and
+`tests/fixtures/chapter_detail.json` to read the actual page `id`/`slug` values,
+then assert against them. Example shape (replace the ids/slugs with the fixture's
+real values after inspecting):
 
 ```python
+import json
+from pathlib import Path
+
+_FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+def _load_fixture(name):
+    return json.loads((_FIXTURES / name).read_text())
+
 class TestDescendantPages:
-    def test_collects_direct_and_chapter_pages(self, tmp_path):
+    def test_book_collects_direct_and_chapter_nested_pages(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)
-        meta = {
-            "id": 1, "name": "bk", "slug": "bk",
-            "contents": [
-                {"id": 10, "type": "page", "slug": "p-direct", "name": "P Direct"},
-                {"id": 20, "type": "chapter", "slug": "ch", "name": "Ch",
-                 "pages": [{"id": 30, "type": "page", "slug": "p-nested", "name": "P Nested"}]},
-            ],
-        }
-        node = Node(meta, parent=None)
+        node = Node(_load_fixture("book_detail_mixed.json"), parent=None)
         result = archiver._descendant_page_names(node)
-        assert result == {10: "p-direct", 30: "p-nested"}
+        # every page id in contents (direct + chapter-nested) must be present,
+        # mapped to its slug. Derive expected from the fixture itself:
+        expected = {}
+        for child in node.children:
+            if child.get("type") == "chapter" or "pages" in child:
+                for p in child.get("pages", []):
+                    expected[p["id"]] = p["slug"]
+            else:
+                expected[child["id"]] = child["slug"]
+        assert result == expected
+        assert result  # non-empty: proves chapter-nested pages were captured
 
     def test_page_name_falls_back_to_slugified_name(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)
@@ -274,25 +302,55 @@ Expected: FAIL (`AttributeError: _descendant_page_names`).
         return Node.slugify(child.get("name", ""))
 
     def _descendant_page_names(self, node: Node) -> dict[int, str]:
-        """Map {page_id: page_name} for every page under a book/chapter node."""
+        """Map {page_id: page_name} for every page under a book/chapter node.
+
+        Do NOT rely on a ``type`` key for pages. Verified against fixtures:
+        - book ``contents`` children carry ``type`` ('page'|'chapter'); chapter
+          children carry a nested ``pages`` list.
+        - chapter-detail ``pages`` entries (and the book's chapter-nested
+          ``pages``) have **no** ``type`` key.
+        So: a child is a chapter iff it has a nested ``pages`` list (or
+        ``type == 'chapter'``); otherwise it is a page.
+        """
         pages: dict[int, str] = {}
         for child in node.children:
-            ctype = child.get("type")
-            if ctype == "page":
-                pages[child["id"]] = self._page_name(child)
-            elif ctype == "chapter":
+            if child.get("type") == "chapter" or "pages" in child:
                 for page in child.get("pages", []):
                     pages[page["id"]] = self._page_name(page)
+            else:
+                pages[child["id"]] = self._page_name(child)
         return pages
 ```
 
-(`Node` is already imported in this module. For a chapter node, `node.children` are pages directly, so the `type == "page"` branch covers it; chapter pages may lack a `type` key — handle both by treating a child with no `type` but with an `id` and no `pages` as a page. If chapter-page dicts omit `type`, add: `elif "pages" not in child: pages[child["id"]] = self._page_name(child)`. Verify against a real chapter `contents`/`pages` fixture in `tests/fixtures` before finalizing.)
+(`Node` is already imported in this module. This rule is verified against
+`tests/fixtures/book_detail_mixed.json` (book contents, `type` present on top
+children, absent on chapter-nested pages) and `tests/fixtures/chapter_detail.json`
+(chapter `pages` have no `type`). The Task 3/Task 5 tests MUST load these fixtures
+— not hand-built dicts — or they will mask the chapter no-op.)
 
 - [ ] **Step 4: Run, verify pass**
 
 Run: `python -m pytest tests/unit/test_book_archiver.py::TestDescendantPages -v` → PASS
 
-- [ ] **Step 5: Add the chapter-level case** in `tests/unit/test_chapter_archiver.py` — a chapter node whose `pages` children have no `type` key still map id→name. Adjust the implementation's chapter-page handling if this fails, then re-run.
+- [ ] **Step 5: Add the chapter-level regression test** in `tests/unit/test_chapter_archiver.py` — this is the test that guards the headline blocker (chapter `pages` have no `type` key). Load `tests/fixtures/chapter_detail.json`, build a chapter `Node` from it, and assert the descendant map is **non-empty** and equals `{page["id"]: page["slug"]}` for every entry in the fixture's `pages`:
+
+```python
+import json
+from pathlib import Path
+_FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+class TestChapterDescendantPages:
+    def test_chapter_pages_without_type_key_are_captured(self, tmp_path):
+        archiver = _make_chapter_archiver(tmp_path)  # use the file's existing helper
+        meta = json.loads((_FIXTURES / "chapter_detail.json").read_text())
+        node = Node(meta, parent=None)
+        result = archiver._descendant_page_names(node)
+        expected = {p["id"]: p["slug"] for p in meta["pages"]}
+        assert result == expected
+        assert result, "chapter descendant pages must not be empty (no-type-key regression)"
+```
+
+Run: `python -m pytest tests/unit/test_chapter_archiver.py::TestChapterDescendantPages -v`. If `result` is empty, the `_descendant_page_names` chapter handling is wrong — fix it (do not weaken the test).
 
 - [ ] **Step 6: Run full suite + lint, commit**
 
@@ -460,12 +518,22 @@ Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRew
         if not non_empty:
             log.warning("No non-empty %s nodes available. Nothing to archive", label)
             return
-        # Asset localization only applies to markdown combined exports.
+        # Asset localization only applies to markdown combined exports
+        # (html/pdf embed assets server-side). Warn on the dead-state combo where
+        # modify_links is on but markdown is not requested, so it is not silent.
         image_map: dict[int, list] = {}
         attachment_map: dict[int, list] = {}
-        if self.modify_links and "markdown" in self.export_formats:
-            image_map = self._get_image_meta()
-            attachment_map = self._get_attachment_meta()
+        if self.modify_links:
+            if "markdown" in self.export_formats:
+                image_map = self._get_image_meta()
+                attachment_map = self._get_attachment_meta()
+            else:
+                log.warning(
+                    "modify_links is enabled but 'markdown' is not in formats; "
+                    "asset localization for %s only applies to markdown "
+                    "(html/pdf embed assets server-side) - no rewriting will occur",
+                    label,
+                )
         self._export_nodes(non_empty, resource_type, image_map, attachment_map)
 
     def _export_nodes(self, nodes: dict[int, Node], resource_type: str,
@@ -541,7 +609,9 @@ git commit -m "feat: localize images/attachments in book/chapter markdown"
 
 Without this wiring the feature is dead in production — Book/Chapter are built with no `asset_config`.
 
-- [ ] **Step 1: Write failing test** — a books-level Archiver builds a BookArchiver with modify_links active when config enables it. Inspect `tests/unit/test_archiver.py` + `tests/fixtures/mock_config.py` for the existing config double; construct a config with `export_level="books"`, `formats=["markdown"]`, `assets.modify_links=True`, `assets.export_images=True`, then assert `Archiver(...)._archiver.modify_links is True`. (Use the existing fixture style; do not invent a new config shape.)
+- [ ] **Step 1: Write failing test** — a books-level Archiver builds a BookArchiver with modify_links active when config enables it.
+
+**Use `tests/fixtures/mock_config.py::make_mock_config`** to build the config — NOT the bare `MagicMock` `mock_config` fixture local to `test_archiver.py` (that one leaves `assets.modify_links` as a truthy MagicMock, making the assertion meaningless — finding from review). Build a real config with `export_level="books"`, `formats=["markdown"]`, `assets.modify_links=True`, `assets.export_images=True`, then assert `Archiver(...)._archiver.modify_links is True`. Inspect `make_mock_config`'s signature first to pass these correctly; do not invent a new config shape.
 
 - [ ] **Step 2: Run, verify fail** (modify_links False because asset_config not passed).
 
@@ -596,10 +666,12 @@ git commit -m "feat: enable modify_links for books/chapters export levels"
 
 - [ ] **Step 3: Add a brief note to `examples/config.yml`** near the `modify_links` / `export_level` keys, e.g. a comment: `# modify_links also localizes assets for books/chapters when exporting markdown`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Fix the stale in-code comment** in `bookstack_file_exporter/config_helper/models.py:70-71`, which states asset options apply only at page level / book-chapter embed server-side. Update it to note that `modify_links` now localizes assets for book/chapter **markdown** exports (html/pdf remain server-embedded). Read the exact current comment before editing.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add README.md examples/config.yml
+git add README.md examples/config.yml bookstack_file_exporter/config_helper/models.py
 git commit -m "docs: modify_links + folder layout for books/chapters"
 ```
 
