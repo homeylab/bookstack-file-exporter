@@ -11,6 +11,7 @@ import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
+from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 # ---------------------------------------------------------------------------
@@ -411,3 +412,37 @@ def test_generate_path_strips_all_trailing_slashes(input_path, expected):
     """_generate_path must strip ALL trailing slashes, not just one."""
     result = MinioArchiver._generate_path(None, input_path)
     assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# books-level archiver wires modify_links (Task 6)
+# ---------------------------------------------------------------------------
+
+class TestBooksArchiverModifyLinksWiring:
+    def test_books_archiver_modify_links_active_when_configured(self, mock_http_client):
+        config = _make_config(
+            export_level="books",
+            formats=["markdown"],
+            modify_links=True,
+            export_images=True,
+        )
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert archiver._archiver.modify_links is True
+
+    def test_chapters_archiver_modify_links_active_when_configured(self, mock_http_client):
+        config = _make_config(
+            export_level="chapters",
+            formats=["markdown"],
+            modify_links=True,
+            export_images=True,
+        )
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert archiver._archiver.modify_links is True
