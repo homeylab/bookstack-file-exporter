@@ -67,8 +67,9 @@ class UserInput(BaseModel):
     output_path: str | None = ""
     # Export granularity: "pages" = one file per page (default),
     # "books" = one combined file per book, "chapters" = one combined file per chapter.
-    # Note: assets.export_images/attachments/modify_links apply only at page level;
-    # book/chapter exports embed assets server-side.
+    # Note: assets.export_images/attachments/modify_links apply at all levels;
+    # for book/chapter, modify_links localizes assets in markdown exports
+    # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
     minio: ObjectStorageConfig | None = None

@@ -321,14 +321,14 @@ The `export_level` configuration option controls the granularity of exports:
 | Value | Description |
 | ----- | ----------- |
 | `pages` (default) | One file per page. Supports `assets.export_images`, `assets.export_attachments`, and `assets.modify_links`. |
-| `books` | One combined file per book per format. BookStack assembles all content server-side. Asset options (`export_images`, `export_attachments`, `modify_links`) are ignored at this level; images and attachments are embedded by the server. |
-| `chapters` | One combined file per chapter per format. Same server-side asset embedding as `books`. **Note:** pages that are not under any chapter are not captured at this level. If a book has no chapters, no output is produced for that book. |
+| `books` | One combined file per book per format, written to a per-book folder (`<shelf>/<book>/<book>.<ext>`). `html`/`pdf` embed assets server-side. For `markdown`, set `assets.modify_links: true` (with `export_images`/`export_attachments`) to download images/attachments locally and rewrite links to relative paths. |
+| `chapters` | One combined file per chapter per format, in a per-chapter folder (`<shelf>/<book>/<chapter>/<chapter>.<ext>`). Same `modify_links` markdown support as `books`. **Note:** pages not under any chapter are not captured at this level. |
 
 **Example:** `formats: [pdf]` + `export_level: books` exports one PDF per book through the server-side BookStack API export.
 
 **Empty nodes:** At `books` and `chapters` levels, a book or chapter with no child content is skipped — no file is written and the omission is logged at `INFO`. This keeps the archive free of empty placeholder documents.
 
-The shelf/book/chapter hierarchy is preserved as directories inside the archive regardless of level — e.g. `books` produces `<shelf>/<book>.pdf` and `chapters` produces `<shelf>/<book>/<chapter>.pdf` (books without a shelf go under the unassigned directory).
+The shelf/book/chapter hierarchy is preserved as directories inside the archive regardless of level — e.g. `books` produces `<shelf>/<book>/<book>.pdf` and `chapters` produces `<shelf>/<book>/<chapter>/<chapter>.pdf` (books without a shelf go under the unassigned directory).
 
 `assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
 
