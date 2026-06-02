@@ -326,6 +326,8 @@ The `export_level` configuration option controls the granularity of exports:
 
 **Example:** `formats: [pdf]` + `export_level: books` exports one PDF per book through the server-side BookStack API export.
 
+**Empty nodes:** At `books` and `chapters` levels, a book or chapter with no child content is skipped — no file is written and the omission is logged at `INFO`. This keeps the archive free of empty placeholder documents.
+
 The shelf/book/chapter hierarchy is preserved as directories inside the archive regardless of level — e.g. `books` produces `<shelf>/<book>.pdf` and `chapters` produces `<shelf>/<book>/<chapter>.pdf` (books without a shelf go under the unassigned directory).
 
 `assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
