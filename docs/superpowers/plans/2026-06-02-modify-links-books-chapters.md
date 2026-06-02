@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Localize images/attachments in combined book/chapter **markdown** exports (the `modify_links` feature), and adopt a folder-per-node output layout for the `books`/`chapters` export levels.
+**Goal:** Localize images/attachments in combined book/chapter **markdown and html** exports (the `modify_links` feature), and adopt a folder-per-node output layout for the `books`/`chapters` export levels.
 
-**Architecture:** Lift the asset download + link-rewrite machinery from `PageArchiver` up into the shared `NodeArchiver` base. Books/chapters write each node into its own directory (`<node.file_path>/<node.name>.<ext>`); when `modify_links` is on and `markdown` is requested, descendant-page assets are downloaded into that directory and the combined markdown's URLs are rewritten to local relative paths by grouping assets per source page and reusing the existing per-page rewriter.
+**Architecture:** Lift the asset download + link-rewrite machinery from `PageArchiver` up into the shared `NodeArchiver` base. Books/chapters write each node into its own directory (`<node.file_path>/<node.name>.<ext>`); when `modify_links` is on and a rewritable format (`markdown` or `html`) is requested, descendant-page assets are downloaded into that directory and the combined export's remote URLs are rewritten to local relative paths by grouping assets per source page and reusing the existing per-page rewriters (`update_asset_links` for md, `update_asset_links_html` for html; base64-inlined html `src` is left untouched). `pdf` is self-contained and written verbatim.
 
 **Tech Stack:** Python 3, `pytest`, `pylint` (must stay 10.00/10), `requests`. Tooling via `task test` / `task lint`.
 
@@ -462,17 +462,18 @@ git commit -m "feat: lift asset download into NodeArchiver base"
 
 When `modify_links` is active and `markdown` is requested: list assets once for the level, then per node download descendant-page assets and rewrite the combined markdown URLs (grouped per source page so the existing `update_asset_links(asset_type, page_name, data, assets)` reuses unchanged).
 
-- [ ] **Step 1: Write failing integration-style test** — combined md URL rewritten to local path; html (if also requested) left untouched.
+- [ ] **Step 1: Write failing integration-style test** — combined md AND html
+remote URLs rewritten to local paths; pdf written verbatim; base64 `src` left alone.
 
 ```python
-class TestCombinedMarkdownRewrite:
+class TestCombinedRewrite:
     def _img(self, id_, uploaded_to):
         img = MagicMock(id_=id_, download_url=f"http://x/{id_}", uploaded_to=uploaded_to)
         img.get_relative_path = lambda page_name: f"images/{page_name}/{id_}.png"
         return img
 
-    def test_markdown_urls_rewritten_html_untouched(self, tmp_path):
-        archiver = _make_book_archiver(tmp_path, formats=["markdown", "html"])
+    def test_markdown_and_html_remote_urls_rewritten_pdf_verbatim(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path, formats=["markdown", "html", "pdf"])
         archiver.asset_config = MagicMock(export_images=True, export_attachments=False,
                                           modify_links=True, export_meta=False)
         archiver.modify_links = True
@@ -483,23 +484,36 @@ class TestCombinedMarkdownRewrite:
         aa = MagicMock()
         aa.get_asset_nodes.side_effect = lambda kind: {10: [img]} if kind == "images" else {}
         aa.get_asset_bytes.return_value = b"PNGDATA"
+        # both rewriters do a literal remote->local replace (base64 src has no match)
         aa.update_asset_links.side_effect = (
             lambda atype, page_name, data, nodes: data.replace(b"http://x/99", b"images/pg/99.png"))
+        aa.update_asset_links_html.side_effect = (
+            lambda atype, page_name, data, nodes: data.replace(b"http://x/99", b"images/pg/99.png"))
         archiver.asset_archiver = aa
+        bodies = {
+            "markdown": b"![](http://x/99)",
+            "html": b"<img src='data:image/png;base64,AAAA'><img src='http://x/99'>",
+            "pdf": b"%PDF-1.4 http://x/99",  # pdf must NOT be rewritten
+        }
         written = {}
         archiver.write_data = lambda path, data: written.__setitem__(path, data)
-        archiver._get_node_data = lambda url: (b"![](http://x/99)" if url.endswith("markdown")
-                                               else b"<img src='data:...'>")
+        archiver._get_node_data = lambda url: bodies[url.rsplit("/", 1)[-1]]
         archiver._archive_level({1: node}, "books", "book")
-        md = written[f"{archiver.archive_base_path}/bk/bk.md"]
-        html = written[f"{archiver.archive_base_path}/bk/bk.html"]
+        base = archiver.archive_base_path
+        md = written[f"{base}/bk/bk.md"]
+        html = written[f"{base}/bk/bk.html"]
+        pdf = written[f"{base}/bk/bk.pdf"]
         assert b"images/pg/99.png" in md and b"http://x/99" not in md
-        assert html == b"<img src='data:...'>"  # html not rewritten at this level
+        # html: remote src rewritten, base64 src untouched
+        assert b"images/pg/99.png" in html and b"http://x/99" not in html
+        assert b"data:image/png;base64,AAAA" in html
+        # pdf: written verbatim, NOT rewritten
+        assert pdf == b"%PDF-1.4 http://x/99"
 ```
 
-- [ ] **Step 2: Run, verify fail** (md still contains the remote URL).
+- [ ] **Step 2: Run, verify fail** (md/html still contain the remote URL).
 
-Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRewrite -v`
+Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedRewrite -v`
 
 - [ ] **Step 3: Implement** — extend `_archive_level` and `_export_nodes`.
 
@@ -518,20 +532,20 @@ Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRew
         if not non_empty:
             log.warning("No non-empty %s nodes available. Nothing to archive", label)
             return
-        # Asset localization only applies to markdown combined exports
-        # (html/pdf embed assets server-side). Warn on the dead-state combo where
-        # modify_links is on but markdown is not requested, so it is not silent.
+        # Asset localization applies to rewritable combined exports (markdown +
+        # html). pdf is self-contained. Warn on the dead-state combo where
+        # modify_links is on but no rewritable format is requested.
         image_map: dict[int, list] = {}
         attachment_map: dict[int, list] = {}
         if self.modify_links:
-            if "markdown" in self.export_formats:
+            if any(fmt in _REWRITABLE_FORMATS for fmt in self.export_formats):
                 image_map = self._get_image_meta()
                 attachment_map = self._get_attachment_meta()
             else:
                 log.warning(
-                    "modify_links is enabled but 'markdown' is not in formats; "
-                    "asset localization for %s only applies to markdown "
-                    "(html/pdf embed assets server-side) - no rewriting will occur",
+                    "modify_links is enabled but no rewritable format "
+                    "(markdown, html) is in formats; asset localization for %s "
+                    "will not occur",
                     label,
                 )
         self._export_nodes(non_empty, resource_type, image_map, attachment_map)
@@ -552,8 +566,8 @@ Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRew
                     log.error("Failed to get %s data for node id=%d format=%s - skipping",
                               resource_type, node.id_, fmt)
                     continue
-                if fmt == "markdown" and self.modify_links:
-                    data = self._rewrite_combined_markdown(data, assets_by_page)
+                if self.modify_links and fmt in _REWRITABLE_FORMATS:
+                    data = self._rewrite_combined(data, fmt, assets_by_page)
                 self._archive_node(node, fmt, data)
             if self.export_meta:
                 self._archive_node_meta(node, node.meta)
@@ -576,21 +590,32 @@ Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRew
                     grouped[asset_type][page_name] = survivors
         return grouped
 
-    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
-        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+    def _rewrite_combined(self, data: bytes, export_format: str,
+                          assets_by_page: dict) -> bytes:
+        """Rewrite asset URLs in a combined markdown/html export.
+
+        Reuses the per-page rewriters; markdown -> update_asset_links,
+        html -> update_asset_links_html (base64-inlined src left untouched).
+        """
         if not assets_by_page or self.asset_archiver is None:
+            return data
+        if export_format == "markdown":
+            rewrite = self.asset_archiver.update_asset_links
+        elif export_format == "html":
+            rewrite = self.asset_archiver.update_asset_links_html
+        else:
             return data
         for asset_type, by_page in assets_by_page.items():
             for page_name, assets in by_page.items():
-                data = self.asset_archiver.update_asset_links(asset_type, page_name, data, assets)
+                data = rewrite(asset_type, page_name, data, assets)
         return data
 ```
 
 - [ ] **Step 4: Run, verify pass**
 
-Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedMarkdownRewrite -v` → PASS
+Run: `python -m pytest tests/unit/test_book_archiver.py::TestCombinedRewrite -v` → PASS
 
-- [ ] **Step 5: Add chapter equivalent** in `tests/unit/test_chapter_archiver.py` (chapter node with pages directly under it; same rewrite assertion). Run it green.
+- [ ] **Step 5: Add chapter equivalent** in `tests/unit/test_chapter_archiver.py` (chapter node with pages directly under it — from `chapter_detail.json` shape, no `type` key on pages; assert both md and html remote URLs rewritten, pdf verbatim). Run it green.
 
 - [ ] **Step 6: Run full suite + lint, commit**
 
@@ -658,13 +683,13 @@ git commit -m "feat: enable modify_links for books/chapters export levels"
 - [ ] **Step 1: Update README Export Level table** — correct the `books`/`chapters` rows so they no longer claim markdown assets are server-embedded, and state modify_links support + folder layout. Replace the `books` and `chapters` rows:
 
 ```markdown
-| `books` | One combined file per book per format, written to a per-book folder (`<shelf>/<book>/<book>.<ext>`). `html`/`pdf` embed assets server-side. For `markdown`, set `assets.modify_links: true` (with `export_images`/`export_attachments`) to download images/attachments locally and rewrite links to relative paths. |
-| `chapters` | One combined file per chapter per format, in a per-chapter folder (`<shelf>/<book>/<chapter>/<chapter>.<ext>`). Same `modify_links` markdown support as `books`. **Note:** pages not under any chapter are not captured at this level. |
+| `books` | One combined file per book per format, written to a per-book folder (`<shelf>/<book>/<book>.<ext>`). `pdf` is self-contained. For `markdown` and `html`, set `assets.modify_links: true` (with `export_images`/`export_attachments`) to download images/attachments locally and rewrite links to relative paths (`html` keeps server-inlined base64 images and rewrites the remaining remote image/attachment URLs). |
+| `chapters` | One combined file per chapter per format, in a per-chapter folder (`<shelf>/<book>/<chapter>/<chapter>.<ext>`). Same `modify_links` support (markdown + html) as `books`. **Note:** pages not under any chapter are not captured at this level. |
 ```
 
 - [ ] **Step 2: Verify the existing "Empty nodes" note still reads correctly** after the table (added in an earlier commit).
 
-- [ ] **Step 3: Add a brief note to `examples/config.yml`** near the `modify_links` / `export_level` keys, e.g. a comment: `# modify_links also localizes assets for books/chapters when exporting markdown`.
+- [ ] **Step 3: Add a brief note to `examples/config.yml`** near the `modify_links` / `export_level` keys, e.g. a comment: `# modify_links also localizes assets for books/chapters when exporting markdown or html`.
 
 - [ ] **Step 4: Fix the stale in-code comment** in `bookstack_file_exporter/config_helper/models.py:70-71`, which states asset options apply only at page level / book-chapter embed server-side. Update it to note that `modify_links` now localizes assets for book/chapter **markdown** exports (html/pdf remain server-embedded). Read the exact current comment before editing.
 

@@ -13,15 +13,18 @@ code assumes) that assets are "embedded by the server" at these levels, so
 
 That is true **only for `html` and `pdf`**. Evidence from live smoke-test output:
 
-| Format | Image references in combined export | Portable offline? |
+| Format | Asset references in combined export | Portable offline? |
 | ------ | ----------------------------------- | ----------------- |
-| `html` | `src="data:image/png;base64,…"` (inlined, all 41 books) | Yes — self-contained |
-| `pdf`  | embedded in binary | Yes |
+| `html` | **mix**: some `src="data:image/...;base64,…"` inlined, but other images `src="https://…/uploads/…png"` and **all** attachment `href="https://…/attachments/N"` stay remote | **No — partially remote** |
+| `pdf`  | embedded in binary | Yes — self-contained |
 | `markdown` | `![](https://bookstack.example/uploads/images/gallery/…/scaled-1680-/img.png)` | **No — live remote URLs** |
 
-So combined **markdown** exports are not portable: they reference live BookStack
-URLs. This is exactly the gap `modify_links` closes for pages. The feature should
-therefore extend to `books` and `chapters` **for the markdown format only**.
+So combined **markdown and html** exports are not fully portable: they reference
+live BookStack URLs. This is the gap `modify_links` closes for pages. The feature
+extends to `books` and `chapters` **for the markdown and html formats**. `pdf` is
+self-contained and is not rewritten. Page-level `_modify_html` already handles the
+html mix (it skips base64 `src` and rewrites remote `src`/`href`), so html reuses
+that rewriter unchanged.
 
 ### Verified de-risking fact
 
@@ -33,18 +36,20 @@ URL variants via `all_urls`) therefore applies to combined markdown **unchanged*
 
 ## Goals
 
-1. When `assets.modify_links` is enabled and `markdown` is in `formats`, localize
-   images/attachments in combined book/chapter markdown exports: download the
-   assets into the archive and rewrite their URLs to local relative paths.
+1. When `assets.modify_links` is enabled and a rewritable format (`markdown` or
+   `html`) is in `formats`, localize images/attachments in combined book/chapter
+   exports: download the assets into the archive and rewrite their URLs to local
+   relative paths. Markdown uses `update_asset_links`; html uses
+   `update_asset_links_html` (base64-inlined `src` is left untouched).
 2. Adopt a **folder-per-node** output layout for `books`/`chapters` so multiple
    formats + asset directories stay organized.
 3. Reuse existing asset machinery — do not reimplement download or rewrite.
 
 ## Non-goals (YAGNI)
 
-- Rewriting `html`/`pdf` at book/chapter level (already self-contained; `html` is
-  base64-inlined server-side — verified). Explicitly **not** rewritten here, a
-  deliberate divergence from page-level html handling.
+- Rewriting `pdf` at book/chapter level (binary, self-contained — nothing to
+  rewrite). `html` **is** rewritten (it carries remote `src`/`href` — see Problem),
+  matching page-level behavior.
 - Internal page-to-page navigation link rewriting (never existed for any level).
 - New configuration keys. Reuse `assets.modify_links`, `assets.export_images`,
   `assets.export_attachments`.
@@ -128,7 +133,7 @@ assets) — the same cost `PageArchiver` already pays when assets are enabled.
 
 1. `run.py` selects nodes for the level (existing dispatch).
 2. In `_archive_level` (or a level-aware variant), if `self.modify_links` is true
-   **and** `markdown` is in `export_formats`:
+   **and** a rewritable format (`markdown` or `html`) is in `export_formats`:
    a. List assets instance-wide once: `get_asset_nodes("images")` and
       `("attachments")` (each gated by its `export_*` flag) → `{page_id: [node]}`.
    b. Per node, walk descendants to build the page-id set and a
@@ -139,14 +144,17 @@ assets) — the same cost `PageArchiver` already pays when assets are enabled.
       writing to `<node>/images/<page_name>/<asset>` (+ `attachments`).
 3. For each requested format:
    - Fetch the combined export (`/api/{books,chapters}/{id}/export/{fmt}`).
-   - If `fmt == markdown` and `modify_links` active: rewrite asset URLs via the
-     existing `update_asset_links` byte-replace, excluding any assets whose
-     download failed (leave those URLs untouched).
+   - If `modify_links` active and `fmt` is rewritable: rewrite asset URLs,
+     excluding any assets whose download failed (leave those URLs untouched).
+     `markdown` → `update_asset_links`; `html` → `update_asset_links_html`
+     (base64 `src` left as-is). `pdf` (and any non-rewritable fmt) is written
+     verbatim.
    - Write to `<node>/<node.name>.<ext>`.
 4. Write meta to `<node>/<node.name>_meta.json`.
 
-When `modify_links` is off, or `markdown` is not requested, no asset listing or
-download occurs; only the folder-layout change applies.
+When `modify_links` is off, or no rewritable format (`markdown`/`html`) is
+requested, no asset listing or download occurs; only the folder-layout change
+applies.
 
 ## Error handling (all reuse existing behavior)
 
@@ -159,8 +167,9 @@ download occurs; only the folder-layout change applies.
   `_archive_level` filter). No change.
 - **Node has pages but no assets:** no asset directory created; markdown has no
   remote asset URLs to rewrite. No-op.
-- **`modify_links` on but only `html`/`pdf` requested:** no asset work (gated on
-  `markdown` specifically for book/chapter, since combined html is server-inlined).
+- **`modify_links` on but only `pdf`/non-rewritable requested:** no asset work;
+  log a warning (nothing to localize). `html` and `markdown` both trigger
+  localization.
 
 ## Testing
 
@@ -216,6 +225,6 @@ Lint must stay 10.00/10; full suite green.
   a nested `pages` list (or `type == 'chapter'`), otherwise a page. A naive
   `type == 'page'` check silently yields an empty set for the `chapters` level
   (no-op). This is covered by a fixture-backed regression test.
-- **No silent dead state:** if `modify_links` is on but `markdown` is not in
-  `formats` at book/chapter level, the run logs a warning (html/pdf embed assets
-  server-side, so there is nothing to localize).
+- **No silent dead state:** if `modify_links` is on but no rewritable format
+  (`markdown`/`html`) is in `formats` at book/chapter level (e.g. `pdf` only), the
+  run logs a warning (nothing to localize).
