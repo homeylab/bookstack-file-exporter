@@ -1,6 +1,8 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
 # pylint: disable=protected-access,too-few-public-methods,duplicate-code
 """Unit tests for ChapterArchiver."""
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +10,8 @@ from requests.exceptions import HTTPError
 
 from bookstack_file_exporter.archiver.node_archiver import ChapterArchiver
 from bookstack_file_exporter.exporter.node import Node
+
+_FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 # ---------------------------------------------------------------------------
@@ -253,3 +257,19 @@ class TestEmptyInput:
             archiver.archive({})
         assert mock_get_bytes.call_count == 0
         assert mock_write_tar.call_count == 0
+
+
+
+# ---------------------------------------------------------------------------
+# 8. Descendant pages regression: chapter pages have no type key (Task 3)
+# ---------------------------------------------------------------------------
+
+class TestChapterDescendantPages:
+    def test_chapter_pages_without_type_key_are_captured(self, tmp_path):
+        archiver = _make_chapter_archiver(tmp_path)  # use the file's existing helper
+        meta = json.loads((_FIXTURES / "chapter_detail.json").read_text())
+        node = Node(meta, parent=None)
+        result = archiver._descendant_page_names(node)
+        expected = {p["id"]: p["slug"] for p in meta["pages"]}
+        assert result == expected
+        assert result, "chapter descendant pages must not be empty (no-type-key regression)"

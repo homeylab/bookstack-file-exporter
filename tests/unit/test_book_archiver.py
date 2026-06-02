@@ -1,6 +1,8 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
 # pylint: disable=protected-access,too-few-public-methods,duplicate-code
 """Unit tests for BookArchiver."""
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,6 +10,8 @@ from requests.exceptions import HTTPError
 
 from bookstack_file_exporter.archiver.node_archiver import BookArchiver
 from bookstack_file_exporter.exporter.node import Node
+
+_FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 # ---------------------------------------------------------------------------
@@ -290,3 +294,37 @@ class TestFolderLayout:
         archiver._get_node_data = lambda url: b"# combined"
         archiver._archive_level({1: node}, "books", "book")
         assert f"{archiver.archive_base_path}/my-book/my-book_meta.json" in written
+
+
+
+# ---------------------------------------------------------------------------
+# 10. Descendant page names (Task 3)
+# ---------------------------------------------------------------------------
+
+def _load_fixture(name):
+    return json.loads((_FIXTURES / name).read_text())
+
+
+class TestDescendantPages:
+    def test_book_collects_direct_and_chapter_nested_pages(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path)
+        node = Node(_load_fixture("book_detail_mixed.json"), parent=None)
+        result = archiver._descendant_page_names(node)
+        # every page id in contents (direct + chapter-nested) must be present,
+        # mapped to its slug. Derive expected from the fixture itself:
+        expected = {}
+        for child in node.children:
+            if child.get("type") == "chapter" or "pages" in child:
+                for p in child.get("pages", []):
+                    expected[p["id"]] = p["slug"]
+            else:
+                expected[child["id"]] = child["slug"]
+        assert result == expected
+        assert result  # non-empty: proves chapter-nested pages were captured
+
+    def test_page_name_falls_back_to_slugified_name(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path)
+        meta = {"id": 1, "name": "bk", "slug": "bk",
+                "contents": [{"id": 10, "type": "page", "slug": "", "name": "My Page!"}]}
+        node = Node(meta, parent=None)
+        assert archiver._descendant_page_names(node) == {10: "my-page"}

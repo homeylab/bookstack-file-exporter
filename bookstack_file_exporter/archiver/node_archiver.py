@@ -89,6 +89,34 @@ class NodeArchiver:
             return False
         return True
 
+    @staticmethod
+    def _page_name(child: dict) -> str:
+        """Slug if present, else a slugified name (mirrors Node.get_name)."""
+        slug = child.get("slug")
+        if slug:
+            return slug
+        return Node.slugify(child.get("name", ""))
+
+    def _descendant_page_names(self, node: Node) -> dict[int, str]:
+        """Map {page_id: page_name} for every page under a book/chapter node.
+
+        Do NOT rely on a ``type`` key for pages. Verified against fixtures:
+        - book ``contents`` children carry ``type`` ('page'|'chapter'); chapter
+          children carry a nested ``pages`` list.
+        - chapter-detail ``pages`` entries (and the book's chapter-nested
+          ``pages``) have **no** ``type`` key.
+        So: a child is a chapter iff it has a nested ``pages`` list (or
+        ``type == 'chapter'``); otherwise it is a page.
+        """
+        pages: dict[int, str] = {}
+        for child in node.children:
+            if child.get("type") == "chapter" or "pages" in child:
+                for page in child.get("pages", []):
+                    pages[page["id"]] = self._page_name(page)
+            else:
+                pages[child["id"]] = self._page_name(child)
+        return pages
+
     def _get_node_data(self, url: str) -> bytes:
         return archiver_util.get_byte_response(url=url, http_client=self.http_client)
 
