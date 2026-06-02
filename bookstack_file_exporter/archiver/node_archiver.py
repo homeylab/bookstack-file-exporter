@@ -29,6 +29,7 @@ _FILE_EXTENSION_MAP = {
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
 
+# pylint: disable=too-many-instance-attributes
 class NodeArchiver:
     """
     NodeArchiver is the base class for all level-specific archivers.
@@ -43,10 +44,11 @@ class NodeArchiver:
         :export_formats: <list[str]> = formats to export.
         :http_client: <HttpHelper> = http helper for API requests.
         :export_meta: <bool> = whether to write metadata JSON alongside exports.
+        :asset_config: optional asset configuration; None => asset features disabled.
     """
     def __init__(self, archive_dir: str, api_urls: dict[str, str],  # pylint: disable=too-many-arguments,too-many-positional-arguments
                  export_formats: list[str], http_client: HttpHelper,
-                 export_meta: bool) -> None:
+                 export_meta: bool, asset_config=None) -> None:
         self.api_urls = api_urls
         self.export_formats = export_formats
         self.http_client = http_client
@@ -57,6 +59,35 @@ class NodeArchiver:
         self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
         # base folder name inside the tgz archive
         self.archive_base_path = archive_dir.split("/")[-1]
+        # asset handling (shared by page/book/chapter); None => disabled
+        self.asset_config = asset_config
+        self.asset_archiver = AssetArchiver(api_urls, http_client) if asset_config else None
+        self.modify_links: bool = self._check_links_modify()
+
+    @property
+    def export_images(self) -> bool:
+        """return whether or not to export images"""
+        return bool(self.asset_config and self.asset_config.export_images)
+
+    @property
+    def export_attachments(self) -> bool:
+        """return whether or not to export attachments"""
+        return bool(self.asset_config and self.asset_config.export_attachments)
+
+    def _check_links_modify(self) -> bool:
+        """Return True iff modify_links AND asset export enabled AND a rewritable format present."""
+        if not (self.asset_config and self.asset_config.modify_links):
+            return False
+        if not (self.export_images or self.export_attachments):
+            return False
+        has_rewritable = any(fmt in _REWRITABLE_FORMATS for fmt in self.export_formats)
+        if not has_rewritable:
+            log.warning(
+                "MODIFY_LINKS ENABLED BUT NO REWRITABLE FORMAT (markdown, html) CONFIGURED "
+                "- NO LINK REWRITING WILL OCCUR"
+            )
+            return False
+        return True
 
     def _get_node_data(self, url: str) -> bytes:
         return archiver_util.get_byte_response(url=url, http_client=self.http_client)
@@ -158,31 +189,14 @@ class PageArchiver(NodeArchiver):
         :PageArchiver: instance with methods to help collect page content from a Bookstack instance.
     """
     def __init__(self, archive_dir: str, config: ConfigNode, http_client: HttpHelper) -> None:
-        self.asset_config = config.user_inputs.assets
         super().__init__(
             archive_dir=archive_dir,
             api_urls=config.urls,
             export_formats=config.user_inputs.formats,
             http_client=http_client,
             export_meta=config.user_inputs.assets.export_meta,
+            asset_config=config.user_inputs.assets,
         )
-        self.modify_links: bool = self._check_links_modify()
-        self.asset_archiver = AssetArchiver(self.api_urls, http_client)
-
-    def _check_links_modify(self) -> bool:
-        """Return True iff modify_links AND asset export enabled AND a rewritable format present."""
-        if not self.asset_config.modify_links:
-            return False
-        if not (self.export_images or self.export_attachments):
-            return False
-        has_rewritable = any(fmt in _REWRITABLE_FORMATS for fmt in self.export_formats)
-        if not has_rewritable:
-            log.warning(
-                "MODIFY_LINKS ENABLED BUT NO REWRITABLE FORMAT (markdown, html) CONFIGURED "
-                "- NO LINK REWRITING WILL OCCUR"
-            )
-            return False
-        return True
 
     def archive(self, page_nodes: dict[int, Node]):
         """Export page contents and their images/attachments."""
@@ -259,13 +273,13 @@ class PageArchiver(NodeArchiver):
 
     def _get_image_meta(self) -> dict[int, list[ImageNode]]:
         """Get all image metadata into a {page_number: [image_url]} format"""
-        if not self.asset_config.export_images:
+        if not self.export_images:
             return {}
         return self.asset_archiver.get_asset_nodes('images')
 
     def _get_attachment_meta(self) -> dict[int, list[AttachmentNode]]:
         """Get all attachment metadata into a {page_number: [attachment_url]} format"""
-        if not self.asset_config.export_attachments:
+        if not self.export_attachments:
             return {}
         return self.asset_archiver.get_asset_nodes('attachments')
 
@@ -306,13 +320,3 @@ class PageArchiver(NodeArchiver):
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
         return failed_assets
-
-    @property
-    def export_images(self) -> bool:
-        """return whether or not to export images"""
-        return self.asset_config.export_images
-
-    @property
-    def export_attachments(self) -> bool:
-        """return whether or not to export attachments"""
-        return self.asset_config.export_attachments

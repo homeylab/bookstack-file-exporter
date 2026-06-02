@@ -254,3 +254,15 @@ class TestEmptyInput:
             archiver.archive({})
         assert mock_get_bytes.call_count == 0
         assert mock_write_tar.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# 8. Asset config defaults (Task 1)
+# ---------------------------------------------------------------------------
+
+class TestAssetConfigDefaults:
+    def test_no_asset_config_means_modify_links_false(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path)
+        assert archiver.modify_links is False
+        assert archiver.export_images is False
+        assert archiver.export_attachments is False
