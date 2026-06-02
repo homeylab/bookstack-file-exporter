@@ -117,6 +117,36 @@ class NodeArchiver:
                 pages[child["id"]] = self._page_name(child)
         return pages
 
+    def _archive_node_assets(self, asset_type: str, parent_path: str, page_name: str,
+                             asset_nodes: list[ImageNode | AttachmentNode]) -> set[int]:
+        """Download assets for one source page into <parent_path>/<prefix>/<page_name>/."""
+        if not asset_nodes:
+            return set()
+        failed_assets: set[int] = set()
+        node_base_path = f"{self.archive_base_path}/{parent_path}"
+        for asset_node in asset_nodes:
+            try:
+                asset_data = self.asset_archiver.get_asset_bytes(
+                    asset_type, asset_node.download_url)
+            except (HTTPError, RetryError):
+                failed_assets.add(asset_node.id_)
+                log.error("Failed to get image or attachment data "
+                          "for asset located at: %s - skipping", asset_node.download_url)
+                continue
+            asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
+            self.write_data(asset_path, asset_data)
+        return failed_assets
+
+    def _get_image_meta(self) -> dict[int, list]:
+        if not self.export_images:
+            return {}
+        return self.asset_archiver.get_asset_nodes('images')
+
+    def _get_attachment_meta(self) -> dict[int, list]:
+        if not self.export_attachments:
+            return {}
+        return self.asset_archiver.get_asset_nodes('attachments')
+
     def _get_node_data(self, url: str) -> bytes:
         return archiver_util.get_byte_response(url=url, http_client=self.http_client)
 
@@ -302,18 +332,6 @@ class PageArchiver(NodeArchiver):
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(file_path=meta_file_name, data=bytes_meta)
 
-    def _get_image_meta(self) -> dict[int, list[ImageNode]]:
-        """Get all image metadata into a {page_number: [image_url]} format"""
-        if not self.export_images:
-            return {}
-        return self.asset_archiver.get_asset_nodes('images')
-
-    def _get_attachment_meta(self) -> dict[int, list[AttachmentNode]]:
-        """Get all attachment metadata into a {page_number: [attachment_url]} format"""
-        if not self.export_attachments:
-            return {}
-        return self.asset_archiver.get_asset_nodes('attachments')
-
     def _modify_links(self, asset_type: str,
                       page_name: str, page_data: bytes,
                       asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
@@ -333,21 +351,6 @@ class PageArchiver(NodeArchiver):
                                                            asset_nodes)
 
     def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
-                            asset_nodes: list[ImageNode | AttachmentNode]) -> set[int]:
-        """pull images locally into a directory based on page"""
-        if not asset_nodes:
-            return set()
-        failed_assets: set[int] = set()
-        node_base_path = f"{self.archive_base_path}/{parent_path}"
-        for asset_node in asset_nodes:
-            try:
-                asset_data = self.asset_archiver.get_asset_bytes(
-                    asset_type, asset_node.download_url)
-            except (HTTPError, RetryError):
-                failed_assets.add(asset_node.id_)
-                log.error("Failed to get image or attachment data " \
-                          "for asset located at: %s - skipping", asset_node.download_url)
-                continue
-            asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
-            self.write_data(asset_path, asset_data)
-        return failed_assets
+                            asset_nodes) -> set[int]:
+        """Delegate to base _archive_node_assets; preserved for backward compatibility."""
+        return self._archive_node_assets(asset_type, parent_path, page_name, asset_nodes)

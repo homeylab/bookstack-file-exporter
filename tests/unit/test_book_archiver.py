@@ -328,3 +328,28 @@ class TestDescendantPages:
                 "contents": [{"id": 10, "type": "page", "slug": "", "name": "My Page!"}]}
         node = Node(meta, parent=None)
         assert archiver._descendant_page_names(node) == {10: "my-page"}
+
+
+# ---------------------------------------------------------------------------
+# 11. Asset download into node folder (Task 4)
+# ---------------------------------------------------------------------------
+
+class TestAssetDownload:
+    def test_downloads_image_into_node_folder(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path, formats=["markdown"])
+        # enable modify_links by injecting an asset_config double
+        archiver.asset_config = MagicMock(export_images=True, export_attachments=False,
+                                          modify_links=True, export_meta=False)
+        archiver.modify_links = True
+        node = Node({"id": 1, "name": "bk", "slug": "bk",
+                     "contents": [{"id": 10, "type": "page", "slug": "pg", "name": "Pg"}]},
+                    parent=None)
+        img = MagicMock(id_=99, download_url="http://x/img", uploaded_to=10)
+        img.get_relative_path = lambda page_name: f"images/{page_name}/img.png"
+        archiver.asset_archiver = MagicMock()
+        archiver.asset_archiver.get_asset_bytes.return_value = b"PNGDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        failed = archiver._archive_node_assets("images", node.file_path, "pg", [img])
+        assert failed == set()
+        assert f"{archiver.archive_base_path}/bk/images/pg/img.png" in written
