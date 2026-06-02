@@ -273,3 +273,41 @@ class TestChapterDescendantPages:
         expected = {p["id"]: p["slug"] for p in meta["pages"]}
         assert result == expected
         assert result, "chapter descendant pages must not be empty (no-type-key regression)"
+
+
+# ---------------------------------------------------------------------------
+# 9. Combined markdown rewrite for chapters (Task 5)
+# ---------------------------------------------------------------------------
+
+class TestChapterCombinedMarkdownRewrite:
+    def _img(self, id_, uploaded_to):
+        img = MagicMock(id_=id_, download_url=f"http://x/{id_}", uploaded_to=uploaded_to)
+        img.get_relative_path = lambda page_name: f"images/{page_name}/{id_}.png"
+        return img
+
+    def test_chapter_markdown_urls_rewritten(self, tmp_path):
+        archiver = _make_chapter_archiver(tmp_path, formats=["markdown"])
+        archiver.asset_config = MagicMock(export_images=True, export_attachments=False,
+                                          modify_links=True, export_meta=False)
+        archiver.modify_links = True
+        book = _make_book_node()
+        # chapter pages list has no type key (the regression case)
+        chapter_meta = {"id": 5, "name": "my-chapter", "slug": "my-chapter",
+                        "pages": [{"id": 10, "slug": "pg", "name": "Pg"}]}
+        node = Node(chapter_meta, parent=book)
+        img = self._img(99, 10)
+        aa = MagicMock()
+        aa.get_asset_nodes.side_effect = lambda kind: {10: [img]} if kind == "images" else {}
+        aa.get_asset_bytes.return_value = b"PNGDATA"
+        aa.update_asset_links.side_effect = (
+            lambda atype, page_name, data, nodes: data.replace(
+                b"http://x/99", b"images/pg/99.png"))
+        archiver.asset_archiver = aa
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"![](http://x/99)"
+        archiver._archive_level({5: node}, "chapters", "chapter")
+        md_key = f"{archiver.archive_base_path}/test-book/my-chapter/my-chapter.md"
+        assert md_key in written
+        assert b"images/pg/99.png" in written[md_key]
+        assert b"http://x/99" not in written[md_key]

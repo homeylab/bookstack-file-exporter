@@ -165,30 +165,12 @@ class NodeArchiver:
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(meta_file_name, bytes_meta)
 
-    def _export_nodes(self, nodes: dict[int, Node], resource_type: str):
-        """Fetch and archive each node in every requested format."""
-        for _, node in nodes.items():
-            for fmt in self.export_formats:
-                url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
-                try:
-                    data = self._get_node_data(url)
-                except (HTTPError, RetryError):
-                    log.error(
-                        "Failed to get %s data for node id=%d format=%s - skipping",
-                        resource_type, node.id_, fmt,
-                    )
-                    continue
-                self._archive_node(node, fmt, data)
-            if self.export_meta:
-                self._archive_node_meta(node, node.meta)
-
     def _archive_level(self, nodes: dict[int, Node],
                        resource_type: str, label: str):
         """Shared entry point for book/chapter archivers."""
         if not nodes:
             log.warning("No %s nodes available. Nothing to archive", label)
             return
-        # Filter nodes with no children (empty books/chapters)
         non_empty = {}
         for node_id, node in nodes.items():
             if not node.children:
@@ -198,7 +180,72 @@ class NodeArchiver:
         if not non_empty:
             log.warning("No non-empty %s nodes available. Nothing to archive", label)
             return
-        self._export_nodes(non_empty, resource_type)
+        # Asset localization only applies to markdown combined exports
+        # (html/pdf embed assets server-side). Warn on the dead-state combo where
+        # modify_links is on but markdown is not requested, so it is not silent.
+        image_map: dict[int, list] = {}
+        attachment_map: dict[int, list] = {}
+        if self.modify_links:
+            if "markdown" in self.export_formats:
+                image_map = self._get_image_meta()
+                attachment_map = self._get_attachment_meta()
+            else:
+                log.warning(
+                    "modify_links is enabled but 'markdown' is not in formats; "
+                    "asset localization for %s only applies to markdown "
+                    "(html/pdf embed assets server-side) - no rewriting will occur",
+                    label,
+                )
+        self._export_nodes(non_empty, resource_type, image_map, attachment_map)
+
+    def _export_nodes(self, nodes: dict[int, Node], resource_type: str,
+                      image_map: dict[int, list] | None = None,
+                      attachment_map: dict[int, list] | None = None):
+        """Fetch and archive each node in every requested format."""
+        image_map = image_map or {}
+        attachment_map = attachment_map or {}
+        for _, node in nodes.items():
+            assets_by_page = self._download_node_assets(node, image_map, attachment_map)
+            for fmt in self.export_formats:
+                url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
+                try:
+                    data = self._get_node_data(url)
+                except (HTTPError, RetryError):
+                    log.error("Failed to get %s data for node id=%d format=%s - skipping",
+                              resource_type, node.id_, fmt)
+                    continue
+                if fmt == "markdown" and self.modify_links:
+                    data = self._rewrite_combined_markdown(data, assets_by_page)
+                self._archive_node(node, fmt, data)
+            if self.export_meta:
+                self._archive_node_meta(node, node.meta)
+
+    def _download_node_assets(self, node: Node, image_map: dict[int, list],
+                              attachment_map: dict[int, list]) -> dict:
+        """Download this node's descendant-page assets; return survivors grouped per page+type."""
+        if not (image_map or attachment_map):
+            return {}
+        page_names = self._descendant_page_names(node)
+        grouped = {"images": {}, "attachments": {}}
+        for asset_type, amap in (("images", image_map), ("attachments", attachment_map)):
+            for page_id, page_name in page_names.items():
+                assets = amap.get(page_id)
+                if not assets:
+                    continue
+                failed = self._archive_node_assets(asset_type, node.file_path, page_name, assets)
+                survivors = [a for a in assets if a.id_ not in failed]
+                if survivors:
+                    grouped[asset_type][page_name] = survivors
+        return grouped
+
+    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
+        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+        if not assets_by_page or self.asset_archiver is None:
+            return data
+        for asset_type, by_page in assets_by_page.items():
+            for page_name, assets in by_page.items():
+                data = self.asset_archiver.update_asset_links(asset_type, page_name, data, assets)
+        return data
 
     def write_data(self, file_path: str, data: bytes):
         """Write data to a tar file.
