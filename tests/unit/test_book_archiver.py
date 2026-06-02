@@ -266,3 +266,27 @@ class TestAssetConfigDefaults:
         assert archiver.modify_links is False
         assert archiver.export_images is False
         assert archiver.export_attachments is False
+
+
+# ---------------------------------------------------------------------------
+# 9. Folder layout (Task 2)
+# ---------------------------------------------------------------------------
+
+class TestFolderLayout:
+    def test_book_content_written_inside_node_folder(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path, formats=["markdown"])
+        node = _make_book_node(1, "my-book")
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"# combined"
+        archiver._archive_level({1: node}, "books", "book")
+        assert f"{archiver.archive_base_path}/my-book/my-book.md" in written
+
+    def test_book_meta_written_inside_node_folder(self, tmp_path):
+        archiver = _make_book_archiver(tmp_path, formats=["markdown"], export_meta=True)
+        node = _make_book_node(1, "my-book")
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"# combined"
+        archiver._archive_level({1: node}, "books", "book")
+        assert f"{archiver.archive_base_path}/my-book/my-book_meta.json" in written

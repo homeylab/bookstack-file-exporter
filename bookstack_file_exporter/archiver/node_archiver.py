@@ -95,14 +95,17 @@ class NodeArchiver:
     def _archive_node(self, node: Node, export_format: str, data: bytes):
         file_name = (
             f"{self.archive_base_path}/"
-            f"{node.file_path}{_FILE_EXTENSION_MAP[export_format]}"
+            f"{node.file_path}/{node.name}{_FILE_EXTENSION_MAP[export_format]}"
         )
         self.write_data(file_name, data)
 
-    def _archive_node_meta(self, node_path: str, meta_data: dict):
-        meta_file_name = f"{self.archive_base_path}/{node_path}{_FILE_EXTENSION_MAP['meta']}"
+    def _archive_node_meta(self, node: Node, meta_data: dict):
+        meta_file_name = (
+            f"{self.archive_base_path}/"
+            f"{node.file_path}/{node.name}{_FILE_EXTENSION_MAP['meta']}"
+        )
         bytes_meta = archiver_util.get_json_bytes(meta_data)
-        self.write_data(file_path=meta_file_name, data=bytes_meta)
+        self.write_data(meta_file_name, bytes_meta)
 
     def _export_nodes(self, nodes: dict[int, Node], resource_type: str):
         """Fetch and archive each node in every requested format."""
@@ -119,7 +122,7 @@ class NodeArchiver:
                     continue
                 self._archive_node(node, fmt, data)
             if self.export_meta:
-                self._archive_node_meta(node.file_path, node.meta)
+                self._archive_node_meta(node, node.meta)
 
     def _archive_level(self, nodes: dict[int, Node],
                        resource_type: str, label: str):
