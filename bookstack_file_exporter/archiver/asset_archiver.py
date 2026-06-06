@@ -323,9 +323,16 @@ class AssetArchiver:
         # Anchor-wrapped images: three-branch src resolution + parent href.
         for img in soup.find_all("img", src=True):
             src = img["src"]
+            # Compute parent anchor once; shared by branch 1 (base64 reuse) and
+            # the href-localization pass below.
+            parent = img.parent
+            href = parent.get("href", "") if parent and parent.name == "a" else ""
             if src.startswith("data:"):
-                # Branch 1: base64 inline — self-contained, leave as-is.
-                pass
+                # Branch 1: base64 inline. If the wrapping anchor's href is a downloaded
+                # asset, slim the blob by reusing that file (BookStack click-to-zoom:
+                # the inline img IS the anchor's image). Bare base64 left inline.
+                if href in url_map:
+                    matched_urls[src] = url_map[href]
             elif src in url_map:
                 # Branch 2: src is already the canonical URL — direct hit.
                 matched_urls[src] = url_map[src]
@@ -337,11 +344,8 @@ class AssetArchiver:
                 canonical = _SCALED_RE.sub('/', src)
                 if canonical in url_map:
                     matched_urls[src] = url_map[canonical]
-            parent = img.parent
-            if parent and parent.name == "a":
-                href = parent.get("href", "")
-                if href in url_map:
-                    matched_urls[href] = url_map[href]
+            if href in url_map:
+                matched_urls[href] = url_map[href]
         # Catch-all for attachments and any anchor-wrapped image hrefs not captured above.
         # Dict assignment is idempotent for hrefs already seen in the img-parent branch.
         for anchor in soup.find_all("a", href=True):

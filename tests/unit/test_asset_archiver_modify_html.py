@@ -316,7 +316,10 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
         return config
 
     def test_html_image_url_rewritten_to_local_path(self, tmp_path, build_node):
-        """Full pipeline rewrites remote image URL in HTML export to local relative path."""
+        """Full pipeline rewrites remote image URL in HTML export to local relative path.
+        Phase 2: the anchor-wrapped base64 img src is also slimmed to the local path.
+        Both href and src point at images/test-page/photo.png; the data: blob is gone.
+        """
         config = self._make_config()
         archive_dir = str(tmp_path / "bookstack-test")
 
@@ -365,9 +368,15 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
             "remote URL must be fully removed from HTML output"
         )
 
-        assert b'src="data:image/png;base64,' in html_bytes, (
-            "base64 data: src must be preserved across rewrite"
+        # Phase 2: wrapped base64 src is slimmed to the same local file as the anchor href.
+        local_path = b'images/test-page/photo.png'
+        assert re.search(rb'src="images/test-page/photo\.png"', html_bytes), (
+            f"wrapped base64 src must be rewritten to local path; got: {html_bytes!r}"
         )
+        assert b'data:image/png;base64,' not in html_bytes, (
+            "base64 blob must be replaced by local path (Phase 2)"
+        )
+        _ = local_path  # referenced above via re.search for clarity
 
         assert http_client.http_get_request.call_count == 1, (
             f"expected 1 HTTP call (asset bytes only); "
@@ -429,4 +438,83 @@ class TestRemoteScaledImgSrc:
         )
         assert self.CANONICAL_URL.encode() not in result, (
             f"canonical anchor href must be rewritten; still present in: {result!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Base64 img src slimming — Phase 2 (Option 1, reuse-only)
+# ---------------------------------------------------------------------------
+
+class TestBase64ImgSrcSlimming:
+    """update_asset_links_html must slim wrapped base64 img src by reusing the anchor's local file.
+
+    BookStack's click-to-zoom shape for recently-added images:
+        <a href=".../gallery/2026-06/bar.png">
+          <img src="data:image/png;base64,..." alt="bar">
+        </a>
+    The anchor href is already downloaded (url_map has it). The inline data: blob is replaced
+    by the same local path. Bare base64 (no anchor, or anchor href not in url_map) is left inline.
+    """
+
+    CANONICAL_URL = (
+        "https://wiki.example.com/uploads/images/gallery/2026-06/bar.png"
+    )
+    BASE64_BLOB = (
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        "AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+
+    def _make_archiver(self):
+        http_client = MagicMock(spec=HttpHelper)
+        return AssetArchiver(
+            {
+                "images": "https://wiki.example.com/api/image-gallery",
+                "attachments": "https://wiki.example.com/api/attachments",
+            },
+            http_client,
+        )
+
+    def test_wrapped_base64_src_and_href_rewritten_to_local(self):
+        """Wrapped base64 img (<a href=canonical><img src=data:...>): src rewritten to local path,
+        data: blob gone, href also localized — both point at one shared local file."""
+        archiver = self._make_archiver()
+        node = ImageNode({"id": 2, "uploaded_to": 5, "url": self.CANONICAL_URL})
+        page_html = (
+            '<html><body>'
+            f'<a href="{self.CANONICAL_URL}">'
+            f'<img src="{self.BASE64_BLOB}" alt="bar">'
+            '</a></body></html>'
+        ).encode()
+
+        result = archiver.update_asset_links_html(
+            "images", "test-page", page_html, [node]
+        )
+
+        local_path = b"images/test-page/bar.png"
+        assert local_path in result, (
+            f"expected local path {local_path!r} in output; got: {result!r}"
+        )
+        assert self.BASE64_BLOB.encode() not in result, (
+            f"data: blob must be replaced; still present in: {result!r}"
+        )
+        assert self.CANONICAL_URL.encode() not in result, (
+            f"canonical anchor href must be localized; still present in: {result!r}"
+        )
+
+    def test_bare_base64_src_left_inline(self):
+        """Bare base64 img (no anchor): src must be left unchanged (Option-1 boundary)."""
+        archiver = self._make_archiver()
+        node = ImageNode({"id": 2, "uploaded_to": 5, "url": self.CANONICAL_URL})
+        page_html = (
+            '<html><body>'
+            f'<img src="{self.BASE64_BLOB}" alt="bar">'
+            '</body></html>'
+        ).encode()
+
+        result = archiver.update_asset_links_html(
+            "images", "test-page", page_html, [node]
+        )
+
+        assert self.BASE64_BLOB.encode() in result, (
+            f"bare base64 must remain inline (Option-1 boundary); missing from: {result!r}"
         )

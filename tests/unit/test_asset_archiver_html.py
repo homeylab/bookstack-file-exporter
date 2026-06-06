@@ -157,10 +157,12 @@ class TestPhase3HtmlRewrite:
         assert outer_url not in result
         assert local_path in result
 
-    def test_update_asset_links_html_leaves_base64_src_unchanged(
+    def test_update_asset_links_html_rewrites_wrapped_base64_src(
         self, asset_archiver, image_node, image_api_content, html_anchor_wrapped_page
     ):
-        """update_asset_links_html should NOT modify base64 data: src attributes."""
+        """update_asset_links_html must slim wrapped base64 src to the anchor's local path
+        (Phase 2). The fixture uses <a href=canonical><img src=data:...> where canonical
+        is the image_node's page_url, so the blob is replaced by images/my-page/screenshot.png."""
         asset_archiver.http_client.http_get_request.return_value.json.return_value = (
             image_api_content
         )
@@ -168,7 +170,11 @@ class TestPhase3HtmlRewrite:
         result = asset_archiver.update_asset_links_html(
             "images", "my-page", html_anchor_wrapped_page, [image_node]
         )
-        assert b"data:image/png;base64," in result
+        local_path = image_node.get_relative_path("my-page").encode()
+        assert b"data:image/png;base64," not in result, (
+            "wrapped base64 blob must be slimmed to local path (Phase 2)"
+        )
+        assert local_path in result
 
     def test_update_asset_links_html_rewrites_attachment_href(
         self, asset_archiver, attachment_node, attachment_api_content, html_attachment_page
