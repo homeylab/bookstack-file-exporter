@@ -26,7 +26,7 @@ Table of Contents
 ## Background
 _If you encounter any issues, want to request an additional feature, or provide assistance, feel free to open a Github issue._
 
-This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, attachments, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized. Image and attachment links can also be modified in markdown exports to point to local exported paths.
+This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, attachments, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](#backup-behavior) section for more details on how pages are organized. Image and attachment links can also be modified in markdown and html exports to point to local exported paths.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
@@ -321,8 +321,8 @@ The `export_level` configuration option controls the granularity of exports:
 | Value | Description |
 | ----- | ----------- |
 | `pages` (default) | One file per page. Supports `assets.export_images`, `assets.export_attachments`, and `assets.modify_links`. |
-| `books` | One combined file per book per format, written to a per-book folder (`<shelf>/<book>/<book>.<ext>`). `html`/`pdf` embed assets server-side. For `markdown`, set `assets.modify_links: true` (with `export_images`/`export_attachments`) to download images/attachments locally and rewrite links to relative paths. |
-| `chapters` | One combined file per chapter per format, in a per-chapter folder (`<shelf>/<book>/<chapter>/<chapter>.<ext>`). Same `modify_links` markdown support as `books`. **Note:** pages not under any chapter are not captured at this level. |
+| `books` | One combined file per book per format, written to a per-book folder (`<shelf>/<book>/<book>.<ext>`). Set `assets.modify_links: true` (with `export_images`/`export_attachments`) to download images/attachments locally and rewrite links to relative paths in `markdown` and `html`. `pdf` stays self-contained (assets embedded by Bookstack server-side). |
+| `chapters` | One combined file per chapter per format, in a per-chapter folder (`<shelf>/<book>/<chapter>/<chapter>.<ext>`). Same `modify_links` support (markdown + html) as `books`. **Note:** pages not under any chapter are not captured at this level. |
 
 **Example:** `formats: [pdf]` + `export_level: books` exports one PDF per book through the server-side BookStack API export.
 
@@ -492,19 +492,30 @@ Page (parent) -> Images (children) relationships are created and then each image
 
 #### HTML example
 
-Bookstack HTML exports wrap images in an anchor tag (click-to-zoom). Both the `<img src>` and the outer `<a href>` are rewritten to the same local file.
+Bookstack HTML exports wrap images in an anchor tag (click-to-zoom). Both the
+`<img src>` and the outer `<a href>` are rewritten to the same local file.
+Images appear in one of two forms; both are localized:
 
 ```html
-<!-- before: anchor-wrapped image -->
+<!-- before: remote "scaled" thumbnail src (older images) -->
+<a href="https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png">
+  <img src="https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png">
+</a>
+
+<!-- before: inline base64 src (recently-added images) -->
 <a href="https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png">
   <img src="data:image/png;base64,...">
 </a>
 
-<!-- after -->
+<!-- after (both forms): src and href point at the one local file -->
 <a href="images/{page_name}/pool-topology-1.png">
-  <img src="data:image/png;base64,...">
+  <img src="images/{page_name}/pool-topology-1.png">
 </a>
 ```
+
+Inline base64 images are de-inlined to the local file (shrinking the export by
+up to ~700 KB per full-size image). A base64 image **not** wrapped in a
+downloadable anchor is left inline (it still resolves offline).
 
 Attachment links are rewritten from the live URL to a local relative path.
 
