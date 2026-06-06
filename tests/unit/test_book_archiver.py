@@ -365,7 +365,7 @@ class TestCombinedMarkdownRewrite:
         img.get_relative_path = lambda page_name: f"images/{page_name}/{id_}.png"
         return img
 
-    def test_markdown_urls_rewritten_html_untouched(self, tmp_path):
+    def test_markdown_and_html_both_rewritten(self, tmp_path):
         archiver = _make_book_archiver(tmp_path, formats=["markdown", "html"])
         archiver.asset_config = MagicMock(export_images=True, export_attachments=False,
                                           modify_links=True, export_meta=False)
@@ -379,13 +379,17 @@ class TestCombinedMarkdownRewrite:
         aa.get_asset_bytes.return_value = b"PNGDATA"
         aa.update_asset_links.side_effect = (
             lambda atype, page_name, data, nodes: data.replace(b"http://x/99", b"images/pg/99.png"))
+        aa.update_asset_links_html.side_effect = (
+            lambda atype, page_name, data, nodes: data.replace(b"http://x/99", b"images/pg/99.png"))
         archiver.asset_archiver = aa
         written = {}
         archiver.write_data = written.__setitem__
         archiver._get_node_data = lambda url: (b"![](http://x/99)" if url.endswith("markdown")
-                                               else b"<img src='data:...'>")
+                                               else b"<img src='http://x/99'>")
         archiver._archive_level({1: node}, "books", "book")
         md = written[f"{archiver.archive_base_path}/bk/bk.md"]
         html = written[f"{archiver.archive_base_path}/bk/bk.html"]
         assert b"images/pg/99.png" in md and b"http://x/99" not in md
-        assert html == b"<img src='data:...'>"  # html not rewritten at this level
+        # html IS dispatched and its rewritten output is what gets written.
+        assert b"images/pg/99.png" in html and b"http://x/99" not in html
+        aa.update_asset_links_html.assert_called_once()

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from requests.exceptions import HTTPError
 
-from bookstack_file_exporter.archiver.asset_archiver import ImageNode
+from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode
 from bookstack_file_exporter.archiver.node_archiver import PageArchiver
 from bookstack_file_exporter.common.util import HttpHelper
 
@@ -373,4 +373,60 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
             f"expected 1 HTTP call (asset bytes only); "
             f"got {http_client.http_get_request.call_count} — "
             f"Task 1 short-circuit not firing"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Remote-scaled img src — three-branch resolver (Step 1 / Phase 1)
+# ---------------------------------------------------------------------------
+
+class TestRemoteScaledImgSrc:
+    """update_asset_links_html must rewrite a remote scaled <img src> to local path.
+
+    BookStack's most common html export shape wraps images in a click-to-zoom anchor:
+        <a href=".../gallery/2023-07/foo.png">
+          <img src=".../gallery/2023-07/scaled-1680-/foo.png" alt="foo">
+        </a>
+    url_map (html mode) keys on the canonical page_url (.../foo.png, no scaled segment).
+    Branch 3 of the resolver strips /scaled-\\d+-/ from src and retries the lookup,
+    localizing the displayed image as well as the click-through link.
+    """
+
+    CANONICAL_URL = (
+        "https://wiki.example.com/uploads/images/gallery/2023-07/foo.png"
+    )
+    SCALED_URL = (
+        "https://wiki.example.com/uploads/images/gallery/2023-07/scaled-1680-/foo.png"
+    )
+    PAGE_HTML = (
+        '<html><body>'
+        f'<a href="{CANONICAL_URL}">'
+        f'<img src="{SCALED_URL}" alt="foo">'
+        '</a></body></html>'
+    )
+
+    def test_remote_scaled_src_and_href_rewritten_to_local(self):
+        """Both scaled img src and canonical anchor href are rewritten to images/test-page/foo.png."""
+        http_client = MagicMock(spec=HttpHelper)
+        archiver = AssetArchiver(
+            {
+                "images": "https://wiki.example.com/api/image-gallery",
+                "attachments": "https://wiki.example.com/api/attachments",
+            },
+            http_client,
+        )
+        node = ImageNode({"id": 1, "uploaded_to": 5, "url": self.CANONICAL_URL})
+        result = archiver.update_asset_links_html(
+            "images", "test-page", self.PAGE_HTML.encode(), [node]
+        )
+
+        local_path = b"images/test-page/foo.png"
+        assert local_path in result, (
+            f"expected local path {local_path!r} in output; got: {result!r}"
+        )
+        assert self.SCALED_URL.encode() not in result, (
+            f"scaled img src must be rewritten; still present in: {result!r}"
+        )
+        assert self.CANONICAL_URL.encode() not in result, (
+            f"canonical anchor href must be rewritten; still present in: {result!r}"
         )

@@ -180,30 +180,21 @@ class NodeArchiver:
         if not non_empty:
             log.warning("No non-empty %s nodes available. Nothing to archive", label)
             return
-        # Asset localization only applies to markdown combined exports
-        # (html/pdf embed assets server-side). Warn on the dead-state combo where
-        # modify_links is on but markdown is not requested, so it is not silent.
         image_map: dict[int, list] = {}
         attachment_map: dict[int, list] = {}
         if self.modify_links:
-            if "markdown" in self.export_formats:
-                image_map = self._get_image_meta()
-                attachment_map = self._get_attachment_meta()
-            else:
-                log.warning(
-                    "modify_links is enabled but 'markdown' is not in formats; "
-                    "asset localization for %s only applies to markdown "
-                    "(html/pdf embed assets server-side) - no rewriting will occur",
-                    label,
-                )
+            image_map = self._get_image_meta()
+            attachment_map = self._get_attachment_meta()
         self._export_nodes(non_empty, resource_type, image_map, attachment_map)
 
     def _export_nodes(self, nodes: dict[int, Node], resource_type: str,
-                      image_map: dict[int, list] | None = None,
-                      attachment_map: dict[int, list] | None = None):
-        """Fetch and archive each node in every requested format."""
-        image_map = image_map or {}
-        attachment_map = attachment_map or {}
+                      image_map: dict[int, list],
+                      attachment_map: dict[int, list]):
+        """Fetch and archive each node in every requested format.
+
+        The only caller (_archive_level) always passes real maps (empty when
+        modify_links is off), so no None-defaulting is needed.
+        """
         for _, node in nodes.items():
             assets_by_page = self._download_node_assets(node, image_map, attachment_map)
             for fmt in self.export_formats:
@@ -216,6 +207,8 @@ class NodeArchiver:
                     continue
                 if fmt == "markdown" and self.modify_links:
                     data = self._rewrite_combined_markdown(data, assets_by_page)
+                elif fmt == "html" and self.modify_links:
+                    data = self._rewrite_combined_html(data, assets_by_page)
                 self._archive_node(node, fmt, data)
             if self.export_meta:
                 self._archive_node_meta(node, node.meta)
@@ -245,6 +238,16 @@ class NodeArchiver:
         for asset_type, by_page in assets_by_page.items():
             for page_name, assets in by_page.items():
                 data = self.asset_archiver.update_asset_links(asset_type, page_name, data, assets)
+        return data
+
+    def _rewrite_combined_html(self, data: bytes, assets_by_page: dict) -> bytes:
+        """Rewrite asset URLs in combined html, reusing the per-page html rewriter."""
+        if not assets_by_page or self.asset_archiver is None:
+            return data
+        for asset_type, by_page in assets_by_page.items():
+            for page_name, assets in by_page.items():
+                data = self.asset_archiver.update_asset_links_html(
+                    asset_type, page_name, data, assets)
         return data
 
     def write_data(self, file_path: str, data: bytes):
