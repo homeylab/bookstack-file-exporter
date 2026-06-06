@@ -497,12 +497,12 @@ Bookstack HTML exports wrap images in an anchor tag (click-to-zoom). Both the
 Images appear in one of two forms; both are localized:
 
 ```html
-<!-- before: remote "scaled" thumbnail src (older images) -->
+<!-- before: remote "scaled" thumbnail src (older bookstack installations) -->
 <a href="https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png">
   <img src="https://demo.bookstack/uploads/images/gallery/2023-07/scaled-1680-/pool-topology-1.png">
 </a>
 
-<!-- before: inline base64 src (recently-added images) -->
+<!-- before: inline base64 src (recent bookstack installations) -->
 <a href="https://demo.bookstack/uploads/images/gallery/2023-07/pool-topology-1.png">
   <img src="data:image/png;base64,...">
 </a>
