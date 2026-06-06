@@ -56,23 +56,41 @@ def exporter(config: ConfigNode):
     export_helper = NodeExporter(config.urls, http_client)
     ## shelves
     shelve_nodes: dict[int, Node] = export_helper.get_all_shelves()
-    ## books
+    ## books (always needed - basis for all export levels)
     book_nodes: dict[int, Node] = export_helper.get_all_books(shelve_nodes,
                                                               config.unassigned_book_dir)
-    ## pages
-    page_nodes: dict[int, Node] = export_helper.get_all_pages(book_nodes)
-    if not page_nodes:
-        log.warning("No page data available from given Bookstack instance. Nothing to archive")
-        sys.exit(0)
-    log.info("Beginning archive")
-    ## start archive ##
+
+    ## Build archiver before the level branch (shared for all levels)
     archive: Archiver = Archiver(config, http_client)
 
     # create export directory if not exists
     archive.create_export_dir()
 
-    # get all page content for each page
-    archive.get_bookstack_exports(page_nodes)
+    ## Select nodes by export level
+    export_level = config.user_inputs.export_level
+    if export_level == "books":
+        nodes: dict[int, Node] = book_nodes
+    elif export_level == "chapters":
+        nodes = export_helper.get_chapter_nodes(book_nodes)
+    else:
+        # default: "pages"
+        nodes = export_helper.get_all_pages(book_nodes)
+
+    if not nodes:
+        log.warning(
+            "No %s data available from given Bookstack instance. Nothing to archive",
+            export_level,
+        )
+        sys.exit(0)
+
+    log.info("Beginning archive")
+    # get all content for each node
+    archive.get_bookstack_exports(nodes)
+    # nothing was written to the tar (e.g. every node empty or all fetches failed):
+    # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
+    if not archive.has_exported_content:
+        log.warning("No %s content was archived. Nothing to upload", export_level)
+        sys.exit(0)
 
     # create tar if needed and gzip tar
     archive.create_archive()

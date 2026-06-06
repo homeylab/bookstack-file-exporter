@@ -65,6 +65,12 @@ class UserInput(BaseModel):
     credentials: BookstackAccess | None = BookstackAccess()
     formats: list[Literal["markdown", "html", "pdf", "plaintext", "zip"]]
     output_path: str | None = ""
+    # Export granularity: "pages" = one file per page (default),
+    # "books" = one combined file per book, "chapters" = one combined file per chapter.
+    # Note: assets.export_images/attachments/modify_links apply at all levels;
+    # for book/chapter, modify_links localizes assets in markdown exports
+    # (html/pdf embed assets server-side and are not rewritten at these levels).
+    export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
     minio: ObjectStorageConfig | None = None
     keep_last: int | None = 0

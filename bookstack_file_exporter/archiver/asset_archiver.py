@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import base64
 from typing import Literal
 
@@ -18,6 +19,10 @@ log = logging.getLogger(__name__)
 
 _IMAGE_DIR_NAME = "images"
 _ATTACHMENT_DIR_NAME = "attachments"
+
+# Matches BookStack's scaled-thumbnail path segment, e.g. /scaled-1680-/ or /scaled-300-/.
+# Used to strip the scaled variant back to the canonical URL for url_map lookup.
+_SCALED_RE = re.compile(r'/scaled-\d+-/')
 
 
 class AssetNode:
@@ -315,16 +320,32 @@ class AssetArchiver:
         soup = BeautifulSoup(page_data, "html.parser", parse_only=strainer)
         matched_urls: dict[str, str] = {}
 
-        # Anchor-wrapped images: check img src and parent href
+        # Anchor-wrapped images: three-branch src resolution + parent href.
         for img in soup.find_all("img", src=True):
             src = img["src"]
-            if src in url_map:
-                matched_urls[src] = url_map[src]
+            # Compute parent anchor once; shared by branch 1 (base64 reuse) and
+            # the href-localization pass below.
             parent = img.parent
-            if parent and parent.name == "a":
-                href = parent.get("href", "")
+            href = parent.get("href", "") if parent and parent.name == "a" else ""
+            if src.startswith("data:"):
+                # Branch 1: base64 inline. If the wrapping anchor's href is a downloaded
+                # asset, slim the blob by reusing that file (BookStack click-to-zoom:
+                # the inline img IS the anchor's image). Bare base64 left inline.
                 if href in url_map:
-                    matched_urls[href] = url_map[href]
+                    matched_urls[src] = url_map[href]
+            elif src in url_map:
+                # Branch 2: src is already the canonical URL — direct hit.
+                matched_urls[src] = url_map[src]
+            else:
+                # Branch 3: src carries a scaled segment (e.g. /scaled-1680-/).
+                # Strip it to recover the canonical URL and retry the lookup.
+                # We never construct a scaled URL — constructing a key could
+                # silently mis-match; stripping can only fail to match, never corrupt.
+                canonical = _SCALED_RE.sub('/', src)
+                if canonical in url_map:
+                    matched_urls[src] = url_map[canonical]
+            if href in url_map:
+                matched_urls[href] = url_map[href]
         # Catch-all for attachments and any anchor-wrapped image hrefs not captured above.
         # Dict assignment is idempotent for hrefs already seen in the img-parent branch.
         for anchor in soup.find_all("a", href=True):
@@ -390,8 +411,10 @@ class AssetArchiver:
         """
         for url in sorted(url_map, key=len, reverse=True):
             if not url:
-                # bytes.replace(b"", ...) inserts replacement between every byte —
-                # guard here even though _build_url_map already filters empties.
+                # bytes.replace(b"", local_path) inserts the replacement between
+                # every byte of the page, silently destroying the whole document.
+                # Redundant while every url_map producer filters empties (it does),
+                # but kept as cheap defense against a future key that bypasses them.
                 continue
             url_bytes = url.encode()
             local_path_bytes = url_map[url].encode()

@@ -257,13 +257,50 @@ def test_http_get_request_returns_response(http_config):
 
 
 @responses.activate
-def test_http_get_request_reuses_session(http_config):
+def test_http_get_request_reuses_session(http_config, monkeypatch):
+    """HttpHelper builds a single requests.Session and reuses it across calls.
+
+    Asserts the contract (one Session constructed for N requests) by spying the
+    constructor, rather than poking the private _session attribute — so it
+    survives an internal rename.
+    """
     responses.add(responses.GET, "https://wiki.test.example/api/books",
                   json={"data": []}, status=200)
-    responses.add(responses.GET, "https://wiki.test.example/api/books",
-                  json={"data": []}, status=200)
+    real_session_cls = requests.Session
+    built = []
+
+    def _spy(*args, **kwargs):
+        session = real_session_cls(*args, **kwargs)
+        built.append(session)
+        return session
+
+    monkeypatch.setattr(
+        "bookstack_file_exporter.common.util.requests.Session", _spy)
+
     helper = HttpHelper({}, http_config)
-    first = helper._session
     helper.http_get_request("https://wiki.test.example/api/books")
     helper.http_get_request("https://wiki.test.example/api/books")
-    assert helper._session is first  # session persists across calls
+
+    assert len(built) == 1  # one Session constructed, reused across calls
+
+
+@responses.activate
+def test_session_does_not_echo_server_cookies(http_config):
+    """Stateless token auth: a Set-Cookie from BookStack must not be echoed back.
+
+    Regression guard — the reused Session previously persisted BookStack's
+    `bookstack_session` cookie and sent it on later requests, causing intermittent
+    403s ("owner of the used API token does not have permission") mid-export.
+    """
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200,
+                  headers={"Set-Cookie": "bookstack_session=abc123; path=/; httponly"})
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200)
+
+    helper = HttpHelper({}, http_config)
+    helper.http_get_request("https://wiki.test.example/api/books")
+    helper.http_get_request("https://wiki.test.example/api/books")
+
+    # the second request must NOT carry a Cookie header echoing the server session
+    assert "Cookie" not in responses.calls[1].request.headers

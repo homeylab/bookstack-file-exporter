@@ -65,7 +65,7 @@ class TestPhase0BaselineMd:
     ):
         """Filtered-out (failed) assets stay in page_data; passed assets get rewritten.
 
-        Models the upstream contract: PageArchiver.archive_pages drops failed-asset
+        Models the upstream contract: PageArchiver.archive drops failed-asset
         nodes from page_images before calling update_asset_links. Only the URLs
         of the surviving (passed) nodes should be rewritten — URLs of dropped
         nodes must remain untouched.

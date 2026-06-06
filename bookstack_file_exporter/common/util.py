@@ -1,5 +1,6 @@
 import logging
 import os
+from http.cookiejar import DefaultCookiePolicy
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
 # pylint: disable=import-error
@@ -38,6 +39,13 @@ class HttpHelper:
     def _build_session(self) -> requests.Session:
         """build a requests Session with retry adapters mounted for http and https"""
         session = requests.Session()
+        # API token auth is stateless: block all cookies so the reused Session never
+        # stores and echoes BookStack's `bookstack_session` cookie back on later requests.
+        # Sending the server its own session cookie alongside the token makes BookStack
+        # return intermittent 403s ("owner of the used API token does not have permission")
+        # mid-export. A fresh requests call (pre-Session) never persisted the cookie, so
+        # this regressed when the shared Session was introduced.
+        session.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
         # {backoff factor} * (2 ** ({number of previous retries}))
         # {raise_on_status} if status falls in status_forcelist range
         #  and retries have been exhausted.

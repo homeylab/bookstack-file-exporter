@@ -11,6 +11,7 @@ import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
+from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ def mock_config():
     config.base_dir_name = "bkps"
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
+    config.user_inputs.export_level = "pages"
     config.object_storage_config = {}
     return config
 
@@ -45,6 +47,38 @@ def archiver_instance(patched_page_archiver, mock_config, mock_http_client):
 # ---------------------------------------------------------------------------
 # _generate_root_folder
 # ---------------------------------------------------------------------------
+
+class TestHasExportedContent:
+    """has_exported_content reflects whether the intermediate tar exists on disk."""
+
+    def test_false_when_tar_missing(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
+        assert archiver_instance.has_exported_content is False
+
+    def test_true_when_tar_exists(self, archiver_instance, tmp_path):
+        tar_path = tmp_path / "present.tar"
+        tar_path.write_bytes(b"data")
+        archiver_instance._archiver.tar_file = str(tar_path)
+        assert archiver_instance.has_exported_content is True
+
+
+class TestLevelBaseDir:
+    """Non-default export levels suffix the archive base name (and thus scope keep_last)."""
+
+    def test_pages_unchanged(self):
+        assert Archiver._level_base_dir("bkps", "pages") == "bkps"
+
+    @pytest.mark.parametrize("level", ["books", "chapters"])
+    def test_non_pages_suffixed(self, level):
+        assert Archiver._level_base_dir("bkps", level) == f"bkps_{level}"
+
+    def test_books_level_flows_into_archive_dir(self, patched_page_archiver,
+                                                mock_config, mock_http_client):
+        mock_config.user_inputs.export_level = "books"
+        archiver = Archiver(mock_config, mock_http_client)
+        assert archiver.base_dir == "bkps_books"
+        assert archiver.archive_dir.startswith("bkps_books_")
+
 
 @pytest.mark.parametrize("base_name", ["bkps", "my_export", "abc-123"])
 def test_generate_root_folder_format(monkeypatch, base_name):
@@ -378,3 +412,37 @@ def test_generate_path_strips_all_trailing_slashes(input_path, expected):
     """_generate_path must strip ALL trailing slashes, not just one."""
     result = MinioArchiver._generate_path(None, input_path)
     assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# books-level archiver wires modify_links (Task 6)
+# ---------------------------------------------------------------------------
+
+class TestBooksArchiverModifyLinksWiring:
+    def test_books_archiver_modify_links_active_when_configured(self, mock_http_client):
+        config = _make_config(
+            export_level="books",
+            formats=["markdown"],
+            modify_links=True,
+            export_images=True,
+        )
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert archiver._archiver.modify_links is True
+
+    def test_chapters_archiver_modify_links_active_when_configured(self, mock_http_client):
+        config = _make_config(
+            export_level="chapters",
+            formats=["markdown"],
+            modify_links=True,
+            export_images=True,
+        )
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert archiver._archiver.modify_links is True
