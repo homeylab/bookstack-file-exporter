@@ -310,6 +310,7 @@ More descriptions can be found for each section below:
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 | `notifications` | `object` | `false` | Optional [notification](#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](#filters) for details. |
+| `filters.exclude_unassigned_books` | `bool` | `false` | Optional (default: `false`). When `true`, drop all books that are not on any shelf, independent of the `books` patterns. See [Filters](#filters) for details. |
 
 #### Valid Environment Variables
 General
@@ -362,6 +363,8 @@ filters:
     exclude: []
   pages:
     exclude: ["secret", "scratch"]
+  # structural toggle: drop every book that is not on a shelf
+  exclude_unassigned_books: false
 ```
 
 #### Pattern matching
@@ -376,6 +379,18 @@ Patterns are Python [`re.fullmatch`](https://docs.python.org/3/library/re.html#r
 
 This means `exclude: ["draft"]` drops only the resource named exactly `draft` and will not silently drop `draft-api` or `old-draft`. For a backup tool, under-exclusion (keeping too much) is safer than over-exclusion (losing data).
 
+Patterns are also **case-sensitive** by default — `windows` does not match a shelf named `Windows`. Prefix with the inline flag `(?i)` for case-insensitive matching:
+
+| Pattern | Matches |
+| ------- | ------- |
+| `Windows` | `Windows` only |
+| `(?i)windows` | `windows`, `Windows`, `WINDOWS` |
+| `(?i).*windows.*` | any name containing `windows`, any case |
+
+#### What the pattern matches
+
+Filters match the resource's **display name** (the title shown in the BookStack UI), *not* the lowercased slug used for on-disk directory names. A shelf shown as `Windows` exports to a `windows/` directory, but the filter pattern must target `Windows` (or `(?i)windows`), not the `windows` directory name.
+
 #### Precedence
 
 Per resource node:
@@ -388,6 +403,31 @@ Both conditions are evaluated against the bare display name of the node (not a p
 
 Excluding a shelf, book, or chapter prunes its entire subtree — children are never fetched or exported. For example, `shelves.exclude: ["Archive"]` suppresses the Archive shelf and all books, chapters, and pages beneath it with no additional configuration.
 
+#### Interaction with export_level
+
+Filters are applied as the resource tree is built, which happens before [`export_level`](#export-level) selects what to archive. Shelves and books are always built (books are the basis for every level), so their filters always apply. Chapter and page filters only take effect when the level builds those nodes:
+
+| `export_level` | Filters applied |
+| -------------- | --------------- |
+| `books` | `shelves`, `books` |
+| `chapters` | `shelves`, `books`, `chapters` |
+| `pages` (default) | `shelves`, `books`, `chapters`, `pages` |
+
+A filter for a type below the selected level is **silently ignored** — e.g. a `pages` filter has no effect when `export_level: books`. Cascade still works at every level: excluding a parent prunes its whole subtree.
+
+#### Excluding books with no shelf
+
+A `shelves` filter only decides which shelves survive (and cascades to books *on* dropped shelves). A book on no shelf is an independent root and is **not** governed by the `shelves` filter. To drop such books, either name them with a `books` rule or set the structural toggle:
+
+```yaml
+filters:
+  shelves:
+    include: ["(?i)windows"]      # keep only the Windows shelf
+  exclude_unassigned_books: true  # drop every book not on a shelf
+```
+
+`exclude_unassigned_books` is structural and takes precedence over `books` patterns: when `true`, every shelfless book is dropped even if it would match a `books.include` pattern. `books` filters then only affect books that live on a surviving shelf. The toggle is independent of `export_level` (it applies at all levels, since books are always built).
+
 #### Validation
 
 All patterns are compiled with `re.compile` at config load time. An invalid regex or an empty string `""` pattern is rejected with a clear error message before any API call is made.
@@ -396,6 +436,7 @@ All patterns are compiled with `re.compile` at config load time. An invalid rege
 
 - **Same-name resources cannot be individually disambiguated.** If two books share the same display name, a filter pattern will match both. Use cascade (exclude the parent shelf/book) to scope the filter more precisely, or rename one of the resources.
 - **Renaming a resource can silently break a filter.** Filters match display names, not IDs — if a resource is renamed, existing patterns will no longer match it.
+- **Books with no shelf are not governed by the `shelves` filter.** A `shelves` rule only decides which shelves survive (and cascades to books on dropped shelves). Drop shelfless books with a `books` rule or `exclude_unassigned_books: true` — see [Excluding books with no shelf](#excluding-books-with-no-shelf). There is no switch to drop a subset of unassigned books by anything other than name.
 
 ## Backup Behavior
 
