@@ -1,6 +1,7 @@
+import re
 from typing import Literal
 # pylint: disable=import-error
-from pydantic import BaseModel, Field, AliasChoices, ConfigDict
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator
 
 # pylint: disable=too-few-public-methods
 class ObjectStorageConfig(BaseModel):
@@ -58,6 +59,46 @@ class Notifications(BaseModel):
     """YAML schema for user provided notification settings"""
     apprise: AppRiseNotifyConfig | None = None
 
+def _validate_pattern_list(patterns: list[str] | None) -> list[str] | None:
+    """Compile each pattern string and reject empty strings.
+
+    Iterate-and-dispatch shape: each item is dispatched to its own check
+    so a future union type (str | PatternSpec) can widen cleanly.
+    """
+    if patterns is None:
+        return patterns
+    for pattern in patterns:
+        if pattern == "":
+            raise ValueError(
+                '"" is not allowed (empty string matches empty names unexpectedly)'
+            )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f'invalid regex pattern "{pattern}": {exc}') from exc
+    return patterns
+
+
+class ResourceFilter(BaseModel):
+    """Include/exclude pattern lists for one resource type."""
+    include: list[str] | None = None
+    exclude: list[str] | None = None
+
+    @field_validator("include", "exclude", mode="before")
+    @classmethod
+    def validate_patterns(cls, value):
+        """Compile each pattern and reject empty strings."""
+        return _validate_pattern_list(value)
+
+
+class Filters(BaseModel):
+    """Per-resource-type regex filter configuration."""
+    shelves: ResourceFilter | None = None
+    books: ResourceFilter | None = None
+    chapters: ResourceFilter | None = None
+    pages: ResourceFilter | None = None
+
+
 # pylint: disable=too-few-public-methods
 class UserInput(BaseModel):
     """YAML schema for user provided configuration file"""
@@ -77,3 +118,4 @@ class UserInput(BaseModel):
     run_interval: int | None = 0
     http_config: HttpConfig | None = HttpConfig()
     notifications: Notifications | None = None
+    filters: Filters | None = None
