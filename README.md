@@ -271,6 +271,14 @@ notifications:
     custom_attachment_path: ""
     on_success: false
     on_failure: true
+filters:
+  shelves:
+    exclude: ["Archive"]
+  books:
+    include: ["eng-.*"]
+    exclude: ["draft"]
+  pages:
+    exclude: ["secret", "scratch"]
 ```
 
 #### Options and Descriptions
@@ -301,6 +309,7 @@ More descriptions can be found for each section below:
 | `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Used for basic scheduling of backups. |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 | `notifications` | `object` | `false` | Optional [notification](#notifications) configuration options. |
+| `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](#filters) for details. |
 
 #### Valid Environment Variables
 General
@@ -333,6 +342,60 @@ The shelf/book/chapter hierarchy is preserved as directories inside the archive 
 `assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
 
 For non-default levels the archive filename is suffixed with the level (e.g. `bkps_books_<timestamp>.tgz`, `bkps_chapters_<timestamp>.tgz`); `pages` keeps the unsuffixed `bkps_<timestamp>.tgz`. Because `keep_last` cleanup matches on this prefix, archive retention is scoped independently per level.
+
+## Filters
+
+The `filters` configuration option lets you include or exclude BookStack resources (shelves, books, chapters, pages) by name during export. Filtering runs during the tree build, before the exporter issues any detail API call for a node — excluded nodes and all their descendants are never fetched.
+
+#### Schema
+
+All keys are optional. Omit a type entirely (or leave its lists empty/`[]`) to apply no filter for that type.
+
+```yaml
+filters:
+  shelves:
+    exclude: ["Archive"]            # drops the Archive shelf + everything under it
+  books:
+    include: ["eng-.*"]             # optional allow-list (fullmatch)
+    exclude: ["draft"]
+  chapters:
+    exclude: []
+  pages:
+    exclude: ["secret", "scratch"]
+```
+
+#### Pattern matching
+
+Patterns are Python [`re.fullmatch`](https://docs.python.org/3/library/re.html#re.fullmatch) — the **entire** display name must match. Substring matching is opt-in via `.*`:
+
+| Pattern | Matches |
+| ------- | ------- |
+| `draft` | `draft` only |
+| `draft.*` | `draft`, `draft-api` |
+| `.*draft.*` | `draft`, `draft-api`, `old-draft` |
+
+This means `exclude: ["draft"]` drops only the resource named exactly `draft` and will not silently drop `draft-api` or `old-draft`. For a backup tool, under-exclusion (keeping too much) is safer than over-exclusion (losing data).
+
+#### Precedence
+
+Per resource node:
+1. If `include` is non-empty, the name must `fullmatch` at least one include pattern to survive.
+2. If the name `fullmatch`es any `exclude` pattern, it is dropped — **exclude wins**.
+
+Both conditions are evaluated against the bare display name of the node (not a path).
+
+#### Cascade
+
+Excluding a shelf, book, or chapter prunes its entire subtree — children are never fetched or exported. For example, `shelves.exclude: ["Archive"]` suppresses the Archive shelf and all books, chapters, and pages beneath it with no additional configuration.
+
+#### Validation
+
+All patterns are compiled with `re.compile` at config load time. An invalid regex or an empty string `""` pattern is rejected with a clear error message before any API call is made.
+
+#### Known limitations
+
+- **Same-name resources cannot be individually disambiguated.** If two books share the same display name, a filter pattern will match both. Use cascade (exclude the parent shelf/book) to scope the filter more precisely, or rename one of the resources.
+- **Renaming a resource can silently break a filter.** Filters match display names, not IDs — if a resource is renamed, existing patterns will no longer match it.
 
 ## Backup Behavior
 
