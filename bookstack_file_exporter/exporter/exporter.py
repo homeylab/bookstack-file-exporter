@@ -157,9 +157,7 @@ class NodeExporter():
             if book_id in self._excluded_book_ids:
                 log.debug("Book id=%d suppressed (its shelf was excluded)", book_id)
                 continue
-            # books-list summaries normally carry `name`; default defensively so
-            # the unassigned path stays robust if a summary omits it.
-            book_name = book_item.get('name', '')
+            book_name = book_item['name']
             if self._node_filter and not self._node_filter.keep(book_name, "books"):
                 log.debug("Unassigned book '%s' excluded by filter", book_name)
                 continue
@@ -176,10 +174,10 @@ class NodeExporter():
         # get books in shelves
         if shelve_nodes:
             book_nodes = self.get_child_nodes("books", shelve_nodes)
-        # A book that appears on both a pruned shelf AND a surviving shelf was collected
-        # via the survivor above — remove it from the suppression set so it is not
-        # wrongly blocked in get_unassigned_books (it won't be unassigned anyway, but
-        # the state must be consistent for the edge case where it truly is unassigned).
+        # A book on both a pruned shelf AND a surviving shelf was collected via the
+        # survivor above — remove it from the suppression set so the set stays free of
+        # already-collected books. (Such a book is assigned via the survivor, so it
+        # never appears in get_unassigned_books regardless; this just keeps state clean.)
         self._excluded_book_ids -= set(book_nodes.keys())
         # books with no shelve assignment
         # default will be put in "unassigned" directory relative to backup dir

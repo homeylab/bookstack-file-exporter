@@ -208,3 +208,54 @@ class TestExporterSharedTail:
         mock_archiver.create_archive.assert_not_called()
         mock_archiver.archive_remote.assert_not_called()
         mock_archiver.clean_up.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# NodeFilter wiring: filters config → NodeExporter receives node_filter
+# ---------------------------------------------------------------------------
+
+class TestExporterNodeFilterWiring:
+    def test_node_filter_built_and_passed_when_filters_configured(self, monkeypatch):
+        config = _make_exporter_config("books")
+        config.user_inputs.filters = {"books": {"include": ["My Book"]}}
+
+        mock_filter_instance = MagicMock()
+        mock_node_filter_cls = MagicMock(return_value=mock_filter_instance)
+        monkeypatch.setattr("bookstack_file_exporter.run.NodeFilter", mock_node_filter_cls)
+
+        mock_node_exporter_cls = MagicMock()
+        mock_node_exporter_cls.return_value.get_all_shelves.return_value = {}
+        mock_node_exporter_cls.return_value.get_all_books.return_value = {1: MagicMock()}
+        monkeypatch.setattr("bookstack_file_exporter.run.NodeExporter", mock_node_exporter_cls)
+        monkeypatch.setattr("bookstack_file_exporter.run.HttpHelper", MagicMock())
+        monkeypatch.setattr("bookstack_file_exporter.run.Archiver", MagicMock(
+            return_value=MagicMock(has_exported_content=True)
+        ))
+
+        run.exporter(config)
+
+        mock_node_filter_cls.assert_called_once_with(config.user_inputs.filters)
+        _, kwargs = mock_node_exporter_cls.call_args
+        assert kwargs.get("node_filter") is mock_filter_instance
+
+    def test_node_filter_is_none_when_filters_not_configured(self, monkeypatch):
+        config = _make_exporter_config("books")
+        config.user_inputs.filters = None
+
+        mock_node_filter_cls = MagicMock()
+        monkeypatch.setattr("bookstack_file_exporter.run.NodeFilter", mock_node_filter_cls)
+
+        mock_node_exporter_cls = MagicMock()
+        mock_node_exporter_cls.return_value.get_all_shelves.return_value = {}
+        mock_node_exporter_cls.return_value.get_all_books.return_value = {1: MagicMock()}
+        monkeypatch.setattr("bookstack_file_exporter.run.NodeExporter", mock_node_exporter_cls)
+        monkeypatch.setattr("bookstack_file_exporter.run.HttpHelper", MagicMock())
+        monkeypatch.setattr("bookstack_file_exporter.run.Archiver", MagicMock(
+            return_value=MagicMock(has_exported_content=True)
+        ))
+
+        run.exporter(config)
+
+        mock_node_filter_cls.assert_not_called()
+        _, kwargs = mock_node_exporter_cls.call_args
+        assert kwargs.get("node_filter") is None

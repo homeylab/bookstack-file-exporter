@@ -201,7 +201,7 @@ def test_get_unassigned_books_one_unassigned_fetched_with_prefix(
 ):
     existing = {10: build_node(id=10, slug="book-10", name="Book 10")}
     unassigned_data = dict(book_detail_mixed, id=99, slug="orphan-book", name="Orphan Book")
-    mock_http_client.http_get_all.return_value = [{"id": 10}, {"id": 99}]
+    mock_http_client.http_get_all.return_value = [{"id": 10, "name": "Book 10"}, {"id": 99, "name": "Orphan Book"}]
     mock_http_client.http_get_request.return_value = make_response(unassigned_data)
     exporter = _exporter(api_urls, mock_http_client)
     result = exporter.get_unassigned_books(existing, "unassigned/")
@@ -253,7 +253,7 @@ def test_get_all_books_adds_unassigned_books(
         raise AssertionError(f"unexpected url: {url}")
 
     # all-books includes 99 which isn't in the shelf
-    mock_http_client.http_get_all.return_value = [{"id": 10}, {"id": 11}, {"id": 99}]
+    mock_http_client.http_get_all.return_value = [{"id": 10, "name": "Test Book 1"}, {"id": 11, "name": "Test Book 2"}, {"id": 99, "name": "Orphan"}]
     mock_http_client.http_get_request.side_effect = _side_effect
     exporter = _exporter(api_urls, mock_http_client)
     result = exporter.get_all_books({1: shelf_node}, "unassigned/")
