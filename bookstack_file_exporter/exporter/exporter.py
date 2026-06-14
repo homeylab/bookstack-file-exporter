@@ -142,7 +142,7 @@ class NodeExporter():
                               path_prefix: str) -> dict[int, Node]:
         """get books not under a shelf.
 
-        Applies two gates before fetching each book detail:
+        Applies these gates before fetching each book detail:
           1. The book must not already be collected under a shelf (existing_books).
           2. The book ID must not be in _excluded_book_ids (books from dropped shelves).
           3. When a node_filter is set, the book name must pass the 'books' filter.
@@ -157,6 +157,8 @@ class NodeExporter():
             if book_id in self._excluded_book_ids:
                 log.debug("Book id=%d suppressed (its shelf was excluded)", book_id)
                 continue
+            # books-list summaries normally carry `name`; default defensively so
+            # the unassigned path stays robust if a summary omits it.
             book_name = book_item.get('name', '')
             if self._node_filter and not self._node_filter.keep(book_name, "books"):
                 log.debug("Unassigned book '%s' excluded by filter", book_name)

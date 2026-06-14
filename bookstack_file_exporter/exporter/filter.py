@@ -19,13 +19,8 @@ class NodeFilter:
     Unknown resource types (no filter configured) always pass through.
     """
 
-    # Map resource_type string → attribute name on Filters
-    _TYPE_ATTR = {
-        "shelves": "shelves",
-        "books": "books",
-        "chapters": "chapters",
-        "pages": "pages",
-    }
+    # Filterable resource types; each matches a field of the same name on Filters.
+    _RESOURCE_TYPES = ("shelves", "books", "chapters", "pages")
 
     def __init__(self, filters: Filters | None) -> None:
         # Compile patterns once per resource type.
@@ -39,8 +34,8 @@ class NodeFilter:
         if filters is None:
             return
 
-        for resource_type, attr in self._TYPE_ATTR.items():
-            rf: ResourceFilter | None = getattr(filters, attr)
+        for resource_type in self._RESOURCE_TYPES:
+            rf: ResourceFilter | None = getattr(filters, resource_type)
             if rf is None:
                 self._include[resource_type] = None
                 self._exclude[resource_type] = None
