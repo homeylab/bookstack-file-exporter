@@ -101,7 +101,7 @@ wheels = [
 
 [[package]]
 name = "bookstack-file-exporter"
-version = "0.0.1"
+version = "2.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "apprise" },
