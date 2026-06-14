@@ -97,6 +97,9 @@ class Filters(BaseModel):
     books: ResourceFilter | None = None
     chapters: ResourceFilter | None = None
     pages: ResourceFilter | None = None
+    # Structural toggle (not a regex filter): when true, drop ALL books with no
+    # shelf assignment, regardless of the books include/exclude patterns.
+    exclude_unassigned_books: bool = False
 
 
 # pylint: disable=too-few-public-methods

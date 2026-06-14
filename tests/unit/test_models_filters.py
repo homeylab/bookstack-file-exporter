@@ -114,6 +114,14 @@ class TestFiltersModel:
         with pytest.raises(ValidationError):
             Filters(books=ResourceFilter(include=["[bad"]))
 
+    def test_exclude_unassigned_books_defaults_to_false(self):
+        f = Filters()
+        assert f.exclude_unassigned_books is False
+
+    def test_exclude_unassigned_books_true_is_accepted(self):
+        f = Filters(exclude_unassigned_books=True)
+        assert f.exclude_unassigned_books is True
+
 
 # ---------------------------------------------------------------------------
 # UserInput integration: filters field

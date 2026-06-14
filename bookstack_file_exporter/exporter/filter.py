@@ -30,6 +30,7 @@ class NodeFilter:
         # for exclude that means no patterns to match.
         self._include: dict[str, list[re.Pattern] | None] = {}
         self._exclude: dict[str, list[re.Pattern] | None] = {}
+        self._exclude_unassigned_books = bool(filters and filters.exclude_unassigned_books)
 
         if filters is None:
             return
@@ -75,3 +76,8 @@ class NodeFilter:
             return False
 
         return True
+
+    @property
+    def exclude_unassigned_books(self) -> bool:
+        """When True, drop all shelfless books regardless of name filters."""
+        return self._exclude_unassigned_books

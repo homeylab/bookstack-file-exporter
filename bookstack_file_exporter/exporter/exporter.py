@@ -183,7 +183,10 @@ class NodeExporter():
         self._excluded_book_ids -= set(book_nodes.keys())
         # books with no shelve assignment
         # default will be put in "unassigned" directory relative to backup dir
-        books_no_shelf = self.get_unassigned_books(book_nodes, unassigned_dir)
+        if self._node_filter and self._node_filter.exclude_unassigned_books:
+            books_no_shelf = {}
+        else:
+            books_no_shelf = self.get_unassigned_books(book_nodes, unassigned_dir)
 
         # add new book nodes to map
         # these should not already be present in map

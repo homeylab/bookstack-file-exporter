@@ -270,6 +270,114 @@ def test_get_all_books_merges_unassigned(api_urls, mock_http_client, monkeypatch
 
 
 # ---------------------------------------------------------------------------
+# get_all_books — exclude_unassigned_books toggle
+# ---------------------------------------------------------------------------
+
+def test_exclude_unassigned_books_true_drops_orphan(
+    api_urls, mock_http_client, shelf_detail, book_detail_mixed
+):
+    """exclude_unassigned_books=True: orphan book absent; its detail GET never issued."""
+    node_filter = NodeFilter(Filters(exclude_unassigned_books=True))
+    exporter = NodeExporter(api_urls, mock_http_client, node_filter=node_filter)
+
+    shelf_node = Node(shelf_detail)
+    book_data_10 = dict(book_detail_mixed, id=10, slug="test-book-1", name="Test Book 1")
+    book_data_11 = dict(book_detail_mixed, id=11, slug="test-book-2", name="Test Book 2")
+
+    def _side_effect(url):
+        if "/books/10" in url:
+            return make_response(book_data_10)
+        if "/books/11" in url:
+            return make_response(book_data_11)
+        if "/books/99" in url:
+            raise AssertionError("orphan book 99 detail should never be fetched")
+        raise AssertionError(f"unexpected url: {url}")
+
+    # books list includes orphan 99; shelf has books 10 and 11
+    mock_http_client.http_get_all.return_value = [
+        {"id": 10, "name": "Test Book 1"},
+        {"id": 11, "name": "Test Book 2"},
+        {"id": 99, "name": "Orphan Book"},
+    ]
+    mock_http_client.http_get_request.side_effect = _side_effect
+
+    result = exporter.get_all_books({1: shelf_node}, "unassigned/")
+    assert 10 in result
+    assert 11 in result
+    assert 99 not in result
+
+
+def test_exclude_unassigned_books_false_includes_orphan(
+    api_urls, mock_http_client, shelf_detail, book_detail_mixed
+):
+    """exclude_unassigned_books=False (default): orphan book is still exported."""
+    node_filter = NodeFilter(Filters(exclude_unassigned_books=False))
+    exporter = NodeExporter(api_urls, mock_http_client, node_filter=node_filter)
+
+    shelf_node = Node(shelf_detail)
+    book_data_10 = dict(book_detail_mixed, id=10, slug="test-book-1", name="Test Book 1")
+    book_data_11 = dict(book_detail_mixed, id=11, slug="test-book-2", name="Test Book 2")
+    orphan_data = dict(book_detail_mixed, id=99, slug="orphan-book", name="Orphan Book")
+
+    def _side_effect(url):
+        if "/books/10" in url:
+            return make_response(book_data_10)
+        if "/books/11" in url:
+            return make_response(book_data_11)
+        if "/books/99" in url:
+            return make_response(orphan_data)
+        raise AssertionError(f"unexpected url: {url}")
+
+    mock_http_client.http_get_all.return_value = [
+        {"id": 10, "name": "Test Book 1"},
+        {"id": 11, "name": "Test Book 2"},
+        {"id": 99, "name": "Orphan Book"},
+    ]
+    mock_http_client.http_get_request.side_effect = _side_effect
+
+    result = exporter.get_all_books({1: shelf_node}, "unassigned/")
+    assert 10 in result
+    assert 11 in result
+    assert 99 in result
+
+
+def test_exclude_unassigned_books_true_independent_of_books_include(
+    api_urls, mock_http_client, shelf_detail, book_detail_mixed
+):
+    """exclude_unassigned_books=True wins even when books.include would match the orphan."""
+    node_filter = NodeFilter(Filters(
+        exclude_unassigned_books=True,
+        books=ResourceFilter(include=["Orphan Book"]),
+    ))
+    exporter = NodeExporter(api_urls, mock_http_client, node_filter=node_filter)
+
+    shelf_node = Node(shelf_detail)
+    book_data_10 = dict(book_detail_mixed, id=10, slug="test-book-1", name="Test Book 1")
+    book_data_11 = dict(book_detail_mixed, id=11, slug="test-book-2", name="Test Book 2")
+
+    def _side_effect(url):
+        # Books 10 and 11 are on the shelf so they are fetched via get_child_nodes;
+        # the books.include filter would normally drop them (they don't match "Orphan Book"),
+        # but this test's concern is only that the orphan detail is never fetched.
+        if "/books/10" in url or "/books/11" in url:
+            # These will be dropped by the books.include filter; if somehow reached, fail.
+            raise AssertionError(f"shelf book detail fetched unexpectedly: {url}")
+        if "/books/99" in url:
+            raise AssertionError("orphan 99 detail must not be fetched when toggle is True")
+        raise AssertionError(f"unexpected url: {url}")
+
+    mock_http_client.http_get_all.return_value = [
+        {"id": 10, "name": "Test Book 1"},
+        {"id": 11, "name": "Test Book 2"},
+        {"id": 99, "name": "Orphan Book"},
+    ]
+    mock_http_client.http_get_request.side_effect = _side_effect
+
+    result = exporter.get_all_books({1: shelf_node}, "unassigned/")
+    assert 99 not in result
+
+
+# ---------------------------------------------------------------------------
 # get_child_nodes / _get_children
 # ---------------------------------------------------------------------------
 
