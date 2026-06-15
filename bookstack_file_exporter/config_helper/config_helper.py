@@ -18,14 +18,37 @@ def load_yaml_config(path: str) -> dict:
     with open(path, encoding="utf-8") as yaml_stream:
         try:
             return yaml.safe_load(yaml_stream)
-        except Exception as load_err:
+        except yaml.YAMLError:
             log.error("Failed to load yaml configuration file")
-            raise load_err
+            raise
+
+
+def check_legacy_modify_markdown(raw: dict) -> None:
+    """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
+    assets_raw = raw.get("assets", {}) or {}
+    if not isinstance(assets_raw, dict):
+        # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
+        return
+    has_legacy = "modify_markdown" in assets_raw
+    has_new = "modify_links" in assets_raw
+    if not has_legacy:
+        return
+    log.warning(
+        "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
+        "USE 'assets.modify_links' INSTEAD. "
+        "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
+    )
+    if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
+        log.warning(
+            "Both 'assets.modify_links' and 'assets.modify_markdown' "
+            "are set with different values. 'assets.modify_links' wins; "
+            "the legacy 'assets.modify_markdown' value is ignored."
+        )
 
 
 def build_user_input(raw: dict) -> models.UserInput:
     """Legacy-key deprecation check + pydantic validation. Returns models.UserInput."""
-    ConfigNode._check_legacy_modify_markdown(raw)  # pylint: disable=protected-access
+    check_legacy_modify_markdown(raw)
     try:
         return models.UserInput(**raw)
     except Exception as err:
@@ -84,29 +107,6 @@ class ConfigNode:
 
     def _generate_config(self, config_file: str) -> models.UserInput:
         return build_user_input(load_yaml_config(config_file))
-
-    @staticmethod
-    def _check_legacy_modify_markdown(yaml_input: dict) -> None:
-        """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
-        assets_raw = yaml_input.get("assets", {}) or {}
-        if not isinstance(assets_raw, dict):
-            # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
-            return
-        has_legacy = "modify_markdown" in assets_raw
-        has_new = "modify_links" in assets_raw
-        if not has_legacy:
-            return
-        log.warning(
-            "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
-            "USE 'assets.modify_links' INSTEAD. "
-            "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
-        )
-        if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
-            log.warning(
-                "Both 'assets.modify_links' and 'assets.modify_markdown' "
-                "are set with different values. 'assets.modify_links' wins; "
-                "the legacy 'assets.modify_markdown' value is ignored."
-            )
 
     def _generate_credentials(self) -> tuple[str, str]:
         # if user provided credentials in config file, load them
