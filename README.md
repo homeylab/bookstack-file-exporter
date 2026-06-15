@@ -379,7 +379,7 @@ Patterns are Python [`re.fullmatch`](https://docs.python.org/3/library/re.html#r
 | `draft.*` | `draft`, `draft-api` |
 | `.*draft.*` | `draft`, `draft-api`, `old-draft` |
 
-This means `exclude: ["draft"]` drops only the resource named exactly `draft` and will not silently drop `draft-api` or `old-draft`. For a backup tool, under-exclusion (keeping too much) is safer than over-exclusion (losing data).
+This means `exclude: ["draft"]` drops only the resource named exactly `draft`, not `draft-api` or `old-draft`. Add those names to the list (or use a pattern like `draft.*`) to drop them too.
 
 Patterns are also **case-sensitive** by default — `windows` does not match a shelf named `Windows`. Prefix with the inline flag `(?i)` for case-insensitive matching:
 
