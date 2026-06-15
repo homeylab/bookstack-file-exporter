@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/homeylab/bookstack-file-exporter/compare/v2.2.0...v2.3.0) (2026-06-15)
+
+
+### Features
+
+* regex filter for shelves/books/chapters/pages export ([#72](https://github.com/homeylab/bookstack-file-exporter/issues/72)) ([#116](https://github.com/homeylab/bookstack-file-exporter/issues/116)) ([ccb9515](https://github.com/homeylab/bookstack-file-exporter/commit/ccb95154fbb9bef4eeae92c471a9ae5a2e2e399b))
+
 ## [2.2.0](https://github.com/homeylab/bookstack-file-exporter/compare/v2.1.0...v2.2.0) (2026-06-06)
 
 
