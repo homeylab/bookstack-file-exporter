@@ -10,6 +10,8 @@ Table of Contents
     - [Run via Helm](#run-via-helm)
     - [Authentication and Permissions](#authentication-and-permissions)
     - [Configuration](#configuration)
+  - [Export Level](#export-level)
+  - [Filters](#filters)
   - [Backup Behavior](#backup-behavior)
     - [General](#general)
     - [Images](#images)
@@ -389,7 +391,7 @@ Patterns are also **case-sensitive** by default — `windows` does not match a s
 
 #### What the pattern matches
 
-Filters match the resource's **display name** (the title shown in the BookStack UI), *not* the lowercased slug used for on-disk directory names. A shelf shown as `Windows` exports to a `windows/` directory, but the filter pattern must target `Windows` (or `(?i)windows`), not the `windows` directory name.
+Filters currently only match the resource's **display name** (the title shown in the BookStack UI), *not* the lowercased slug used for on-disk directory names. A shelf shown as `Windows` exports to a `windows/` directory, but the filter pattern must target `Windows` (or `(?i)windows`), not the `windows` directory name.
 
 #### Precedence
 
@@ -642,7 +644,7 @@ Optionally, target(s) can be specified to upload generated archives to a remote 
 - [Minio](#minio-backups)
 
 ### Minio Backups
-Optionally, look at `examples/minio_config.yml` folder of the github repo for more examples. 
+Optionally, look at `examples/config.yml` in the github repo, which includes a commented-out `minio:` block to enable object storage upload. 
 
 #### Authentication
 Credentials can be specified directly in the `minio` configuration section or as environment variables. If specified in config and env, env variable will take precedence.
@@ -764,5 +766,5 @@ pytest -m integration
 3. ~~Be able to modify markdown links of images to local exported images in their respective page folders for a more complete file level backup.~~
 4. ~~Be able to pull attachments locally and place in their respective page folders for a more complete file level backup.~~
 5. Export S3 and more options.
-6. Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.
+6. ~~Filter shelves and books by name - for more targeted backups. Example: you only want to share a book about one topic with an external friend/user.~~
 7. Be able to pull media/photos from 3rd party providers like `drawio`

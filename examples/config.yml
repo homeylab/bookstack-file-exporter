@@ -26,6 +26,20 @@ formats:
 # "chapters": one combined file per chapter, in a per-chapter folder; same modify_links support
 #             as books; loose pages not under a chapter are skipped
 # export_level: pages
+## optional - include/exclude resources by display-name regex (uses re.fullmatch)
+# omit/comment out to disable all filtering. See the "Filters" section in the README.
+# filters:
+#   shelves:
+#     exclude: ["Archive"]            # drop the Archive shelf + everything under it
+#   books:
+#     include: ["eng-.*"]             # optional allow-list (fullmatch; substring needs .*)
+#     exclude: ["draft"]
+#   chapters:
+#     exclude: []
+#   pages:
+#     exclude: ["secret", "scratch"]
+#   # structural toggle: drop every book that is not on a shelf
+#   exclude_unassigned_books: false
 # optional how to handle additional content for pages
 assets:
   # optional export of all the images used in a page(s).
@@ -64,6 +78,24 @@ http_config:
     test: "test"
     test2: "test2"
     User-Agent: "test-agent"
+## optional - upload the exported archive to a MinIO/S3 object storage bucket
+# omit/comment out if you only want local backups
+# tip: pair with keep_last: -1 below to delete local copies after a successful upload
+# minio:
+#   # host/ip + optional port, example: "minio.yourdomain.com:8443"
+#   host: "minio.yourdomain.com"
+#   # set here or as env var MINIO_ACCESS_KEY (env takes precedence)
+#   access_key: ""
+#   # set here or as env var MINIO_SECRET_KEY (env takes precedence)
+#   secret_key: ""
+#   # required by minio; if unsure try "us-east-1"
+#   region: "us-east-1"
+#   bucket: "bookstack-bkps"
+#   # optional upload path; uses root bucket path if unset
+#   # archive appears at: <bucket>:<path>/bookstack_export_<timestamp>.tgz
+#   path: "bookstack/file_backups/"
+#   # optional - retain N archives in the bucket (0/omit = no action)
+#   keep_last: 5
 # directory to export to
 # relative or full path
 output_path: "bkps/"
