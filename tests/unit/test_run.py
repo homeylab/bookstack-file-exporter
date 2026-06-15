@@ -1,6 +1,7 @@
 """Tests for run.entrypoint dispatch (single run vs interval loop) and
 export-level node selection in run.exporter."""
 # pylint: disable=missing-class-docstring,missing-function-docstring,unused-argument
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -85,13 +86,16 @@ class TestExporterDispatchPages:
         mock_export_helper.get_chapter_nodes.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(page_nodes)
 
-    def test_pages_level_empty_nodes_returns_early(self, monkeypatch):
+    def test_pages_level_empty_nodes_returns_early(self, monkeypatch, caplog):
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
             chapter_nodes={}, page_nodes={}
         )
-        run.exporter(config)
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            run.exporter(config)
+        # took the empty-nodes branch specifically (not some other early path)
+        assert any("Nothing to archive" in r.message for r in caplog.records)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -112,13 +116,16 @@ class TestExporterDispatchBooks:
         mock_export_helper.get_chapter_nodes.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(book_nodes)
 
-    def test_books_level_empty_nodes_returns_early(self, monkeypatch):
+    def test_books_level_empty_nodes_returns_early(self, monkeypatch, caplog):
         config = _make_exporter_config("books")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={},
             chapter_nodes={}, page_nodes={}
         )
-        run.exporter(config)
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            run.exporter(config)
+        # took the empty-nodes branch specifically (not some other early path)
+        assert any("Nothing to archive" in r.message for r in caplog.records)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -140,13 +147,16 @@ class TestExporterDispatchChapters:
         mock_export_helper.get_all_pages.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(chapter_nodes)
 
-    def test_chapters_level_empty_nodes_returns_early(self, monkeypatch):
+    def test_chapters_level_empty_nodes_returns_early(self, monkeypatch, caplog):
         config = _make_exporter_config("chapters")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
             chapter_nodes={}, page_nodes={}
         )
-        run.exporter(config)
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            run.exporter(config)
+        # took the empty-nodes branch specifically (not some other early path)
+        assert any("Nothing to archive" in r.message for r in caplog.records)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -277,4 +287,26 @@ class TestRunNotificationOnEarlyReturn:
 
         run.run(config)
 
+        mock_notif_instance.do_notify.assert_called_once_with()
+
+    def test_empty_archive_early_return_fires_success_notification(self, monkeypatch):
+        """Second early-return site: nodes existed but nothing landed in the tar
+        (has_exported_content False). run() must still call do_notify() with no
+        error argument, and the downstream archive steps must be skipped."""
+        config = _make_exporter_config("pages")
+        config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
+
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = False
+
+        mock_notif_instance = MagicMock()
+        mock_notif_cls = MagicMock(return_value=mock_notif_instance)
+        monkeypatch.setattr("bookstack_file_exporter.run.NotifyHandler", mock_notif_cls)
+
+        run.run(config)
+
+        mock_archiver.create_archive.assert_not_called()
         mock_notif_instance.do_notify.assert_called_once_with()
