@@ -51,9 +51,9 @@ def build_user_input(raw: dict) -> models.UserInput:
     check_legacy_modify_markdown(raw)
     try:
         return models.UserInput(**raw)
-    except Exception as err:
+    except Exception:
         log.error("Yaml configuration failed schema validation")
-        raise err
+        raise
 
 
 _DEFAULT_HEADERS = {
