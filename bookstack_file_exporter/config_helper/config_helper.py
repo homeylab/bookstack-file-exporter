@@ -10,6 +10,29 @@ from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
+
+def load_yaml_config(path: str) -> dict:
+    """File I/O + safe_load. Raises FileNotFoundError / yaml.YAMLError."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    with open(path, encoding="utf-8") as yaml_stream:
+        try:
+            return yaml.safe_load(yaml_stream)
+        except Exception as load_err:
+            log.error("Failed to load yaml configuration file")
+            raise load_err
+
+
+def build_user_input(raw: dict) -> models.UserInput:
+    """Legacy-key deprecation check + pydantic validation. Returns models.UserInput."""
+    ConfigNode._check_legacy_modify_markdown(raw)  # pylint: disable=protected-access
+    try:
+        return models.UserInput(**raw)
+    except Exception as err:
+        log.error("Yaml configuration failed schema validation")
+        raise err
+
+
 _DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
 }
@@ -60,23 +83,7 @@ class ConfigNode:
         self._object_storage_config = self._generate_remote_config()
 
     def _generate_config(self, config_file: str) -> models.UserInput:
-        if not os.path.isfile(config_file):
-            raise FileNotFoundError(config_file)
-        with open(config_file, encoding="utf-8") as yaml_stream:
-            try:
-                yaml_input = yaml.safe_load(yaml_stream)
-            except Exception as load_err:
-                # log here to make it easier to identify the issue
-                log.error("Failed to load yaml configuration file")
-                raise load_err
-        self._check_legacy_modify_markdown(yaml_input)
-        try:
-            user_inputs = models.UserInput(**yaml_input)
-        except Exception as err:
-            # log here to make it easier to identify the issue
-            log.error("Yaml configuration failed schema validation")
-            raise err
-        return user_inputs
+        return build_user_input(load_yaml_config(config_file))
 
     @staticmethod
     def _check_legacy_modify_markdown(yaml_input: dict) -> None:
