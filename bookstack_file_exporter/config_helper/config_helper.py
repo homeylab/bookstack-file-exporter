@@ -157,8 +157,9 @@ class ConfigNode:
         urls = {}
         # remove trailing slash
         host = self.user_inputs.host.rstrip('/')
-        # check to see if http protocol is defined
-        if "http" not in host:
+        # check to see if http protocol is defined (scheme prefix, not substring:
+        # a host like 'myhttphost.local' must still get the https:// default)
+        if not host.startswith(("http://", "https://")):
             # use https by default
             url_prefix = "https://"
         else:

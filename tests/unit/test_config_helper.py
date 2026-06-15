@@ -1,12 +1,14 @@
 """Unit tests for the module-level config parsing seams extracted in R2."""
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.config_helper import (
+    ConfigNode,
     build_user_input,
     load_yaml_config,
 )
@@ -145,3 +147,35 @@ def test_build_user_input_no_warning_without_legacy_key(caplog):
         and "DEPRECATED" in r.message
     ]
     assert deprecation_warnings == []
+
+
+# ---------------------------------------------------------------------------
+# _generate_urls — scheme detection (Fix-1)
+# ---------------------------------------------------------------------------
+def _config_with_host(host: str) -> ConfigNode:
+    """Build a bare ConfigNode exposing only what _generate_urls reads."""
+    node = ConfigNode.__new__(ConfigNode)
+    node.user_inputs = SimpleNamespace(host=host)
+    return node
+
+
+@pytest.mark.parametrize("host", [
+    "myhttphost.local",       # contains 'http' but no scheme
+    "wiki.example.com",       # plain host, no scheme
+    "https-portal.internal",  # contains 'https' but no scheme
+])
+def test_generate_urls_adds_https_when_no_scheme(host):
+    """Hosts without an http(s):// scheme get the https:// default,
+    even when 'http' appears as a substring of the hostname (Fix-1)."""
+    urls = _config_with_host(host)._generate_urls()
+    assert urls["books"] == f"https://{host}/api/books"
+
+
+@pytest.mark.parametrize("host", [
+    "http://wiki.example.com",
+    "https://wiki.example.com",
+])
+def test_generate_urls_preserves_existing_scheme(host):
+    """Hosts that already carry a scheme are left untouched (no prefix added)."""
+    urls = _config_with_host(host)._generate_urls()
+    assert urls["books"] == f"{host}/api/books"
