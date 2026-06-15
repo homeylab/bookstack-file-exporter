@@ -348,7 +348,7 @@ For non-default levels the archive filename is suffixed with the level (e.g. `bk
 
 ## Filters
 
-The `filters` configuration option lets you include or exclude BookStack resources (shelves, books, chapters, pages) by name during export. Filtering runs during the tree build, before the exporter issues any detail API call for a node — excluded nodes and all their descendants are never fetched.
+The `filters` configuration option lets you include or exclude BookStack resources (shelves, books, chapters, pages) by name during export. Filtering runs during the tree build, before the exporter issues any detail API call for a node — excluded books, chapters, and pages — and all descendants of any excluded node — are never fetched.
 
 #### Schema
 
@@ -438,7 +438,7 @@ All patterns are compiled with `re.compile` at config load time. An invalid rege
 
 - **Same-name resources cannot be individually disambiguated.** If two books share the same display name, a filter pattern will match both. Use cascade (exclude the parent shelf/book) to scope the filter more precisely, or rename one of the resources.
 - **Renaming a resource can silently break a filter.** Filters match display names, not IDs — if a resource is renamed, existing patterns will no longer match it.
-- **Books with no shelf are not governed by the `shelves` filter.** A `shelves` rule only decides which shelves survive (and cascades to books on dropped shelves). Drop shelfless books with a `books` rule or `exclude_unassigned_books: true` — see [Excluding books with no shelf](#excluding-books-with-no-shelf). There is no switch to drop a subset of unassigned books by anything other than name.
+- **Shelfless books aren't governed by `shelves` filters** — see [Excluding books with no shelf](#excluding-books-with-no-shelf).
 
 ## Backup Behavior
 
