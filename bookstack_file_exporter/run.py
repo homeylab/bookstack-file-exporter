@@ -9,6 +9,7 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper
 from bookstack_file_exporter.notify.handler import NotifyHandler
+from bookstack_file_exporter.notify.models import NotifyResult
 
 log = logging.getLogger(__name__)
 
@@ -26,10 +27,10 @@ def entrypoint(args: argparse.Namespace):
 def run(config: ConfigNode):
     """run export process with error handling and notification support"""
     try:
-        exporter(config)
+        result = exporter(config)
         if config.user_inputs.notifications:
             notif = NotifyHandler(config.user_inputs.notifications)
-            notif.do_notify()
+            notif.do_notify(result=result)
     except Exception as run_err: # general catch all for notifications
         if not config.user_inputs.notifications:
             raise run_err
@@ -84,7 +85,7 @@ def exporter(config: ConfigNode):
             "No %s data available from given Bookstack instance. Nothing to archive",
             export_level,
         )
-        return
+        return None
 
     log.info("Beginning archive")
     # get all content for each node
@@ -93,16 +94,18 @@ def exporter(config: ConfigNode):
     # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
     if not archive.has_exported_content:
         log.warning("No %s content was archived. Nothing to upload", export_level)
-        return
+        return None
 
     # create tar if needed and gzip tar
     archive.create_archive()
 
     # archive to remote targets
-    archive.archive_remote()
+    remote = archive.archive_remote()
     # if remote target is specified and clean is true
     # clean up the .tgz archive since it is already uploaded
-    archive.clean_up()
+    removed = archive.clean_up()
 
+    local = archive.archive_file
     log.info("Created file archive: %s.tgz", archive.archive_dir)
     log.info("Completed run")
+    return NotifyResult(local=local, remote=remote, removed=removed)
