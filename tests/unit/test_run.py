@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from bookstack_file_exporter import run
+from bookstack_file_exporter.notify.models import NotifyResult
 
 
 def _config(run_interval):
@@ -287,7 +288,7 @@ class TestRunNotificationOnEarlyReturn:
 
         run.run(config)
 
-        mock_notif_instance.do_notify.assert_called_once_with()
+        mock_notif_instance.do_notify.assert_called_once_with(result=None)
 
     def test_empty_archive_early_return_fires_success_notification(self, monkeypatch):
         """Second early-return site: nodes existed but nothing landed in the tar
@@ -309,4 +310,77 @@ class TestRunNotificationOnEarlyReturn:
         run.run(config)
 
         mock_archiver.create_archive.assert_not_called()
-        mock_notif_instance.do_notify.assert_called_once_with()
+        mock_notif_instance.do_notify.assert_called_once_with(result=None)
+
+
+# ---------------------------------------------------------------------------
+# exporter() return value: None on early returns, NotifyResult on success
+# ---------------------------------------------------------------------------
+
+class TestExporterReturnValue:
+    def test_empty_nodes_returns_none(self, monkeypatch):
+        """empty nodes early return → exporter() returns None."""
+        config = _make_exporter_config("pages")
+        _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={}
+        )
+        result = run.exporter(config)
+        assert result is None
+
+    def test_no_exported_content_returns_none(self, monkeypatch):
+        """has_exported_content=False early return → exporter() returns None."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = False
+        result = run.exporter(config)
+        assert result is None
+
+    def test_success_returns_notify_result(self, monkeypatch):
+        """Happy path → exporter() returns a populated NotifyResult."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = ["bucket/export.tgz"]
+        mock_archiver.clean_up.return_value = ["/local/export.tgz"]
+        mock_archiver.archive_file = "/local/export.tgz"
+
+        result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.local == "/local/export.tgz"
+        assert result.remote == ["bucket/export.tgz"]
+        assert result.removed == ["/local/export.tgz"]
+
+    def test_success_path_do_notify_called_with_result(self, monkeypatch):
+        """On success, run() calls do_notify(result=<NotifyResult>)."""
+        config = _make_exporter_config("pages")
+        config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = []
+        mock_archiver.clean_up.return_value = []
+        mock_archiver.archive_file = "/local/export.tgz"
+
+        mock_notif_instance = MagicMock()
+        monkeypatch.setattr(
+            "bookstack_file_exporter.run.NotifyHandler",
+            MagicMock(return_value=mock_notif_instance),
+        )
+
+        run.run(config)
+
+        call_kwargs = mock_notif_instance.do_notify.call_args
+        assert call_kwargs is not None
+        result_arg = call_kwargs.kwargs.get("result")
+        assert isinstance(result_arg, NotifyResult)
+        assert result_arg.local == "/local/export.tgz"

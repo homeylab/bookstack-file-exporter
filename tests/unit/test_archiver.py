@@ -379,9 +379,10 @@ def test_clean_up_keep_last_zero_returns_early(
     archiver_instance._delete_files = MagicMock(
         side_effect=lambda f: delete_calls.extend(f)  # pylint: disable=unnecessary-lambda
     )
-    archiver_instance.clean_up()
+    result = archiver_instance.clean_up()
     assert not scan_calls
     assert not delete_calls
+    assert result == []
 
 
 def test_clean_up_with_stale_archives_calls_delete(
@@ -394,6 +395,77 @@ def test_clean_up_with_stale_archives_calls_delete(
     archiver_instance._delete_files = MagicMock()
     archiver_instance.clean_up()
     archiver_instance._delete_files.assert_called_once_with(stale)
+
+
+def test_clean_up_keep_last_negative_returns_full_list(
+    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last < 0: all archives are in the returned deleted list (current .tgz included)."""
+    mock_config.user_inputs.keep_last = -1
+    file_list = ["/data/current.tgz", "/data/old.tgz", "/data/older.tgz"]
+    patch_scan_archives(file_list)
+    archiver_instance._delete_files = MagicMock()
+    result = archiver_instance.clean_up()
+    assert result == file_list
+    archiver_instance._delete_files.assert_called_once_with(file_list)
+
+
+def test_clean_up_keep_last_positive_returns_only_old_archives(
+    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last > 0 with more archives than cap: only the excess (old) ones returned."""
+    mock_config.user_inputs.keep_last = 1
+    # Three archives; keep_last=1 → 2 oldest should be deleted, newest kept
+    file_list = ["old1.tgz", "old2.tgz", "current.tgz"]
+    patch_scan_archives(file_list)
+    fake_ctimes = {"old1.tgz": 100, "old2.tgz": 200, "current.tgz": 300}
+    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
+    archiver_instance._delete_files = MagicMock()
+    result = archiver_instance.clean_up()
+    assert result == ["old1.tgz", "old2.tgz"]
+    assert "current.tgz" not in result
+
+
+# ---------------------------------------------------------------------------
+# archive_remote — return value
+# ---------------------------------------------------------------------------
+
+def test_archive_remote_returns_empty_list_when_no_config(archiver_instance, mock_config):
+    """No object storage config → returns []."""
+    mock_config.object_storage_config = {}
+    result = archiver_instance.archive_remote()
+    assert result == []
+
+
+def test_archive_remote_returns_minio_dest_list(monkeypatch, archiver_instance, mock_config):
+    """Minio handler called → returned dest string collected in list."""
+    minio_config = MagicMock()
+    mock_config.object_storage_config = {"minio": minio_config}
+    expected_dest = "my-bucket/backups/export.tgz"
+    monkeypatch.setattr(archiver_instance, "_archive_minio", MagicMock(return_value=expected_dest))
+    result = archiver_instance.archive_remote()
+    assert result == [expected_dest]
+
+
+def test_archive_minio_returns_dest_string(monkeypatch, archiver_instance):
+    """_archive_minio returns the bucket/path dest from upload_backup."""
+    obj_config = MagicMock()
+    obj_config.access_key = "key"
+    obj_config.secret_key = "secret"
+    obj_config.config = MagicMock()
+
+    expected_dest = "test-bucket/backups/archive.tgz"
+    mock_minio = MagicMock()
+    mock_minio.upload_backup.return_value = expected_dest
+    monkeypatch.setattr(
+        "bookstack_file_exporter.archiver.archiver.MinioArchiver",
+        MagicMock(return_value=mock_minio),
+    )
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
+    dest = archiver_instance._archive_minio(obj_config)
+    assert dest == expected_dest
 
 
 # ---------------------------------------------------------------------------

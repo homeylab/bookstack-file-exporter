@@ -44,8 +44,8 @@ class MinioArchiver:
     def _generate_path(self, path_name: str | None) -> str:
         return path_name.rstrip('/') if path_name else ""
 
-    def upload_backup(self, local_file_path: str):
-        """upload archive file to minio bucket"""
+    def upload_backup(self, local_file_path: str) -> str:
+        """upload archive file to minio bucket; return 'bucket/object_path' dest string"""
         # this will be the name of the object to upload
         # only get the file name not path
         # we are going to use path provided by user for object storage
@@ -57,6 +57,7 @@ class MinioArchiver:
         result = self._client.fput_object(self.bucket, object_path, local_file_path)
         log.info("""Created object: %s with tag: %s and version-id: %s""",
                  result.object_name, result.etag, result.version_id)
+        return f"{self.bucket}/{object_path}"
 
     def clean_up(self, file_extension: str):
         """delete objects based on 'keep_last' number"""

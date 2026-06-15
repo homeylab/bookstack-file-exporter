@@ -1,7 +1,9 @@
+import os
 from datetime import datetime
 from apprise import Apprise, AppriseAsset, AppriseConfig
 
 from bookstack_file_exporter.config_helper import notifications
+from bookstack_file_exporter.notify.models import NotifyResult
 
 _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 
@@ -9,11 +11,11 @@ _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 class AppRiseNotify:
     """
     AppRiseNotify helps send notifications via apprise for failed export runs
-    
+
     Args:
-        :config: <notifications.AppRiseNotifyConfig> = Configuration with user inputs and 
+        :config: <notifications.AppRiseNotifyConfig> = Configuration with user inputs and
                                                        general options
-    
+
     Returns:
         AppRiseNotify instance to help handle apprise notification integration.
     """
@@ -48,28 +50,45 @@ class AppRiseNotify:
             return _DEFAULT_TITLE_PREFIX + "Failed"
         return _DEFAULT_TITLE_PREFIX + "Success"
 
-    def _get_message_text(self, error_msg: None | Exception) -> str:
+    def _get_message_text(self, error_msg: None | Exception,
+                          result: NotifyResult | None = None) -> str:
         timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         if error_msg:
             error_str = str(error_msg)
             body = f"""
             Bookstack File Exporter encountered an unrecoverable error.
-            
+
             Occurred At: {timestamp}
-            
+
             Error message: {error_str}
             """
         else:
             body = f"""
             Bookstack File Exporter completed successfully.
-            
+
             Completed At: {timestamp}
             """
+            if result is not None and result.local is not None:
+                local_abs = os.path.abspath(result.local)
+                removed_abs = {os.path.abspath(p) for p in result.removed}
+                was_removed = local_abs in removed_abs
+
+                archive_line = f"Archive: {result.local}"
+                if was_removed:
+                    archive_line += " (removed locally after upload)"
+                body += f"\n            {archive_line}"
+
+                if result.remote:
+                    body += f"\n            Uploaded to: {', '.join(result.remote)}"
+
+                pruned_count = len(removed_abs - {local_abs})
+                if pruned_count > 0:
+                    body += f"\n            Pruned {pruned_count} old local archive(s)"
         return body
 
-    def notify(self, excep: Exception):
+    def notify(self, excep: Exception | None = None, result: NotifyResult | None = None):
         """send notification with exception message"""
-        custom_body = self._get_message_text(excep)
+        custom_body = self._get_message_text(excep, result)
         title_ = self._get_title(excep)
         if self.config.custom_attachment:
             self._client.notify(

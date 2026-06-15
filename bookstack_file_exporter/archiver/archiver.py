@@ -101,39 +101,48 @@ class Archiver:
         self._archiver.gzip_archive()
 
     # send to remote systems
-    def archive_remote(self):
-        """for each target, do their respective tasks"""
+    def archive_remote(self) -> list[str]:
+        """for each target, do their respective tasks; return list of remote dest strings"""
         if not self.config.object_storage_config:
-            return
+            return []
         # dict built per-call so instance-level monkey-patching of handlers
         # propagates during tests (class-level dict captures pre-patch values)
         handlers = {
             "minio": self._archive_minio,
             "s3": self._archive_s3,
         }
+        dests: list[str] = []
         for key, value in self.config.object_storage_config.items():
             handler = handlers.get(key)
             if handler is None:
                 raise ValueError(f"unsupported remote storage type: {key}")
-            handler(value)
+            dests.append(handler(value))
+        return dests
 
-    def _archive_minio(self, obj_config: StorageProviderConfig):
+    def _archive_minio(self, obj_config: StorageProviderConfig) -> str:
         minio_archiver = MinioArchiver(obj_config.access_key,
                                        obj_config.secret_key, obj_config.config)
-        minio_archiver.upload_backup(self._archiver.archive_file)
+        dest = minio_archiver.upload_backup(self._archiver.archive_file)
         minio_archiver.clean_up(self._archiver.file_extension_map['tgz'])
+        return dest
 
     def _archive_s3(self, obj_config: StorageProviderConfig):
         raise NotImplementedError("S3 remote storage is not yet implemented")
 
-    def clean_up(self):
-        """remove archive after sending to remote target"""
+    def clean_up(self) -> list[str]:
+        """remove archive after sending to remote target; return files deleted"""
         # this captures keep_last = 0
         if not self.config.user_inputs.keep_last:
-            return
+            return []
         to_delete = self._get_stale_archives()
         if to_delete:
             self._delete_files(to_delete)
+        return to_delete
+
+    @property
+    def archive_file(self) -> str:
+        """full path to the produced .tgz archive"""
+        return self._archiver.archive_file
 
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage
