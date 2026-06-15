@@ -5,7 +5,10 @@ import argparse
 import logging
 
 from bookstack_file_exporter.config_helper.models import Assets
-from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+from bookstack_file_exporter.config_helper.config_helper import (
+    ConfigNode,
+    check_legacy_modify_markdown,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +117,9 @@ assets:
         """assets: true (or other non-dict) must not crash before pydantic validates."""
         logger_name = "bookstack_file_exporter.config_helper.config_helper"
         with caplog.at_level(logging.WARNING, logger=logger_name):
-            ConfigNode._check_legacy_modify_markdown({"assets": True})
-            ConfigNode._check_legacy_modify_markdown({"assets": "bad_string"})
-            ConfigNode._check_legacy_modify_markdown({"assets": 42})
+            check_legacy_modify_markdown({"assets": True})
+            check_legacy_modify_markdown({"assets": "bad_string"})
+            check_legacy_modify_markdown({"assets": 42})
         our_records = [r for r in caplog.records if r.name == logger_name]
         assert our_records == [], (
             f"non-dict assets must produce zero warnings from this logger; "

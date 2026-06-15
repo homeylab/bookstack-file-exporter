@@ -10,6 +10,52 @@ from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
+
+def load_yaml_config(path: str) -> dict:
+    """File I/O + safe_load. Raises FileNotFoundError / yaml.YAMLError."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    with open(path, encoding="utf-8") as yaml_stream:
+        try:
+            return yaml.safe_load(yaml_stream)
+        except yaml.YAMLError:
+            log.error("Failed to load yaml configuration file")
+            raise
+
+
+def check_legacy_modify_markdown(raw: dict) -> None:
+    """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
+    assets_raw = raw.get("assets", {}) or {}
+    if not isinstance(assets_raw, dict):
+        # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
+        return
+    has_legacy = "modify_markdown" in assets_raw
+    has_new = "modify_links" in assets_raw
+    if not has_legacy:
+        return
+    log.warning(
+        "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
+        "USE 'assets.modify_links' INSTEAD. "
+        "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
+    )
+    if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
+        log.warning(
+            "Both 'assets.modify_links' and 'assets.modify_markdown' "
+            "are set with different values. 'assets.modify_links' wins; "
+            "the legacy 'assets.modify_markdown' value is ignored."
+        )
+
+
+def build_user_input(raw: dict) -> models.UserInput:
+    """Legacy-key deprecation check + pydantic validation. Returns models.UserInput."""
+    check_legacy_modify_markdown(raw)
+    try:
+        return models.UserInput(**raw)
+    except Exception:
+        log.error("Yaml configuration failed schema validation")
+        raise
+
+
 _DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=utf-8'
 }
@@ -60,46 +106,7 @@ class ConfigNode:
         self._object_storage_config = self._generate_remote_config()
 
     def _generate_config(self, config_file: str) -> models.UserInput:
-        if not os.path.isfile(config_file):
-            raise FileNotFoundError(config_file)
-        with open(config_file, encoding="utf-8") as yaml_stream:
-            try:
-                yaml_input = yaml.safe_load(yaml_stream)
-            except Exception as load_err:
-                # log here to make it easier to identify the issue
-                log.error("Failed to load yaml configuration file")
-                raise load_err
-        self._check_legacy_modify_markdown(yaml_input)
-        try:
-            user_inputs = models.UserInput(**yaml_input)
-        except Exception as err:
-            # log here to make it easier to identify the issue
-            log.error("Yaml configuration failed schema validation")
-            raise err
-        return user_inputs
-
-    @staticmethod
-    def _check_legacy_modify_markdown(yaml_input: dict) -> None:
-        """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
-        assets_raw = yaml_input.get("assets", {}) or {}
-        if not isinstance(assets_raw, dict):
-            # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
-            return
-        has_legacy = "modify_markdown" in assets_raw
-        has_new = "modify_links" in assets_raw
-        if not has_legacy:
-            return
-        log.warning(
-            "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
-            "USE 'assets.modify_links' INSTEAD. "
-            "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
-        )
-        if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
-            log.warning(
-                "Both 'assets.modify_links' and 'assets.modify_markdown' "
-                "are set with different values. 'assets.modify_links' wins; "
-                "the legacy 'assets.modify_markdown' value is ignored."
-            )
+        return build_user_input(load_yaml_config(config_file))
 
     def _generate_credentials(self) -> tuple[str, str]:
         # if user provided credentials in config file, load them
@@ -150,8 +157,9 @@ class ConfigNode:
         urls = {}
         # remove trailing slash
         host = self.user_inputs.host.rstrip('/')
-        # check to see if http protocol is defined
-        if "http" not in host:
+        # check to see if http protocol is defined (scheme prefix, not substring:
+        # a host like 'myhttphost.local' must still get the https:// default)
+        if not host.startswith(("http://", "https://")):
             # use https by default
             url_prefix = "https://"
         else:
