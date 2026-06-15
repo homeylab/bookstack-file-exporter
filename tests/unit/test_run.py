@@ -4,8 +4,6 @@ export-level node selection in run.exporter."""
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from bookstack_file_exporter import run
 
 
@@ -87,14 +85,13 @@ class TestExporterDispatchPages:
         mock_export_helper.get_chapter_nodes.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(page_nodes)
 
-    def test_pages_level_empty_nodes_exits(self, monkeypatch):
+    def test_pages_level_empty_nodes_returns_early(self, monkeypatch):
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
             chapter_nodes={}, page_nodes={}
         )
-        with pytest.raises(SystemExit):
-            run.exporter(config)
+        run.exporter(config)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -115,14 +112,13 @@ class TestExporterDispatchBooks:
         mock_export_helper.get_chapter_nodes.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(book_nodes)
 
-    def test_books_level_empty_nodes_exits(self, monkeypatch):
+    def test_books_level_empty_nodes_returns_early(self, monkeypatch):
         config = _make_exporter_config("books")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={},
             chapter_nodes={}, page_nodes={}
         )
-        with pytest.raises(SystemExit):
-            run.exporter(config)
+        run.exporter(config)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -144,14 +140,13 @@ class TestExporterDispatchChapters:
         mock_export_helper.get_all_pages.assert_not_called()
         mock_archiver.get_bookstack_exports.assert_called_once_with(chapter_nodes)
 
-    def test_chapters_level_empty_nodes_exits(self, monkeypatch):
+    def test_chapters_level_empty_nodes_returns_early(self, monkeypatch):
         config = _make_exporter_config("chapters")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
             chapter_nodes={}, page_nodes={}
         )
-        with pytest.raises(SystemExit):
-            run.exporter(config)
+        run.exporter(config)
         mock_archiver.get_bookstack_exports.assert_not_called()
 
 
@@ -202,8 +197,7 @@ class TestExporterSharedTail:
         # nothing landed in the tar → no content to upload
         mock_archiver.has_exported_content = False
 
-        with pytest.raises(SystemExit):
-            run.exporter(config)
+        run.exporter(config)
 
         mock_archiver.create_archive.assert_not_called()
         mock_archiver.archive_remote.assert_not_called()
@@ -259,3 +253,28 @@ class TestExporterNodeFilterWiring:
         mock_node_filter_cls.assert_not_called()
         _, kwargs = mock_node_exporter_cls.call_args
         assert kwargs.get("node_filter") is None
+
+
+# ---------------------------------------------------------------------------
+# Notification behavior: empty-nodes early return fires SUCCESS notify
+# ---------------------------------------------------------------------------
+
+class TestRunNotificationOnEarlyReturn:
+    def test_empty_nodes_early_return_fires_success_notification(self, monkeypatch):
+        """When notifications are configured and exporter() hits an empty-nodes
+        early return, run() must still call do_notify() with no error argument."""
+        config = _make_exporter_config("pages")
+        config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
+
+        _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={}
+        )
+
+        mock_notif_instance = MagicMock()
+        mock_notif_cls = MagicMock(return_value=mock_notif_instance)
+        monkeypatch.setattr("bookstack_file_exporter.run.NotifyHandler", mock_notif_cls)
+
+        run.run(config)
+
+        mock_notif_instance.do_notify.assert_called_once_with()

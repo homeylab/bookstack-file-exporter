@@ -1,5 +1,4 @@
 import argparse
-import sys
 import logging
 import time
 
@@ -85,7 +84,7 @@ def exporter(config: ConfigNode):
             "No %s data available from given Bookstack instance. Nothing to archive",
             export_level,
         )
-        sys.exit(0)
+        return
 
     log.info("Beginning archive")
     # get all content for each node
@@ -94,7 +93,7 @@ def exporter(config: ConfigNode):
     # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
     if not archive.has_exported_content:
         log.warning("No %s content was archived. Nothing to upload", export_level)
-        sys.exit(0)
+        return
 
     # create tar if needed and gzip tar
     archive.create_archive()
