@@ -1,9 +1,9 @@
 version: '3'
 
-# Loads local/creds.env (BOOKSTACK_TOKEN_*, MINIO_*) when present.
+# Loads .local/creds.env (BOOKSTACK_TOKEN_*, MINIO_*) when present.
 # Gitignored + optional: go-task silently skips it if missing, so build/lint/test
 # stay usable without creds. Only run:local and docker:test actually consume it.
-dotenv: ['local/creds.env']
+dotenv: ['.local/creds.env']
 
 vars:
   BASE_IMAGE: '{{.BASE_IMAGE | default "python"}}'
@@ -39,9 +39,9 @@ tasks:
     cmd: uv run pytest --cov-report=html
 
   run:local:
-    desc: Smoke-test the installed entrypoint against local/config.yml (live BookStack)
+    desc: Smoke-test the installed entrypoint against .local/config.yml (live BookStack)
     interactive: true
-    cmd: uv run bookstack-file-exporter -c {{.TASKFILE_DIR}}/local/config.yml
+    cmd: uv run bookstack-file-exporter -c {{.TASKFILE_DIR}}/.local/config.yml
 
   publish:
     desc: Publish to PyPI (uv publish)
@@ -111,6 +111,6 @@ tasks:
         -e BOOKSTACK_TOKEN_ID -e BOOKSTACK_TOKEN_SECRET \
         -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY \
         --user 1000:1000 \
-        -v {{.TASKFILE_DIR}}/local/config.yml:{{.DOCKER_CONFIG_DIR}}/config.yml:ro \
+        -v {{.TASKFILE_DIR}}/.local/config.yml:{{.DOCKER_CONFIG_DIR}}/config.yml:ro \
         -v {{.TASKFILE_DIR}}/bkps:{{.DOCKER_EXPORT_DIR}} \
         {{.TEST_IMAGE_NAME}}:{{.TEST_IMAGE_TAG}}
