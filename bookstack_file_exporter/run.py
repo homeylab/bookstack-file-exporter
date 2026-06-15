@@ -6,6 +6,7 @@ import time
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.exporter.exporter import NodeExporter
+from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper
 from bookstack_file_exporter.notify.handler import NotifyHandler
@@ -51,9 +52,12 @@ def exporter(config: ConfigNode):
     ## Helper functions with user provided (or defaults) http config
     http_client = HttpHelper(config.headers, config.user_inputs.http_config)
 
+    ## Build node filter from user config (None when no filters are configured)
+    node_filter = NodeFilter(config.user_inputs.filters) if config.user_inputs.filters else None
+
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     log.info("Building shelve/book/chapter/page relationships")
-    export_helper = NodeExporter(config.urls, http_client)
+    export_helper = NodeExporter(config.urls, http_client, node_filter=node_filter)
     ## shelves
     shelve_nodes: dict[int, Node] = export_helper.get_all_shelves()
     ## books (always needed - basis for all export levels)

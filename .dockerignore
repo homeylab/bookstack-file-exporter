@@ -161,7 +161,7 @@ cython_debug/
 
 
 ## Local
-local/
+.local/
 .vscode/
 .github/
 

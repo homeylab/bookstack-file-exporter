@@ -160,7 +160,7 @@ cython_debug/
 
 
 ## Local
-local/
+.local/
 .claude/
 
 ## test outputs

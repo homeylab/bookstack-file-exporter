@@ -89,6 +89,11 @@ class Node():
         return self._parent
 
     @property
+    def display_name(self) -> str:
+        """return the display name of this node (meta['name'])"""
+        return self._display_name
+
+    @property
     def empty(self):
         """return True if page node lacks content"""
         if not self.name and self._display_name == _NULL_PAGE_NAME:
