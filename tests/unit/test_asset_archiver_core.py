@@ -121,6 +121,21 @@ class TestPhase1MdFixes:
             "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png"
         ) in result
 
+    def test_get_md_url_strs_anchor_wrapped_order_outer_then_inner(
+        self, image_api_content
+    ):
+        """Token walk on [![alt](INNER)](OUTER) yields link_open(href=OUTER) before
+        image(src=INNER), so the result order must be [OUTER, INNER]."""
+        outer_url = (
+            "https://wiki.example.com/uploads/images/gallery/2024-01/screenshot.png"
+        )
+        inner_url = (
+            "https://wiki.example.com/uploads/images/gallery/2024-01/"
+            "scaled-1680-/screenshot.png"
+        )
+        result = ImageNode._get_md_url_strs(image_api_content)
+        assert result == [outer_url, inner_url]
+
     def test_get_md_url_strs_attachment_returns_url(self, attachment_api_content):
         """_get_md_url_strs on attachment should return the href URL."""
         result = AttachmentNode._get_md_url_strs(attachment_api_content)

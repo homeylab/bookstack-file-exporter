@@ -123,6 +123,43 @@ class AssetNode:
         return [u for u in dict.fromkeys([*extracted, self.page_url]) if u]
 
     @staticmethod
+    def _walk_md_urls(md_str: str) -> list[str]:
+        """Walk markdown-it-py tokens and return all image src and link href values.
+
+        Uses markdown-it-py for spec-compliant parsing — handles URLs with
+        parentheses and alt-text containing parens without regex brittleness.
+
+        Token shapes:
+          `image` = single self-contained token for a markdown image.
+            markdown: ![alt](URL)
+            tokens:   image(src=URL, alt=alt)
+
+          `link_open` = opening half of a link pair; text and link_close follow.
+          We only need the opener's href; link_close has no attrs.
+            markdown: [text](URL)
+            tokens:   link_open(href=URL), text("text"), link_close
+
+          For BookStack's anchor-wrapped image (click-to-zoom) shape, both
+          branches fire on the same construct:
+            markdown: [![alt](inner)](outer)
+            tokens:   link_open(href=outer), image(src=inner), link_close
+            result:   [outer, inner]
+
+          Attachments don't normally render as images, but links.markdown is
+          user-controllable so the image branch is handled defensively.
+        """
+        if not md_str:
+            return []
+        urls = []
+        for block_token in _md.parse(md_str):
+            for token in (block_token.children or []):
+                if token.type == 'image':
+                    urls.append(token.attrs['src'])
+                elif token.type == 'link_open':
+                    urls.append(token.attrs['href'])
+        return urls
+
+    @staticmethod
     def _get_md_url_strs(asset_data: dict[str, int | str]) -> list[str]:
         """Extract image src and link href values from content.markdown.
         Uses markdown-it-py for spec-compliant parsing — handles URLs with
@@ -130,29 +167,7 @@ class AssetNode:
         md_str = ""
         if 'content' in asset_data and 'markdown' in asset_data.get('content', {}):
             md_str = asset_data['content']['markdown']
-        if not md_str:
-            return []
-        urls = []
-        for block_token in _md.parse(md_str):
-            for token in (block_token.children or []):
-                # `image` = single self-contained token for a markdown image.
-                #   markdown: ![alt](URL)
-                #   tokens:   image(src=URL, alt=alt)
-                if token.type == 'image':
-                    urls.append(token.attrs['src'])
-                # `link_open` = opening half of a link pair; text and link_close
-                # follow. We only need the opener's href; link_close has no attrs.
-                #   markdown: [text](URL)
-                #   tokens:   link_open(href=URL), text("text"), link_close
-                #
-                # For BookStack's anchor-wrapped image (click-to-zoom) shape,
-                # both branches fire on the same construct:
-                #   markdown: [![alt](inner)](outer)
-                #   tokens:   link_open(href=outer), image(src=inner), link_close
-                #   result:   [outer, inner]
-                elif token.type == 'link_open':
-                    urls.append(token.attrs['href'])
-        return urls
+        return AssetNode._walk_md_urls(md_str)
 
     @staticmethod
     def _get_html_url_strs(asset_data: dict[str, int | str]) -> list[str]:
@@ -220,25 +235,7 @@ class AttachmentNode(AssetNode):
         md_str = ""
         if 'links' in asset_data and 'markdown' in asset_data.get('links', {}):
             md_str = asset_data['links']['markdown']
-        if not md_str:
-            return []
-        urls = []
-        for block_token in _md.parse(md_str):
-            for token in (block_token.children or []):
-                # `image` = single self-contained token for a markdown image.
-                # Attachments don't normally render as images, but links.markdown
-                # is user-controllable so we handle defensively.
-                #   markdown: ![alt](URL)
-                #   tokens:   image(src=URL, alt=alt)
-                if token.type == 'image':
-                    urls.append(token.attrs['src'])
-                # `link_open` = opening half of a link pair; this is the normal
-                # shape BookStack returns for attachment links.
-                #   markdown: [file.dat](URL)
-                #   tokens:   link_open(href=URL), text("file.dat"), link_close
-                elif token.type == 'link_open':
-                    urls.append(token.attrs['href'])
-        return urls
+        return AssetNode._walk_md_urls(md_str)
 
     @staticmethod
     def _get_html_url_strs(asset_data: dict[str, int | str | dict]) -> list[str]:
