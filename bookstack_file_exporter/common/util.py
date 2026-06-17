@@ -1,14 +1,18 @@
 import logging
 import os
 from http.cookiejar import DefaultCookiePolicy
+from typing import TypeVar
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
 from requests.adapters import HTTPAdapter, Retry
+from pydantic import TypeAdapter, ValidationError
 
 from bookstack_file_exporter.config_helper.models import HttpConfig
+
+T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
@@ -99,8 +103,7 @@ class HttpHelper:
             offset += count
         return all_data
 
-def check_var(env_key: str, default_val: list[str] | str,
-              required: bool = True) -> list[str] | str:
+def check_var(env_key: str, default_val: str, required: bool = True) -> str:
     """
     :param env_key: environment variable to check (takes precedence)
     :param default_val: fallback value if the env var is unset
@@ -118,4 +121,33 @@ def check_var(env_key: str, default_val: list[str] | str,
             f"{env_key} is not specified in env and is missing from configuration "
             "- at least one should be set"
         )
+    return default_val
+
+
+def resolve_env_json(env_key: str, target: type[T], default_val: T) -> T:
+    """Env-over-file for a JSON env var, parsed AND validated into `target`.
+
+    The env value is a JSON string; parse+validate it here so callers never
+    re-read os.environ (that double-probe was the empty-env TypeError bug) and so
+    env input gets the same type checking as the YAML-parsed config field. A
+    plain json.loads left the env path unvalidated: the resolved value lands on a
+    plain attribute that pydantic never re-checks, so APPRISE_URLS='"foo"' would
+    hand a bare str to apprise. TypeAdapter rejects wrong shape/element types. A
+    set-but-empty env var falls back to default_val.
+
+    :param env_key: environment variable to check (takes precedence)
+    :param target: type to validate into, e.g. list[str]
+    :param default_val: fallback if the env var is unset/empty
+    :return: validated env value if env var set, else default_val
+    :raises pydantic.ValidationError: if the env var is set but not valid `target`
+    """
+    raw = os.environ.get(env_key, "")
+    if raw:
+        try:
+            return TypeAdapter(target).validate_json(raw)
+        except ValidationError:
+            # pydantic's message names the target type, not the env var; log the
+            # env-var name so operators know which value to fix.
+            log.error("env var %s did not validate as %s", env_key, target)
+            raise
     return default_val
