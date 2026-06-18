@@ -17,10 +17,13 @@ def load_yaml_config(path: str) -> dict:
         raise FileNotFoundError(path)
     with open(path, encoding="utf-8") as yaml_stream:
         try:
-            return yaml.safe_load(yaml_stream)
+            data = yaml.safe_load(yaml_stream)
         except yaml.YAMLError:
             log.error("Failed to load yaml configuration file")
             raise
+    if data is None:                       # empty / whitespace-only file
+        raise ValueError(f"Config file is empty or has no YAML content: {path}")
+    return data
 
 
 def check_legacy_modify_markdown(raw: dict) -> None:
