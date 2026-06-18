@@ -48,7 +48,7 @@ class NodeArchiver:
     """
     def __init__(self, archive_dir: str, api_urls: dict[str, str],  # pylint: disable=too-many-arguments,too-many-positional-arguments
                  export_formats: list[str], http_client: HttpHelper,
-                 export_meta: bool, asset_config=None) -> None:
+                 export_meta: bool, asset_config=None, asset_archiver=None) -> None:
         self.api_urls = api_urls
         self.export_formats = export_formats
         self.http_client = http_client
@@ -61,7 +61,9 @@ class NodeArchiver:
         self.archive_base_path = archive_dir.split("/")[-1]
         # asset handling (shared by page/book/chapter); None => disabled
         self.asset_config = asset_config
-        self.asset_archiver = AssetArchiver(api_urls, http_client) if asset_config else None
+        self.asset_archiver = asset_archiver if asset_archiver is not None else (
+            AssetArchiver(api_urls, http_client) if asset_config else None
+        )
         self.modify_links: bool = self._check_links_modify()
 
     @property
@@ -299,7 +301,8 @@ class PageArchiver(NodeArchiver):
     Returns:
         :PageArchiver: instance with methods to help collect page content from a Bookstack instance.
     """
-    def __init__(self, archive_dir: str, config: ConfigNode, http_client: HttpHelper) -> None:
+    def __init__(self, archive_dir: str, config: ConfigNode, http_client: HttpHelper,
+                 *, asset_archiver=None) -> None:
         super().__init__(
             archive_dir=archive_dir,
             api_urls=config.urls,
@@ -307,6 +310,7 @@ class PageArchiver(NodeArchiver):
             http_client=http_client,
             export_meta=config.user_inputs.assets.export_meta,
             asset_config=config.user_inputs.assets,
+            asset_archiver=asset_archiver,
         )
 
     def archive(self, page_nodes: dict[int, Node]):
