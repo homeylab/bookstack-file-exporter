@@ -49,6 +49,16 @@ def test_load_yaml_config_returns_parsed_dict(tmp_path):
     assert result["formats"] == ["markdown"]
 
 
+@pytest.mark.parametrize("content", ["", "   \n  \n"])
+def test_load_yaml_config_raises_value_error_on_empty_file(tmp_path, content):
+    """An empty / whitespace-only config yields a clear ValueError, not AttributeError."""
+    empty = tmp_path / "empty.yml"
+    empty.write_text(content, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="empty"):
+        load_yaml_config(str(empty))
+
+
 def test_load_yaml_config_raises_yaml_error_on_invalid_yaml(tmp_path):
     """load_yaml_config must propagate yaml.YAMLError for malformed YAML."""
     bad_yaml = tmp_path / "bad.yml"
