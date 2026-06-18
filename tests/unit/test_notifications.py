@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.notifications import (
@@ -23,7 +24,7 @@ class TestServiceUrlResolution:
     def test_env_json_string_parsed_to_list_at_construction(self, monkeypatch):
         monkeypatch.setenv(_ENV_KEY, json.dumps(["mailto://a", "mailto://b"]))
         cfg = AppRiseNotifyConfig(_make_config())
-        # check_var pulls the raw env string; __init__ resolves it to a list
+        # __init__ resolves the raw env JSON string into a validated list
         assert cfg.service_urls == ["mailto://a", "mailto://b"]
 
     def test_config_file_urls_untouched_when_env_unset(self, monkeypatch):
@@ -31,26 +32,35 @@ class TestServiceUrlResolution:
         cfg = AppRiseNotifyConfig(_make_config(service_urls=["mailto://from-file"]))
         assert cfg.service_urls == ["mailto://from-file"]
 
-    def test_config_path_skips_url_parse(self, monkeypatch):
-        # env set, but config_path present -> no JSON parse; service_urls stays
-        # the raw env string (check_var override) rather than raising on bad json
-        monkeypatch.setenv(_ENV_KEY, "not-json")
-        cfg = AppRiseNotifyConfig(_make_config(config_path="/etc/apprise.yml",
-                                               service_urls=["mailto://x"]))
-        assert cfg.service_urls == "not-json"
+    def test_none_config_urls_resolve_to_empty_list(self, monkeypatch):
+        # caller's `or []` keeps the []-not-None guarantee the helper dropped
+        monkeypatch.delenv(_ENV_KEY, raising=False)
+        cfg = AppRiseNotifyConfig(_make_config(service_urls=None))
+        assert cfg.service_urls == []
+
+    def test_env_parsed_even_with_config_path(self, monkeypatch):
+        # env is resolved unconditionally now; config_path no longer suppresses it
+        monkeypatch.setenv(_ENV_KEY, json.dumps(["mailto://x"]))
+        cfg = AppRiseNotifyConfig(_make_config(config_path="/etc/apprise.yml"))
+        assert cfg.service_urls == ["mailto://x"]
 
     def test_invalid_env_json_raises_at_construction(self, monkeypatch):
         monkeypatch.setenv(_ENV_KEY, "{not valid json")
-        with pytest.raises(json.decoder.JSONDecodeError):
+        with pytest.raises(ValidationError):
             AppRiseNotifyConfig(_make_config())
 
-    def test_empty_env_with_config_list_raises_typeerror(self, monkeypatch):
-        # fidelity edge: APPRISE_URLS="" is falsy so check_var returns the config
-        # list, but `os.environ.get(...) is not None` is still True -> json.loads
-        # runs on a list -> TypeError. Preserved verbatim from pre-refactor.
+    def test_non_list_env_json_raises_at_construction(self, monkeypatch):
+        # valid JSON but a bare str: must fail loud, not reach apprise as a str
+        monkeypatch.setenv(_ENV_KEY, '"mailto://a"')
+        with pytest.raises(ValidationError):
+            AppRiseNotifyConfig(_make_config())
+
+    def test_empty_env_falls_back_to_config_list(self, monkeypatch):
+        # APPRISE_URLS="" (set but empty) falls back to the config list instead
+        # of crashing with TypeError (the old double-env-probe bug).
         monkeypatch.setenv(_ENV_KEY, "")
-        with pytest.raises(TypeError):
-            AppRiseNotifyConfig(_make_config(service_urls=["mailto://x"]))
+        cfg = AppRiseNotifyConfig(_make_config(service_urls=["mailto://x"]))
+        assert cfg.service_urls == ["mailto://x"]
 
 
 class TestValidate:
