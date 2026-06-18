@@ -24,45 +24,41 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
     test scaffolding stub — PageArchiver tests intentionally cover a single entry point.
     """
 
-    def _make_archiver(self, tmp_path, monkeypatch, **config_kwargs):
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+    def _make_archiver(self, tmp_path, **config_kwargs):
         config = make_mock_config(**config_kwargs)
         archive_dir = str(tmp_path / "bookstack-test")
-        return PageArchiver(archive_dir, config, MagicMock())
+        return PageArchiver(archive_dir, config, MagicMock(), asset_archiver=MagicMock())
 
-    def test_check_links_modify_true_for_html_format(self, tmp_path, monkeypatch):
+    def test_check_links_modify_true_for_html_format(self, tmp_path):
         archiver = self._make_archiver(
-            tmp_path, monkeypatch,
+            tmp_path,
             formats=["html"],
             modify_links=True,
             export_images=True,
         )
         assert archiver.modify_links is True
 
-    def test_check_links_modify_true_for_markdown_format(self, tmp_path, monkeypatch):
+    def test_check_links_modify_true_for_markdown_format(self, tmp_path):
         archiver = self._make_archiver(
-            tmp_path, monkeypatch,
+            tmp_path,
             formats=["markdown"],
             modify_links=True,
             export_images=True,
         )
         assert archiver.modify_links is True
 
-    def test_check_links_modify_true_for_both_formats(self, tmp_path, monkeypatch):
+    def test_check_links_modify_true_for_both_formats(self, tmp_path):
         archiver = self._make_archiver(
-            tmp_path, monkeypatch,
+            tmp_path,
             formats=["markdown", "html"],
             modify_links=True,
             export_images=True,
         )
         assert archiver.modify_links is True
 
-    def test_check_links_modify_false_when_no_assets(self, tmp_path, monkeypatch):
+    def test_check_links_modify_false_when_no_assets(self, tmp_path):
         archiver = self._make_archiver(
-            tmp_path, monkeypatch,
+            tmp_path,
             formats=["html"],
             modify_links=True,
             export_images=False,
@@ -70,9 +66,9 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         )
         assert archiver.modify_links is False
 
-    def test_check_links_modify_false_when_format_not_rewritable(self, tmp_path, monkeypatch):
+    def test_check_links_modify_false_when_format_not_rewritable(self, tmp_path):
         archiver = self._make_archiver(
-            tmp_path, monkeypatch,
+            tmp_path,
             formats=["pdf"],
             modify_links=True,
             export_images=True,
@@ -80,12 +76,12 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         assert archiver.modify_links is False
 
     def test_warning_when_modify_links_true_but_no_rewritable_format(
-        self, tmp_path, monkeypatch, caplog
+        self, tmp_path, caplog
     ):
         logger_name = "bookstack_file_exporter.archiver.node_archiver"
         with caplog.at_level(logging.WARNING, logger=logger_name):
             self._make_archiver(
-                tmp_path, monkeypatch,
+                tmp_path,
                 formats=["pdf"],
                 modify_links=True,
                 export_images=True,
@@ -94,24 +90,17 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         assert any("MODIFY_LINKS" in m or "rewritable" in m.lower() for m in warning_msgs)
 
     def test_archive_dispatches_html_branch(
-        self, tmp_path, monkeypatch, build_node
+        self, tmp_path, build_node
     ):
         """archive should call _modify_html when format='html' and modify_links=True."""
-        mock_asset_archiver_class = MagicMock()
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            mock_asset_archiver_class,
-        )
+        mock_asset = MagicMock()
         config = make_mock_config(
             formats=["html"],
             modify_links=True,
             export_images=True,
         )
         archive_dir = str(tmp_path / "bookstack-test")
-        archiver = PageArchiver(archive_dir, config, MagicMock())
-
-        mock_asset = MagicMock()
-        archiver.asset_archiver = mock_asset
+        archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=mock_asset)
 
         # Set up mock asset nodes
         mock_image_node = MagicMock()
@@ -137,19 +126,13 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         mock_modify_html.assert_called_once()
 
     def test_modify_html_short_circuits_when_modify_links_false(
-        self, tmp_path, monkeypatch
+        self, tmp_path
     ):
         """_modify_html should return page_data unchanged when modify_links is False."""
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+        mock_asset = MagicMock()
         config = make_mock_config(formats=["html"], modify_links=False)
         archive_dir = str(tmp_path / "bookstack-test")
-        archiver = PageArchiver(archive_dir, config, MagicMock())
-
-        mock_asset = MagicMock()
-        archiver.asset_archiver = mock_asset
+        archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=mock_asset)
 
         page_data = b"<html><body>test</body></html>"
         mock_nodes = [MagicMock()]
@@ -160,24 +143,17 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         mock_asset.update_asset_links_html.assert_not_called()
 
     def test_failed_assets_filtered_from_html_rewrite(
-        self, tmp_path, monkeypatch, build_node
+        self, tmp_path, build_node
     ):
         """Failed assets should be excluded from both md and html rewrite paths."""
-        mock_asset_archiver_class = MagicMock()
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            mock_asset_archiver_class,
-        )
+        mock_asset = MagicMock()
         config = make_mock_config(
             formats=["html"],
             modify_links=True,
             export_images=True,
         )
         archive_dir = str(tmp_path / "bookstack-test")
-        archiver = PageArchiver(archive_dir, config, MagicMock())
-
-        mock_asset = MagicMock()
-        archiver.asset_archiver = mock_asset
+        archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=mock_asset)
 
         mock_image_node = MagicMock()
         mock_image_node.id_ = 42
@@ -206,24 +182,17 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
         )
 
     def test_partially_failed_assets_excluded_from_html_rewrite(  # pylint: disable=too-many-locals
-        self, tmp_path, monkeypatch, build_node
+        self, tmp_path, build_node
     ):
         """When some assets fail, only successful nodes are passed to update_asset_links_html."""
-        mock_asset_archiver_class = MagicMock()
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            mock_asset_archiver_class,
-        )
+        mock_asset = MagicMock()
         config = make_mock_config(
             formats=["html"],
             modify_links=True,
             export_images=True,
         )
         archive_dir = str(tmp_path / "bookstack-test")
-        archiver = PageArchiver(archive_dir, config, MagicMock())
-
-        mock_asset = MagicMock()
-        archiver.asset_archiver = mock_asset
+        archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=mock_asset)
 
         good_node = MagicMock(spec=ImageNode)
         good_node.id_ = 10

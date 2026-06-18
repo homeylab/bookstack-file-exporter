@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from requests.exceptions import HTTPError
 
-from bookstack_file_exporter.archiver.node_archiver import PageArchiver
+from bookstack_file_exporter.archiver.node_archiver import NodeArchiver, PageArchiver
 from bookstack_file_exporter.exporter.node import Node
 
 
@@ -23,16 +23,12 @@ def _make_page_node(build_node, page_id: int, slug: str, parent: Node) -> Node:
 
 
 @pytest.fixture
-def page_archiver(tmp_path, monkeypatch):
+def page_archiver(tmp_path):
     """Construct a PageArchiver with all external collaborators mocked."""
-    monkeypatch.setattr(
-        "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-        MagicMock(),
-    )
     config = _make_config()
     http_client = MagicMock()
     archive_dir = str(tmp_path / "bookstack-20260514")
-    return PageArchiver(archive_dir, config, http_client)
+    return PageArchiver(archive_dir, config, http_client, asset_archiver=MagicMock())
 
 
 # ---------------------------------------------------------------------------
@@ -40,41 +36,25 @@ def page_archiver(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 class TestConstruction:
-    def test_archive_file_ends_with_tgz(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+    def test_archive_file_ends_with_tgz(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
         assert archiver.archive_file == f"{archive_dir}.tgz"
 
-    def test_tar_file_ends_with_tar(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+    def test_tar_file_ends_with_tar(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
         assert archiver.tar_file == f"{archive_dir}.tar"
 
-    def test_archive_base_path_is_last_segment(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+    def test_archive_base_path_is_last_segment(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
         assert archiver.archive_base_path == "bookstack-20260514"
 
-    def test_http_client_stored(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+    def test_http_client_stored(self, tmp_path):
         http_client = MagicMock()
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), http_client)
+        archiver = PageArchiver(archive_dir, _make_config(), http_client, asset_archiver=MagicMock())
         assert archiver.http_client is http_client
 
 
@@ -162,17 +142,14 @@ class TestWriteData:  # pylint: disable=too-few-public-methods  # test scaffoldi
 # ---------------------------------------------------------------------------
 
 class TestArchivePages:
-    def test_each_page_node_written_once_per_format(self, tmp_path, monkeypatch, build_node):
+    def test_each_page_node_written_once_per_format(self, tmp_path, build_node):
         """archive should write one file per page per format."""
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+        mock_asset = MagicMock()
         config = _make_config(formats=["markdown"], export_images=False,
                                export_attachments=False, export_meta=False)
         http_client = MagicMock()
         archive_dir = str(tmp_path / "bookstack-test")
-        archiver = PageArchiver(archive_dir, config, http_client)
+        archiver = PageArchiver(archive_dir, config, http_client, asset_archiver=mock_asset)
 
         # Make asset_archiver return empty dicts (no images / attachments)
         archiver.asset_archiver.get_asset_nodes.return_value = {}
@@ -195,17 +172,14 @@ class TestArchivePages:
         # 2 pages × 1 format = 2 write_tar calls
         assert mock_write_tar.call_count == 2
 
-    def test_archive_respects_multiple_formats(self, tmp_path, monkeypatch, build_node):
+    def test_archive_respects_multiple_formats(self, tmp_path, build_node):
         """archive should call write_tar once per page per format."""
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+        mock_asset = MagicMock()
         config = _make_config(formats=["markdown", "html"], export_images=False,
                                export_attachments=False, export_meta=False)
         http_client = MagicMock()
         archive_dir = str(tmp_path / "bookstack-multi")
-        archiver = PageArchiver(archive_dir, config, http_client)
+        archiver = PageArchiver(archive_dir, config, http_client, asset_archiver=mock_asset)
         archiver.asset_archiver.get_asset_nodes.return_value = {}
 
         parent_node = build_node(id=1, name="a-book", slug="a-book")
@@ -223,15 +197,13 @@ class TestArchivePages:
         # 1 page × 2 formats = 2 write_tar calls
         assert mock_write_tar.call_count == 2
 
-    def test_failed_page_format_skipped_run_continues(self, tmp_path, monkeypatch, build_node):
+    def test_failed_page_format_skipped_run_continues(self, tmp_path, build_node):
         """A 403/404 on one page-format export is skipped, not fatal; others still written."""
-        monkeypatch.setattr(
-            "bookstack_file_exporter.archiver.node_archiver.AssetArchiver",
-            MagicMock(),
-        )
+        mock_asset = MagicMock()
         config = _make_config(formats=["markdown"], export_images=False,
                               export_attachments=False, export_meta=False)
-        archiver = PageArchiver(str(tmp_path / "bookstack-skip"), config, MagicMock())
+        archiver = PageArchiver(str(tmp_path / "bookstack-skip"), config, MagicMock(),
+                                asset_archiver=mock_asset)
         archiver.asset_archiver.get_asset_nodes.return_value = {}
 
         parent_node = build_node(id=1, name="a-book", slug="a-book")
@@ -262,3 +234,48 @@ class TestArchivePages:
 def test_page_archiver_has_no_verify_ssl_property():
     """verify_ssl was broken (read nonexistent Assets field); confirm it is gone."""
     assert not hasattr(PageArchiver, "verify_ssl")
+
+
+# ---------------------------------------------------------------------------
+# 8. R8: asset_archiver injection seam
+# ---------------------------------------------------------------------------
+
+class TestAssetArchiverInjection:
+    """Constructor-injected asset_archiver double is stored as self.asset_archiver."""
+
+    def test_injected_double_is_stored(self, tmp_path):
+        """When asset_archiver= is supplied, NodeArchiver stores it without constructing a real one."""
+        double = MagicMock()
+        config = _make_config(export_images=True)
+        archive_dir = str(tmp_path / "bookstack-r8")
+        archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=double)
+        assert archiver.asset_archiver is double
+
+    def test_no_injection_no_asset_config_is_none(self, tmp_path):
+        """When asset_archiver= not supplied and asset_config=None, asset_archiver is None."""
+        archive_dir = str(tmp_path / "bookstack-r8-none")
+        # Direct NodeArchiver construction: asset_config=None => no AssetArchiver built
+        archiver = NodeArchiver(
+            archive_dir=archive_dir,
+            api_urls={"images": "https://x", "attachments": "https://y"},
+            export_formats=["markdown"],
+            http_client=MagicMock(),
+            export_meta=False,
+            asset_config=None,
+        )
+        assert archiver.asset_archiver is None
+
+    def test_injected_double_overrides_real_construction(self, tmp_path):
+        """When asset_archiver= injected and asset_config is truthy, the injected double wins."""
+        double = MagicMock()
+        archive_dir = str(tmp_path / "bookstack-r8-override")
+        archiver = NodeArchiver(
+            archive_dir=archive_dir,
+            api_urls={"images": "https://x", "attachments": "https://y"},
+            export_formats=["markdown"],
+            http_client=MagicMock(),
+            export_meta=False,
+            asset_config=MagicMock(),  # truthy: without injection, would build real AssetArchiver
+            asset_archiver=double,
+        )
+        assert archiver.asset_archiver is double
