@@ -33,13 +33,15 @@ class Archiver:
         Archiver instance with attributes that are accessible
         for use for handling bookstack exports and remote uploads.
     """
-    def __init__(self, config: ConfigNode, http_client: HttpHelper):
+    def __init__(self, config: ConfigNode, http_client: HttpHelper,
+                 node_archiver=None, minio_archiver_cls=MinioArchiver):
         self.config = config
         # for convenience
         self.base_dir = self._level_base_dir(config.base_dir_name,
                                              config.user_inputs.export_level)
         self.archive_dir = self._generate_root_folder(self.base_dir)
-        self._archiver: NodeArchiver = self._build_archiver(http_client)
+        self._archiver: NodeArchiver = node_archiver or self._build_archiver(http_client)
+        self._minio_archiver_cls = minio_archiver_cls
 
     def _build_archiver(self, http_client: HttpHelper) -> NodeArchiver:
         """Return the appropriate archiver based on the configured export level."""
@@ -105,8 +107,6 @@ class Archiver:
         """for each target, do their respective tasks; return list of remote dest strings"""
         if not self.config.object_storage_config:
             return []
-        # dict built per-call so instance-level monkey-patching of handlers
-        # propagates during tests (class-level dict captures pre-patch values)
         handlers = {
             "minio": self._archive_minio,
             "s3": self._archive_s3,
@@ -120,8 +120,8 @@ class Archiver:
         return dests
 
     def _archive_minio(self, obj_config: StorageProviderConfig) -> str:
-        minio_archiver = MinioArchiver(obj_config.access_key,
-                                       obj_config.secret_key, obj_config.config)
+        minio_archiver = self._minio_archiver_cls(obj_config.access_key,
+                                                  obj_config.secret_key, obj_config.config)
         dest = minio_archiver.upload_backup(self._archiver.archive_file)
         minio_archiver.clean_up(self._archiver.file_extension_map['tgz'])
         return dest

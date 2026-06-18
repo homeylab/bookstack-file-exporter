@@ -11,22 +11,17 @@ import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
+from bookstack_file_exporter.archiver.node_archiver import (
+    BookArchiver,
+    ChapterArchiver,
+    PageArchiver,
+)
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture
-def patched_page_archiver(monkeypatch):
-    mock = MagicMock()
-    monkeypatch.setattr(
-        "bookstack_file_exporter.archiver.archiver.PageArchiver",
-        MagicMock(return_value=mock),
-    )
-    return mock
-
 
 @pytest.fixture
 def mock_config():
@@ -40,8 +35,8 @@ def mock_config():
 
 
 @pytest.fixture
-def archiver_instance(patched_page_archiver, mock_config, mock_http_client):
-    return Archiver(mock_config, mock_http_client)
+def archiver_instance(mock_config, mock_http_client):
+    return Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
 
 
 # ---------------------------------------------------------------------------
@@ -72,10 +67,9 @@ class TestLevelBaseDir:
     def test_non_pages_suffixed(self, level):
         assert Archiver._level_base_dir("bkps", level) == f"bkps_{level}"
 
-    def test_books_level_flows_into_archive_dir(self, patched_page_archiver,
-                                                mock_config, mock_http_client):
+    def test_books_level_flows_into_archive_dir(self, mock_config, mock_http_client):
         mock_config.user_inputs.export_level = "books"
-        archiver = Archiver(mock_config, mock_http_client)
+        archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
         assert archiver.base_dir == "bkps_books"
         assert archiver.archive_dir.startswith("bkps_books_")
 
@@ -95,6 +89,41 @@ def test_generate_root_folder_format(monkeypatch, base_name):
 def test_archive_dir_has_timestamp_suffix(archiver_instance):
     """Archiver.archive_dir must end with _YYYY-MM-DD_HH-MM-SS."""
     assert re.search(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", archiver_instance.archive_dir)
+
+
+# ---------------------------------------------------------------------------
+# _build_archiver — level → type selection
+# ---------------------------------------------------------------------------
+
+class TestBuildArchiver:
+    """_build_archiver returns the correct NodeArchiver subtype for each export level."""
+
+    def test_books_level_returns_book_archiver(self, mock_http_client):
+        config = _make_config(export_level="books", formats=["markdown"])
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert isinstance(archiver._archiver, BookArchiver)
+
+    def test_chapters_level_returns_chapter_archiver(self, mock_http_client):
+        config = _make_config(export_level="chapters", formats=["markdown"])
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert isinstance(archiver._archiver, ChapterArchiver)
+
+    def test_pages_level_returns_page_archiver(self, mock_http_client):
+        config = _make_config(export_level="pages", formats=["markdown"])
+        config.base_dir_name = "bkps"
+        config.user_inputs.keep_last = 0
+        config.user_inputs.output_path = ""
+        config.object_storage_config = {}
+        archiver = Archiver(config, mock_http_client)
+        assert isinstance(archiver._archiver, PageArchiver)
 
 
 # ---------------------------------------------------------------------------
@@ -319,34 +348,43 @@ def test_create_export_dir_permission_error_logs_warning(
 # archive_remote
 # ---------------------------------------------------------------------------
 
-def test_archive_remote_dispatches_minio(monkeypatch, archiver_instance, mock_config):
-    """object_storage_config has 'minio' key → _archive_minio invoked."""
-    minio_mock = MagicMock()
-    mock_config.object_storage_config = {"minio": minio_mock}
-    minio_handler = MagicMock()
-    monkeypatch.setattr(archiver_instance, "_archive_minio", minio_handler)
+def test_archive_remote_dispatches_minio(archiver_instance, mock_config):
+    """object_storage_config has 'minio' key → MinioArchiver constructed via injected class."""
+    obj_config = MagicMock()
+    obj_config.access_key = "mykey"
+    obj_config.secret_key = "mysecret"
+    obj_config.config = MagicMock()
+    mock_config.object_storage_config = {"minio": obj_config}
+
+    fake_minio_instance = MagicMock()
+    fake_minio_instance.upload_backup.return_value = "bucket/path/archive.tgz"
+    fake_minio_cls = MagicMock(return_value=fake_minio_instance)
+
+    archiver_instance._minio_archiver_cls = fake_minio_cls
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
     archiver_instance.archive_remote()
-    minio_handler.assert_called_once_with(minio_mock)
+
+    fake_minio_cls.assert_called_once_with(
+        obj_config.access_key, obj_config.secret_key, obj_config.config
+    )
 
 
-def test_archive_remote_raises_on_unknown_storage_type(
-    patched_page_archiver, mock_config, mock_http_client
-):
+def test_archive_remote_raises_on_unknown_storage_type(mock_config, mock_http_client):
     """object_storage_config has unknown key → ValueError raised."""
     mock_config.object_storage_config = {"gcs": MagicMock()}
-    archiver = Archiver(mock_config, mock_http_client)
+    archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
     with pytest.raises(ValueError, match="unsupported remote storage type"):
         archiver.archive_remote()
 
 
-def test_archive_remote_s3_raises_not_implemented(
-    patched_page_archiver, mock_config, mock_http_client
-):
+def test_archive_remote_s3_raises_not_implemented(mock_http_client):
     """archive_remote routes 's3' to _archive_s3 which is intentionally not implemented"""
     config = MagicMock()
     config.object_storage_config = {"s3": MagicMock()}
     config.base_dir_name = "bkps"
-    archiver = Archiver(config, MagicMock())
+    archiver = Archiver(config, mock_http_client, node_archiver=MagicMock())
     with pytest.raises(NotImplementedError, match="S3 remote storage"):
         archiver.archive_remote()
 
@@ -437,17 +475,28 @@ def test_archive_remote_returns_empty_list_when_no_config(archiver_instance, moc
     assert result == []
 
 
-def test_archive_remote_returns_minio_dest_list(monkeypatch, archiver_instance, mock_config):
+def test_archive_remote_returns_minio_dest_list(archiver_instance, mock_config):
     """Minio handler called → returned dest string collected in list."""
-    minio_config = MagicMock()
-    mock_config.object_storage_config = {"minio": minio_config}
+    obj_config = MagicMock()
+    obj_config.access_key = "k"
+    obj_config.secret_key = "s"
+    obj_config.config = MagicMock()
+    mock_config.object_storage_config = {"minio": obj_config}
     expected_dest = "my-bucket/backups/export.tgz"
-    monkeypatch.setattr(archiver_instance, "_archive_minio", MagicMock(return_value=expected_dest))
+
+    fake_minio_instance = MagicMock()
+    fake_minio_instance.upload_backup.return_value = expected_dest
+    fake_minio_cls = MagicMock(return_value=fake_minio_instance)
+
+    archiver_instance._minio_archiver_cls = fake_minio_cls
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
     result = archiver_instance.archive_remote()
     assert result == [expected_dest]
 
 
-def test_archive_minio_returns_dest_string(monkeypatch, archiver_instance):
+def test_archive_minio_returns_dest_string(archiver_instance):
     """_archive_minio returns the bucket/path dest from upload_backup."""
     obj_config = MagicMock()
     obj_config.access_key = "key"
@@ -457,15 +506,17 @@ def test_archive_minio_returns_dest_string(monkeypatch, archiver_instance):
     expected_dest = "test-bucket/backups/archive.tgz"
     mock_minio = MagicMock()
     mock_minio.upload_backup.return_value = expected_dest
-    monkeypatch.setattr(
-        "bookstack_file_exporter.archiver.archiver.MinioArchiver",
-        MagicMock(return_value=mock_minio),
-    )
+
+    fake_minio_cls = MagicMock(return_value=mock_minio)
+    archiver_instance._minio_archiver_cls = fake_minio_cls
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
 
     dest = archiver_instance._archive_minio(obj_config)
     assert dest == expected_dest
+    fake_minio_cls.assert_called_once_with(
+        obj_config.access_key, obj_config.secret_key, obj_config.config
+    )
 
 
 # ---------------------------------------------------------------------------
