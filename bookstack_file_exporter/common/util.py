@@ -16,9 +16,6 @@ T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
-# disable TLS warnings if using verify_ssl=false
-urllib3.disable_warnings()
-
 class HttpHelper:
     """
     HttpHelper provides an http request helper with config stored and retries built in
@@ -37,6 +34,8 @@ class HttpHelper:
         self.retry_count = config.retry_count
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
+        if not self.verify_ssl:
+            urllib3.disable_warnings()
         self._headers = headers
         self._session = self._build_session()
 
