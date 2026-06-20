@@ -76,14 +76,8 @@ class NodeExporter():
         base_url = self.api_urls["chapters"]
         chapter_nodes = {}
         for book_node in book_nodes.values():
-            for child in book_node.children:
-                if child.get('type') != 'chapter':
-                    continue
-                if self._node_filter:
-                    chapter_name = child['name']
-                    if not self._node_filter.keep(chapter_name, "chapters"):
-                        log.debug("Chapter '%s' excluded by filter", chapter_name)
-                        continue
+            for child in selector.selectable_children(
+                    book_node.children, "chapters", self._node_filter, node_type="chapter"):
                 chapter_id = child['id']
                 chapter_data = self._get_json_response(f"{base_url}/{chapter_id}")
                 chapter_nodes[chapter_id] = Node(chapter_data, book_node)
@@ -100,34 +94,18 @@ class NodeExporter():
                       filter_empty: bool, node_type: str = "") -> dict[int, Node]:
         child_nodes = {}
         for _, parent in parent_nodes.items():
-            if parent.children:
-                for child in parent.children:
-                    if node_type:
-                        # only used for Book Nodes to get children Page/Chapter Nodes
-                        # access key directly, don't create a Node if not needed
-                        # chapters and pages always have `type` from what I can tell
-                        if not child['type'] == node_type:
-                            log.debug("Book Node child of type: %s is not desired type: %s",
-                                       child['type'], node_type)
-                            continue
-                    # Pre-GET name filter: test child name before issuing the detail GET.
-                    if self._node_filter:
-                        child_name = child['name']
-                        if not self._node_filter.keep(child_name, resource_type):
-                            log.debug("'%s' (type=%s) excluded by filter",
-                                      child_name, resource_type)
-                            continue
-                    child_id = child['id']
-                    child_url = f"{base_url}/{child_id}"
-                    child_data = self._get_json_response(child_url)
-                    child_node = Node(child_data, parent)
-                    if filter_empty:
-                        # if it is not empty, add it
-                        # skip it if empty
-                        if not child_node.empty:
-                            child_nodes[child_id] = child_node
-                    else:
-                        child_nodes[child_id] = child_node
+            if not parent.children:
+                continue
+            for child in selector.selectable_children(
+                    parent.children, resource_type, self._node_filter, node_type):
+                child_id = child['id']
+                child_url = f"{base_url}/{child_id}"
+                child_data = self._get_json_response(child_url)
+                child_node = Node(child_data, parent)
+                # filter_empty needs the fetched detail (Node.empty), so it stays here.
+                if filter_empty and child_node.empty:
+                    continue
+                child_nodes[child_id] = child_node
         return child_nodes
 
     def get_unassigned_books(self, existing_books: dict[int, Node],
