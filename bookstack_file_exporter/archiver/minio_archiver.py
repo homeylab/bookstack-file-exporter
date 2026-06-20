@@ -1,4 +1,5 @@
 import logging
+import os
 
 # pylint: disable=import-error
 from minio import Minio
@@ -50,7 +51,7 @@ class MinioArchiver:
         # this will be the name of the object to upload
         # only get the file name not path
         # we are going to use path provided by user for object storage
-        file_name = local_file_path.split("/")[-1]
+        file_name = os.path.basename(local_file_path)
         if self.path:
             object_path = f"{self.path}/{file_name}"
         else:

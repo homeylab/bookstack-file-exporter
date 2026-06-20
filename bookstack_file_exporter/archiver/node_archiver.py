@@ -1,4 +1,5 @@
 import logging
+import os
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
@@ -56,7 +57,7 @@ class NodeArchiver:
         # intermediate tar before gzip
         self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
         # base folder name inside the tgz archive
-        self.archive_base_path = archive_dir.split("/")[-1]
+        self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
         self.asset_config = asset_config
         self.asset_archiver = asset_archiver if asset_archiver is not None else (
