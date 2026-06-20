@@ -92,7 +92,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
     def test_archive_dispatches_html_branch(
         self, tmp_path, build_node
     ):
-        """archive should call _modify_html when format='html' and modify_links=True."""
+        """archive should invoke html rewrite (update_asset_links_html) when format='html' and modify_links=True."""
         mock_asset = MagicMock()
         config = make_mock_config(
             formats=["html"],
@@ -109,6 +109,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             {5: [mock_image_node]} if asset_type == "images" else {}
         )
         mock_asset.get_asset_bytes.return_value = b"img_bytes"
+        mock_asset.update_asset_links_html.return_value = b"<html>rewritten</html>"
 
         parent_node = build_node(id=1, name="my-book", slug="my-book")
         page = build_node(id=5, name="test-page", slug="test-page", parent=parent_node)
@@ -118,28 +119,40 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             return_value=b"<html><body>content</body></html>",
         ), patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ), patch.object(
-            archiver, "_modify_html", wraps=archiver._modify_html
-        ) as mock_modify_html:
+        ):
             archiver.archive({5: page})
 
-        mock_modify_html.assert_called_once()
+        mock_asset.update_asset_links_html.assert_called_once()
 
     def test_modify_html_short_circuits_when_modify_links_false(
-        self, tmp_path
+        self, tmp_path, build_node
     ):
-        """_modify_html should return page_data unchanged when modify_links is False."""
+        """When modify_links is False, archive must not call update_asset_links_html."""
         mock_asset = MagicMock()
-        config = make_mock_config(formats=["html"], modify_links=False)
+        config = make_mock_config(formats=["html"], modify_links=False,
+                                  export_images=True)
         archive_dir = str(tmp_path / "bookstack-test")
         archiver = PageArchiver(archive_dir, config, MagicMock(), asset_archiver=mock_asset)
 
-        page_data = b"<html><body>test</body></html>"
-        mock_nodes = [MagicMock()]
+        mock_image_node = MagicMock()
+        mock_image_node.id_ = 1
+        mock_asset.get_asset_nodes.side_effect = lambda asset_type: (
+            {5: [mock_image_node]} if asset_type == "images" else {}
+        )
+        mock_asset.get_asset_bytes.return_value = b"img_bytes"
 
-        result = archiver._modify_html("images", "test-page", page_data, mock_nodes)
-        assert result == page_data
-        # ensure no call to update_asset_links_html
+        parent_node = build_node(id=1, name="my-book", slug="my-book")
+        page = build_node(id=5, name="test-page", slug="test-page", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"<html><body>test</body></html>",
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({5: page})
+
+        # modify_links=False: html rewrite must not be invoked
         mock_asset.update_asset_links_html.assert_not_called()
 
     def test_failed_assets_filtered_from_html_rewrite(
