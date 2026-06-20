@@ -7,6 +7,7 @@ from requests import Response
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.common.util import HttpHelper
+from bookstack_file_exporter.exporter import selector
 
 log = logging.getLogger(__name__)
 
@@ -44,18 +45,9 @@ class NodeExporter():
         # Fetch every shelf detail regardless of filter (shelf detail contains the book
         # IDs needed for cascade suppression — those IDs are not in the list summary).
         all_shelf_nodes = self._get_parents(base_url, all_parents)
-        if self._node_filter is None:
-            return all_shelf_nodes
-        surviving = {}
-        for shelf_id, shelf_node in all_shelf_nodes.items():
-            if self._node_filter.keep(shelf_node.display_name, "shelves"):
-                surviving[shelf_id] = shelf_node
-            else:
-                log.debug("Shelf '%s' excluded by filter; suppressing its books",
-                          shelf_node.display_name)
-                # Record the child book IDs so they don't resurface as unassigned.
-                for book_entry in shelf_node.children:
-                    self._excluded_book_ids.add(book_entry['id'])
+        surviving, excluded_book_ids = selector.partition_shelves(
+            all_shelf_nodes, self._node_filter)
+        self._excluded_book_ids.update(excluded_book_ids)
         return surviving
 
     def _get_json_response(self, url: str) -> list[dict[str, str |int]]:
