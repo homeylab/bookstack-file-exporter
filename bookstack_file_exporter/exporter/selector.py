@@ -33,3 +33,27 @@ def partition_shelves(
             for book_entry in shelf_node.children:
                 excluded_book_ids.add(book_entry['id'])
     return surviving, excluded_book_ids
+
+
+def selectable_children(
+    children: list[dict], resource_type: str,
+    node_filter: NodeFilter | None, node_type: str = "",
+) -> list[dict]:
+    """Apply the pre-GET type + name gate to a parent's child summaries.
+
+    Returns the child dicts that survive; the caller fetches each detail and
+    applies filter_empty afterward. node_type (when set) restricts to children
+    of that 'type' (used to pick pages vs chapters out of a book's contents).
+    """
+    selected: list[dict] = []
+    for child in children:
+        if node_type and child.get('type') != node_type:
+            log.debug("child of type: %s is not desired type: %s",
+                      child.get('type'), node_type)
+            continue
+        if node_filter and not node_filter.keep(child['name'], resource_type):
+            log.debug("'%s' (type=%s) excluded by filter",
+                      child['name'], resource_type)
+            continue
+        selected.append(child)
+    return selected

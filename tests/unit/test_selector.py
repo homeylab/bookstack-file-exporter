@@ -36,3 +36,36 @@ def test_partition_shelves_drops_unmatched_and_records_book_ids():
     surviving, excluded = selector.partition_shelves(shelves, node_filter)
     assert set(surviving.keys()) == {1}
     assert excluded == {20, 21}
+
+
+def test_selectable_children_no_filter_no_type_returns_all():
+    children = [{"id": 1, "name": "a", "type": "page"},
+                {"id": 2, "name": "b", "type": "chapter"}]
+    result = selector.selectable_children(children, "pages", None)
+    assert result == children
+
+
+def test_selectable_children_type_gate_filters_by_type():
+    children = [{"id": 1, "name": "a", "type": "page"},
+                {"id": 2, "name": "b", "type": "chapter"}]
+    result = selector.selectable_children(children, "pages", None, node_type="page")
+    assert [c["id"] for c in result] == [1]
+
+
+def test_selectable_children_name_filter_excludes():
+    children = [{"id": 1, "name": "keep", "type": "chapter"},
+                {"id": 2, "name": "drop", "type": "chapter"}]
+    node_filter = _make_filter(chapters={"exclude": ["drop"]})
+    result = selector.selectable_children(children, "chapters", node_filter,
+                                          node_type="chapter")
+    assert [c["id"] for c in result] == [1]
+
+
+def test_selectable_children_type_and_name_gates_combined():
+    children = [{"id": 1, "name": "keep", "type": "chapter"},
+                {"id": 2, "name": "keep", "type": "page"},
+                {"id": 3, "name": "drop", "type": "chapter"}]
+    node_filter = _make_filter(chapters={"exclude": ["drop"]})
+    result = selector.selectable_children(children, "chapters", node_filter,
+                                          node_type="chapter")
+    assert [c["id"] for c in result] == [1]
