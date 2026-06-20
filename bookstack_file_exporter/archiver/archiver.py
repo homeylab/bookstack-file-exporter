@@ -13,6 +13,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
 from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
+from bookstack_file_exporter.common import util as common_util
 from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
@@ -167,15 +168,11 @@ class Archiver:
 
     def _filter_archives(self, file_list: list[str]) -> list[str]:
         """get older archives based on keep number"""
-        file_dict = {file: os.stat(file).st_ctime for file in file_list}
-        ordered = sorted(file_dict.items(), key=lambda item: item[1])
-        to_delete = len(ordered) - self.config.user_inputs.keep_last
-        # Guard against negative slice when caller invokes us directly with
-        # keep_last >= len(file_list). Negative `to_delete` makes ordered[:to_delete]
-        # return the first N items instead of an empty list — wrong files deleted.
-        if to_delete <= 0:
-            return []
-        files_to_clean = [key for key, _ in ordered[:to_delete]]
+        files_to_clean = common_util.oldest_beyond_keep(
+            file_list,
+            key=lambda f: os.stat(f).st_ctime,
+            keep_last=self.config.user_inputs.keep_last,
+        )
         log.debug("%d local archives will be cleaned up", len(files_to_clean))
         return files_to_clean
 
