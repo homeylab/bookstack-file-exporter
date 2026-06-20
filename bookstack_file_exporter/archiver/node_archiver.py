@@ -60,10 +60,15 @@ class NodeArchiver:
         self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
         self.asset_config = asset_config
-        self.asset_archiver = asset_archiver if asset_archiver is not None else (
-            AssetArchiver(api_urls, http_client) if asset_config else None
+        self.asset_archiver = (
+            asset_archiver if asset_archiver is not None
+            else self._default_asset_archiver(api_urls, http_client)
         )
         self.modify_links: bool = self._check_links_modify()
+
+    def _default_asset_archiver(self, api_urls: dict[str, str], http_client: HttpHelper):
+        """Build an AssetArchiver when no double is injected, or return None if assets disabled."""
+        return AssetArchiver(api_urls, http_client) if self.asset_config else None
 
     @property
     def export_images(self) -> bool:

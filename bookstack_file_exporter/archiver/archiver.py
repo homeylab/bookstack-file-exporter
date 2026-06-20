@@ -41,7 +41,9 @@ class Archiver:
         self.base_dir = self._level_base_dir(config.base_dir_name,
                                              config.user_inputs.export_level)
         self.archive_dir = self._generate_root_folder(self.base_dir)
-        self._archiver: NodeArchiver = node_archiver or self._build_archiver(http_client)
+        self._archiver: NodeArchiver = (
+            node_archiver if node_archiver is not None else self._build_archiver(http_client)
+        )
         self._minio_archiver_cls = minio_archiver_cls
 
     def _build_archiver(self, http_client: HttpHelper) -> NodeArchiver:
