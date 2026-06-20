@@ -57,3 +57,28 @@ def selectable_children(
             continue
         selected.append(child)
     return selected
+
+
+def selectable_unassigned_books(
+    all_books: list[dict], existing_ids: set[int],
+    excluded_ids: set[int], node_filter: NodeFilter | None,
+) -> list[int]:
+    """Pick shelfless book IDs to fetch, applying the three pre-GET gates.
+
+    1. Skip books already collected under a shelf (existing_ids).
+    2. Skip books whose shelf was dropped (excluded_ids).
+    3. When a filter is set, skip books failing the 'books' name filter.
+    """
+    selected: list[int] = []
+    for book in all_books:
+        book_id = book['id']
+        if book_id in existing_ids:
+            continue
+        if book_id in excluded_ids:
+            log.debug("Book id=%d suppressed (its shelf was excluded)", book_id)
+            continue
+        if node_filter and not node_filter.keep(book['name'], "books"):
+            log.debug("Unassigned book '%s' excluded by filter", book['name'])
+            continue
+        selected.append(book_id)
+    return selected

@@ -69,3 +69,30 @@ def test_selectable_children_type_and_name_gates_combined():
     result = selector.selectable_children(children, "chapters", node_filter,
                                           node_type="chapter")
     assert [c["id"] for c in result] == [1]
+
+
+def test_selectable_unassigned_books_skips_already_collected():
+    books = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
+    result = selector.selectable_unassigned_books(books, {1}, set(), None)
+    assert result == [2]
+
+
+def test_selectable_unassigned_books_skips_excluded_ids():
+    books = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
+    result = selector.selectable_unassigned_books(books, set(), {2}, None)
+    assert result == [1]
+
+
+def test_selectable_unassigned_books_applies_name_filter():
+    books = [{"id": 1, "name": "keep"}, {"id": 2, "name": "drop"}]
+    node_filter = _make_filter(books={"exclude": ["drop"]})
+    result = selector.selectable_unassigned_books(books, set(), set(), node_filter)
+    assert result == [1]
+
+
+def test_selectable_unassigned_books_all_gates_combined():
+    books = [{"id": 1, "name": "collected"}, {"id": 2, "name": "excluded"},
+             {"id": 3, "name": "drop"}, {"id": 4, "name": "keep"}]
+    node_filter = _make_filter(books={"exclude": ["drop"]})
+    result = selector.selectable_unassigned_books(books, {1}, {2}, node_filter)
+    assert result == [4]
