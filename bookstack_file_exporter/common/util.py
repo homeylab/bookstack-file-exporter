@@ -16,9 +16,6 @@ T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
-# disable TLS warnings if using verify_ssl=false
-urllib3.disable_warnings()
-
 class HttpHelper:
     """
     HttpHelper provides an http request helper with config stored and retries built in
@@ -37,6 +34,8 @@ class HttpHelper:
         self.retry_count = config.retry_count
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
+        if not self.verify_ssl:
+            urllib3.disable_warnings()
         self._headers = headers
         self._session = self._build_session()
 
@@ -102,6 +101,16 @@ class HttpHelper:
                 break
             offset += count
         return all_data
+
+def oldest_beyond_keep(items: list[T], key, keep_last: int) -> list[T]:
+    """Return the oldest items exceeding keep_last (sorted ascending by key).
+    Empty if none exceed."""
+    ordered = sorted(items, key=key)
+    to_delete = len(ordered) - keep_last
+    if to_delete <= 0:
+        return []
+    return ordered[:to_delete]
+
 
 def check_var(env_key: str, default_val: str, required: bool = True) -> str:
     """

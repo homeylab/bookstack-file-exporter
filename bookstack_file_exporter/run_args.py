@@ -10,7 +10,7 @@ LOG_LEVEL = {
 
 def get_log_level(log_level:str) -> int:
     """return log level int"""
-    return LOG_LEVEL.get(log_level)
+    return LOG_LEVEL[log_level]
 
 def get_args() -> argparse.Namespace:
     """return user cmd line options"""

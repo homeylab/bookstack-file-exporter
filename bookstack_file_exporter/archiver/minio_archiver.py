@@ -1,10 +1,12 @@
 import logging
+import os
 
 # pylint: disable=import-error
 from minio import Minio
 # pylint: disable=import-error
 from minio.datatypes import Object as MinioObject
 
+from bookstack_file_exporter.common import util as common_util
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 
@@ -49,7 +51,7 @@ class MinioArchiver:
         # this will be the name of the object to upload
         # only get the file name not path
         # we are going to use path provided by user for object storage
-        file_name = local_file_path.split("/")[-1]
+        file_name = os.path.basename(local_file_path)
         if self.path:
             object_path = f"{self.path}/{file_name}"
         else:
@@ -98,18 +100,11 @@ class MinioArchiver:
         return to_delete
 
     def _filter_objects(self, minio_objects: list[MinioObject]) -> list[MinioObject]:
-        # sort by minio datetime 'last_modified' time
-        # ascending order
-        sorted_objects = sorted(minio_objects, key=lambda d: d.last_modified)
-        objects_to_clean =  []
-        # how many items we will have to delete to fulfill 'keep_last'
-        to_delete = len(sorted_objects) - self.keep_last
-        # collect objects to delete
-        for item in sorted_objects:
-            objects_to_clean.append(item)
-            to_delete -= 1
-            if to_delete <= 0:
-                break
+        objects_to_clean = common_util.oldest_beyond_keep(
+            minio_objects,
+            key=lambda d: d.last_modified,
+            keep_last=self.keep_last,
+        )
         log.debug("%d minio objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 

@@ -1,5 +1,5 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
-# pylint: disable=redefined-outer-name,protected-access
+# pylint: disable=redefined-outer-name,protected-access,too-few-public-methods
 """Unit tests for PageArchiver._modify_html dispatch and E2E HTML rewrite pipeline (Phase 4)."""
 import logging
 import re
@@ -92,7 +92,8 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
     def test_archive_dispatches_html_branch(
         self, tmp_path, build_node
     ):
-        """archive should invoke html rewrite (update_asset_links_html) when format='html' and modify_links=True."""
+        """archive should invoke html rewrite (update_asset_links_html) when format='html'
+        and modify_links=True."""
         mock_asset = MagicMock()
         config = make_mock_config(
             formats=["html"],
@@ -397,7 +398,8 @@ class TestRemoteScaledImgSrc:
     )
 
     def test_remote_scaled_src_and_href_rewritten_to_local(self):
-        """Both scaled img src and canonical anchor href are rewritten to images/test-page/foo.png."""
+        """Both scaled img src and canonical anchor href are rewritten to
+        images/test-page/foo.png."""
         http_client = MagicMock(spec=HttpHelper)
         archiver = AssetArchiver(
             {

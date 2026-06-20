@@ -55,19 +55,21 @@ class AppRiseNotify:
         timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         if error_msg:
             error_str = str(error_msg)
-            body = f"""
-            Bookstack File Exporter encountered an unrecoverable error.
-
-            Occurred At: {timestamp}
-
-            Error message: {error_str}
-            """
+            lines = [
+                "",
+                "Bookstack File Exporter encountered an unrecoverable error.",
+                "",
+                f"Occurred At: {timestamp}",
+                "",
+                f"Error message: {error_str}",
+            ]
         else:
-            body = f"""
-            Bookstack File Exporter completed successfully.
-
-            Completed At: {timestamp}
-            """
+            lines = [
+                "",
+                "Bookstack File Exporter completed successfully.",
+                "",
+                f"Completed At: {timestamp}",
+            ]
             if result is not None and result.local is not None:
                 local_abs = os.path.abspath(result.local)
                 removed_abs = {os.path.abspath(p) for p in result.removed}
@@ -76,15 +78,15 @@ class AppRiseNotify:
                 archive_line = f"Archive: {result.local}"
                 if was_removed:
                     archive_line += " (removed locally after upload)"
-                body += f"\n            {archive_line}"
+                lines.append(archive_line)
 
                 if result.remote:
-                    body += f"\n            Uploaded to: {', '.join(result.remote)}"
+                    lines.append(f"Uploaded to: {', '.join(result.remote)}")
 
                 pruned_count = len(removed_abs - {local_abs})
                 if pruned_count > 0:
-                    body += f"\n            Pruned {pruned_count} old local archive(s)"
-        return body
+                    lines.append(f"Pruned {pruned_count} old local archive(s)")
+        return "\n".join(lines)
 
     def notify(self, excep: Exception | None = None, result: NotifyResult | None = None):
         """send notification with exception message"""

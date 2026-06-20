@@ -1,10 +1,11 @@
+# pylint: disable=protected-access
 """Unit tests for the module-level config parsing seams extracted in R2."""
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.config_helper import (
@@ -101,16 +102,12 @@ def test_build_user_input_returns_user_input_for_valid_dict():
 
 def test_build_user_input_raises_on_invalid_schema():
     """build_user_input raises (pydantic ValidationError) for a dict with bad values."""
-    from pydantic import ValidationError
-
     with pytest.raises(ValidationError):
         build_user_input(dict(_INVALID_RAW))
 
 
 def test_build_user_input_logs_error_on_schema_failure(caplog):
     """build_user_input logs the schema validation error message before re-raising."""
-    from pydantic import ValidationError
-
     logger_name = "bookstack_file_exporter.config_helper.config_helper"
     with caplog.at_level(logging.ERROR, logger=logger_name):
         with pytest.raises(ValidationError):

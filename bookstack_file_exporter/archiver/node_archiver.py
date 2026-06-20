@@ -1,4 +1,5 @@
 import logging
+import os
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
@@ -56,13 +57,18 @@ class NodeArchiver:
         # intermediate tar before gzip
         self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
         # base folder name inside the tgz archive
-        self.archive_base_path = archive_dir.split("/")[-1]
+        self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
         self.asset_config = asset_config
-        self.asset_archiver = asset_archiver if asset_archiver is not None else (
-            AssetArchiver(api_urls, http_client) if asset_config else None
+        self.asset_archiver = (
+            asset_archiver if asset_archiver is not None
+            else self._default_asset_archiver(api_urls, http_client)
         )
         self.modify_links: bool = self._check_links_modify()
+
+    def _default_asset_archiver(self, api_urls: dict[str, str], http_client: HttpHelper):
+        """Build an AssetArchiver when no double is injected, or return None if assets disabled."""
+        return AssetArchiver(api_urls, http_client) if self.asset_config else None
 
     @property
     def export_images(self) -> bool:
@@ -244,24 +250,24 @@ class NodeArchiver:
                     grouped[asset_type][page_name] = survivors
         return grouped
 
-    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
-        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+    def _rewrite_combined(self, data: bytes, assets_by_page: dict, rewriter) -> bytes:
+        """Run the shared guard and double loop, delegating each page to rewriter."""
         if not assets_by_page or self.asset_archiver is None:
             return data
         for asset_type, by_page in assets_by_page.items():
             for page_name, assets in by_page.items():
-                data = self.asset_archiver.update_asset_links(asset_type, page_name, data, assets)
+                data = rewriter(asset_type, page_name, data, assets)
         return data
+
+    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
+        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+        return self._rewrite_combined(data, assets_by_page,
+                                      self.asset_archiver.update_asset_links)
 
     def _rewrite_combined_html(self, data: bytes, assets_by_page: dict) -> bytes:
         """Rewrite asset URLs in combined html, reusing the per-page html rewriter."""
-        if not assets_by_page or self.asset_archiver is None:
-            return data
-        for asset_type, by_page in assets_by_page.items():
-            for page_name, assets in by_page.items():
-                data = self.asset_archiver.update_asset_links_html(
-                    asset_type, page_name, data, assets)
-        return data
+        return self._rewrite_combined(data, assets_by_page,
+                                      self.asset_archiver.update_asset_links_html)
 
     def write_data(self, file_path: str, data: bytes):
         """Write data to a tar file.

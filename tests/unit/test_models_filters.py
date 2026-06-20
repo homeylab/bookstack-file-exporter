@@ -27,8 +27,8 @@ class TestResourceFilterValid:
 
     def test_empty_list_accepted(self):
         rf = ResourceFilter(include=[], exclude=[])
-        assert rf.include == []
-        assert rf.exclude == []
+        assert not rf.include
+        assert not rf.exclude
 
     def test_single_pattern_accepted(self):
         rf = ResourceFilter(include=["draft"])
