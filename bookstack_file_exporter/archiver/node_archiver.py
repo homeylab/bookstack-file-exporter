@@ -244,24 +244,24 @@ class NodeArchiver:
                     grouped[asset_type][page_name] = survivors
         return grouped
 
-    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
-        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+    def _rewrite_combined(self, data: bytes, assets_by_page: dict, rewriter) -> bytes:
+        """Run the shared guard and double loop, delegating each page to rewriter."""
         if not assets_by_page or self.asset_archiver is None:
             return data
         for asset_type, by_page in assets_by_page.items():
             for page_name, assets in by_page.items():
-                data = self.asset_archiver.update_asset_links(asset_type, page_name, data, assets)
+                data = rewriter(asset_type, page_name, data, assets)
         return data
+
+    def _rewrite_combined_markdown(self, data: bytes, assets_by_page: dict) -> bytes:
+        """Rewrite asset URLs in combined markdown, reusing the per-page rewriter."""
+        return self._rewrite_combined(data, assets_by_page,
+                                      self.asset_archiver.update_asset_links)
 
     def _rewrite_combined_html(self, data: bytes, assets_by_page: dict) -> bytes:
         """Rewrite asset URLs in combined html, reusing the per-page html rewriter."""
-        if not assets_by_page or self.asset_archiver is None:
-            return data
-        for asset_type, by_page in assets_by_page.items():
-            for page_name, assets in by_page.items():
-                data = self.asset_archiver.update_asset_links_html(
-                    asset_type, page_name, data, assets)
-        return data
+        return self._rewrite_combined(data, assets_by_page,
+                                      self.asset_archiver.update_asset_links_html)
 
     def write_data(self, file_path: str, data: bytes):
         """Write data to a tar file.
