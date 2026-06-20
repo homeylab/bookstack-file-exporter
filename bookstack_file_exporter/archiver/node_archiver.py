@@ -13,8 +13,6 @@ _META_FILE_SUFFIX = "_meta.json"
 _TAR_SUFFIX = ".tar"
 _TAR_GZ_SUFFIX = ".tgz"
 
-_EXPORT_API_PATH = "export"
-
 _FILE_EXTENSION_MAP = {
     "markdown": ".md",
     "html": ".html",
@@ -152,17 +150,29 @@ class NodeArchiver:
     def _get_node_data(self, url: str) -> bytes:
         return archiver_util.get_byte_response(url=url, http_client=self.http_client)
 
+    def _asset_page_map(self, node: Node) -> dict[int, str]:
+        """Map {page_id: page_name} of pages whose assets attach to this node."""
+        return self._descendant_page_names(node)
+
+    def _asset_parent_path(self, node: Node) -> str:
+        """Directory (relative to archive_base_path) under which page assets are written."""
+        return node.file_path
+
+    def _node_output_path(self, node: Node) -> str:
+        """Path fragment (relative to archive_base_path, no extension) for export/meta files."""
+        return f"{node.file_path}/{node.name}"
+
     def _archive_node(self, node: Node, export_format: str, data: bytes):
         file_name = (
             f"{self.archive_base_path}/"
-            f"{node.file_path}/{node.name}{_FILE_EXTENSION_MAP[export_format]}"
+            f"{self._node_output_path(node)}{_FILE_EXTENSION_MAP[export_format]}"
         )
         self.write_data(file_name, data)
 
     def _archive_node_meta(self, node: Node, meta_data: dict):
         meta_file_name = (
             f"{self.archive_base_path}/"
-            f"{node.file_path}/{node.name}{_FILE_EXTENSION_MAP['meta']}"
+            f"{self._node_output_path(node)}{_FILE_EXTENSION_MAP['meta']}"
         )
         bytes_meta = archiver_util.get_json_bytes(meta_data)
         self.write_data(meta_file_name, bytes_meta)
@@ -220,14 +230,15 @@ class NodeArchiver:
         """Download this node's descendant-page assets; return survivors grouped per page+type."""
         if not (image_map or attachment_map):
             return {}
-        page_names = self._descendant_page_names(node)
+        page_names = self._asset_page_map(node)
         grouped = {"images": {}, "attachments": {}}
         for asset_type, amap in (("images", image_map), ("attachments", attachment_map)):
             for page_id, page_name in page_names.items():
                 assets = amap.get(page_id)
                 if not assets:
                     continue
-                failed = self._archive_node_assets(asset_type, node.file_path, page_name, assets)
+                failed = self._archive_node_assets(
+                    asset_type, self._asset_parent_path(node), page_name, assets)
                 survivors = [a for a in assets if a.id_ not in failed]
                 if survivors:
                     grouped[asset_type][page_name] = survivors
@@ -287,7 +298,6 @@ class ChapterArchiver(NodeArchiver):
         self._archive_level(chapter_nodes, "chapters", "chapter")
 
 
-# pylint: disable=too-many-instance-attributes
 class PageArchiver(NodeArchiver):
     """
     PageArchiver handles all data extraction and modifications
@@ -313,98 +323,17 @@ class PageArchiver(NodeArchiver):
             asset_archiver=asset_archiver,
         )
 
+    def _asset_page_map(self, node: Node) -> dict[int, str]:
+        return {node.id_: node.name}
+
+    def _asset_parent_path(self, node: Node) -> str:
+        return node.parent.file_path
+
+    def _node_output_path(self, node: Node) -> str:
+        return node.file_path
+
     def archive(self, page_nodes: dict[int, Node]):
         """Export page contents and their images/attachments."""
-        # get assets first if requested
-        # this is because we may want to manipulate page data with modify_links flag
-        image_nodes = self._get_image_meta()
-        attachment_nodes = self._get_attachment_meta()
-        for _, page in page_nodes.items():
-            page_images = []
-            page_attachments = []
-            if page.id_ in image_nodes:
-                page_images = image_nodes[page.id_]
-            if page.id_ in attachment_nodes:
-                page_attachments = attachment_nodes[page.id_]
-            failed_images = self.archive_page_assets("images", page.parent.file_path,
-                                     page.name, page_images)
-            failed_attach = self.archive_page_assets("attachments", page.parent.file_path,
-                                     page.name, page_attachments)
-            # exclude from page_images
-            # so it doesn't attempt to get modified in markdown/html file
-            if failed_images:
-                page_images = [img for img in page_images if img.id_ not in failed_images]
-            # exclude from page_attachments
-            # so it doesn't attempt to get modified in markdown/html file
-            if failed_attach:
-                page_attachments = [attach for attach in page_attachments
-                                    if attach.id_ not in failed_attach]
-            page_assets = {"images": page_images, "attachments": page_attachments}
-            for export_format in self.export_formats:
-                try:
-                    page_data = self._get_page_data(page.id_, export_format)
-                except (HTTPError, RetryError):
-                    # one restricted/failed page export must not abort the whole run
-                    # (mirrors NodeArchiver._export_nodes for book/chapter levels)
-                    log.error(
-                        "Failed to get page data for page id=%d format=%s - skipping",
-                        page.id_, export_format,
-                    )
-                    continue
-                page_data = self._rewrite_page_data(export_format, page.name,
-                                                    page_data, page_assets)
-                self._archive_page(page, export_format, page_data)
-            if self.asset_config.export_meta:
-                self._archive_page_meta(page.file_path, page.meta)
-
-    def _rewrite_page_data(self, export_format: str, page_name: str,
-                           page_data: bytes, page_assets: dict[str, list]) -> bytes:
-        """Dispatch link rewriting for the given export format. No-op for non-rewritable formats."""
-        if export_format == 'markdown':
-            rewriter = self._modify_links
-        elif export_format == 'html':
-            rewriter = self._modify_html
-        else:
-            return page_data
-        for asset_type, nodes in page_assets.items():
-            if nodes:
-                page_data = rewriter(asset_type, page_name, page_data, nodes)
-        return page_data
-
-    def _archive_page(self, page: Node, export_format: str, data: bytes):
-        page_file_name = f"{self.archive_base_path}/" \
-            f"{page.file_path}{_FILE_EXTENSION_MAP[export_format]}"
-        self.write_data(page_file_name, data)
-
-    def _get_page_data(self, page_id: int, export_format: str) -> bytes:
-        url = f"{self.api_urls['pages']}/{page_id}/{_EXPORT_API_PATH}/{export_format}"
-        return archiver_util.get_byte_response(url=url,
-                                               http_client=self.http_client)
-
-    def _archive_page_meta(self, page_path: str, meta_data: dict[str, str | int]):
-        meta_file_name = f"{self.archive_base_path}/{page_path}{_FILE_EXTENSION_MAP['meta']}"
-        bytes_meta = archiver_util.get_json_bytes(meta_data)
-        self.write_data(file_path=meta_file_name, data=bytes_meta)
-
-    def _modify_links(self, asset_type: str,
-                      page_name: str, page_data: bytes,
-                      asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
-        """Markdown link rewriting. Short-circuits when modify_links is False."""
-        if not self.modify_links:
-            return page_data
-        return self.asset_archiver.update_asset_links(asset_type, page_name, page_data,
-                                                      asset_nodes)
-
-    def _modify_html(self, asset_type: str,
-                     page_name: str, page_data: bytes,
-                     asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
-        """HTML link rewriting. Short-circuits when modify_links is False (no bs4 parse)."""
-        if not self.modify_links:
-            return page_data
-        return self.asset_archiver.update_asset_links_html(asset_type, page_name, page_data,
-                                                           asset_nodes)
-
-    def archive_page_assets(self, asset_type: str, parent_path: str, page_name: str,
-                            asset_nodes) -> set[int]:
-        """Delegate to base _archive_node_assets; preserved for backward compatibility."""
-        return self._archive_node_assets(asset_type, parent_path, page_name, asset_nodes)
+        image_map = self._get_image_meta()
+        attachment_map = self._get_attachment_meta()
+        self._export_nodes(page_nodes, "pages", image_map, attachment_map)
