@@ -1,7 +1,7 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access,too-few-public-methods
 """Happy-path unit tests for PageArchiver."""
 from typing import Dict
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from requests.exceptions import HTTPError
@@ -38,23 +38,27 @@ def page_archiver(tmp_path):
 class TestConstruction:
     def test_archive_file_ends_with_tgz(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(),
+                                asset_archiver=MagicMock())
         assert archiver.archive_file == f"{archive_dir}.tgz"
 
     def test_tar_file_ends_with_tar(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(),
+                                asset_archiver=MagicMock())
         assert archiver.tar_file == f"{archive_dir}.tar"
 
     def test_archive_base_path_is_last_segment(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(), asset_archiver=MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), MagicMock(),
+                                asset_archiver=MagicMock())
         assert archiver.archive_base_path == "bookstack-20260514"
 
     def test_http_client_stored(self, tmp_path):
         http_client = MagicMock()
         archive_dir = str(tmp_path / "bookstack-20260514")
-        archiver = PageArchiver(archive_dir, _make_config(), http_client, asset_archiver=MagicMock())
+        archiver = PageArchiver(archive_dir, _make_config(), http_client,
+                                asset_archiver=MagicMock())
         assert archiver.http_client is http_client
 
 
@@ -251,7 +255,8 @@ class TestAssetArchiverInjection:
     """Constructor-injected asset_archiver double is stored as self.asset_archiver."""
 
     def test_injected_double_is_stored(self, tmp_path):
-        """When asset_archiver= is supplied, NodeArchiver stores it without constructing a real one."""
+        """When asset_archiver= is supplied, NodeArchiver stores it
+        without constructing a real one."""
         double = MagicMock()
         config = _make_config(export_images=True)
         archive_dir = str(tmp_path / "bookstack-r8")
@@ -388,7 +393,8 @@ class TestPageAssetParentPath:
 
 class TestModifyLinksFalseStillDownloads:
     def test_assets_downloaded_rewrite_not_called(self, tmp_path, build_node):
-        """When modify_links is False, assets are downloaded but update_asset_links is not called."""
+        """When modify_links is False, assets are downloaded but update_asset_links
+        is not called."""
         # export_images=True but modify_links=False → no rewrite
         config = _make_config(formats=["markdown"], export_images=True,
                               export_attachments=False, export_meta=False,

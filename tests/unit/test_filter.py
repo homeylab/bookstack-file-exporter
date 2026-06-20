@@ -1,7 +1,5 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 """Unit tests for NodeFilter (exporter/filter.py) — pure logic, no I/O."""
-import pytest
-
 from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.config_helper.models import Filters, ResourceFilter
 

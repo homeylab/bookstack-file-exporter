@@ -103,7 +103,8 @@ class HttpHelper:
         return all_data
 
 def oldest_beyond_keep(items: list[T], key, keep_last: int) -> list[T]:
-    """Return the oldest items exceeding keep_last (sorted ascending by key). Empty if none exceed."""
+    """Return the oldest items exceeding keep_last (sorted ascending by key).
+    Empty if none exceed."""
     ordered = sorted(items, key=key)
     to_delete = len(ordered) - keep_last
     if to_delete <= 0:
