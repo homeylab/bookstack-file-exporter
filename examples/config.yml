@@ -120,6 +120,16 @@ run_interval: 0
 # if a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up)
 # example: "0 2 * * *" = 2am daily
 # run_schedule: "0 2 * * *"
+## optional - opt-in health endpoint for scheduled mode (run_interval or run_schedule)
+# when health_port is set, the daemon serves GET /healthz returning JSON:
+#   {"status","last_run":{...},"next_run","run_count","failure_count"}
+# liveness: returns 200 while the daemon is alive (a single failed cycle does NOT
+#   flip it off 200); the scrape signal is last_run.status (never/running/success/failed)
+# no server is started unless health_port is set; ignored in one-shot mode
+# health_port: 8080
+# optional bind address; defaults to 0.0.0.0 (container/k8s friendly).
+# set to 127.0.0.1 or a specific NIC on a bare-metal multi-homed host
+# health_host: "0.0.0.0"
 ## optional - if specified exporter will send notifications on failure
 # supported notification services are:
 # - apprise (https://github.com/caronc/apprise)

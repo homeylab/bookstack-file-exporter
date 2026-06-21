@@ -194,6 +194,60 @@ Two scheduling strategies are available for application mode (mutually exclusive
 
 Pass `--run-once` to force a single run regardless of `run_interval` or `run_schedule`.
 
+#### Health Endpoint
+
+In scheduled mode (`run_interval` or `run_schedule`), set `health_port` to expose an
+opt-in `GET /healthz` endpoint. No server is started unless `health_port` is set, and
+it is ignored in one-shot mode.
+
+```yaml
+health_port: 8080          # opt-in; no server unless set
+health_host: "0.0.0.0"     # optional bind address (default 0.0.0.0)
+```
+
+`GET /healthz` returns `200` with a JSON body while the daemon is alive:
+
+```json
+{
+  "status": "healthy",
+  "last_run": {
+    "status": "success",
+    "started_at": "2026-06-21T02:00:00Z",
+    "finished_at": "2026-06-21T02:03:11Z",
+    "duration_seconds": 191,
+    "archive_file": "bookstack_export_2026-06-21.tgz",
+    "error": null
+  },
+  "next_run": "2026-06-22T02:00:00Z",
+  "run_count": 5,
+  "failure_count": 0
+}
+```
+
+This is a **liveness** signal: it stays `200` even after a failed export cycle
+(the scheduled loop logs and continues), so probes do not flap on transient
+BookStack outages. Use `last_run.status` (`never` → `running` → `success` |
+`failed`) and `failure_count` for scrape-based alerting. Any path other than
+`/healthz` returns `404`.
+
+Kubernetes liveness probe:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+```
+
+Docker healthcheck:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').status==200 else 1)"
+```
+
 #### Docker Compose
 When using `run_interval` or `run_schedule`, a docker compose set up could be used to run the exporter as an always running application. The exporter will wait for the next interval or scheduled time before subsequent runs.
 
