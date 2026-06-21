@@ -121,6 +121,7 @@ Command line options:
 | ------ | -------- | ----------- |
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
+|`--run-once` |False|Force a single run and exit, ignoring `run_interval` in the config. Useful for a manual or CI-triggered run against a config that is otherwise set up for application (scheduled) mode.|
 
 #### Environment Variables
 See [Valid Environment Variables](#valid-environment-variables) for more options.
@@ -161,6 +162,14 @@ docker run \
     -v $(pwd)/config.yml:/export/config/config.yml:ro \
     homeylab/bookstack-file-exporter:latest
 ```
+
+#### Run Modes
+The exporter runs in one of two modes, selected automatically from your config:
+
+- **One-shot** (default): `run_interval` unset or `0` → runs once and exits. Returns exit code `0` on success, `1` on failure (clean error message; pass `-v debug` for the full traceback), and `130` on `Ctrl-C`. Pairs well with an external scheduler (Kubernetes `CronJob`, `cron`, `systemd` timer), which owns restart, backoff, and run history.
+- **Application / scheduled** (long-running): `run_interval` set → runs, sleeps `{run_interval}` seconds, repeats. For a single-container `docker compose` deployment with no external scheduler. A failed cycle is logged (and notifies, if configured) and waits for the next interval rather than crashing. Shuts down gracefully on `SIGTERM` (`docker stop`) and `SIGINT` (`Ctrl-C`), exiting `0`.
+
+Pass `--run-once` to force a single run regardless of `run_interval`.
 
 #### Docker Compose
 When using the configuration option: `run_interval`, a docker compose set up could be used to run the exporter as an always running application. The exporter will sleep and wait until `{run_interval}` seconds has elapsed before subsequent runs.

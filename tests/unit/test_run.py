@@ -2,36 +2,266 @@
 export-level node selection in run.exporter."""
 # pylint: disable=missing-class-docstring,missing-function-docstring,unused-argument
 import logging
+import signal
+import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import NotifyResult
 
 
-def _config(run_interval):
+def _config(run_interval, run_once=False):
+    """Return a minimal fake args + config pair for entrypoint tests."""
     return SimpleNamespace(user_inputs=SimpleNamespace(run_interval=run_interval))
 
+
+def _args(run_once=False):
+    return SimpleNamespace(run_once=run_once)
+
+
+# ---------------------------------------------------------------------------
+# entrypoint() — config build failure
+# ---------------------------------------------------------------------------
+
+class TestEntrypointConfigError:
+    def test_config_error_returns_1(self, caplog):
+        with patch.object(run, "ConfigNode", side_effect=ValueError("bad config")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            result = run.entrypoint(args=_args())
+        assert result == 1
+        assert any("Configuration error" in r.message for r in caplog.records)
+
+    def test_config_error_does_not_propagate(self):
+        with patch.object(run, "ConfigNode", side_effect=RuntimeError("boom")):
+            result = run.entrypoint(args=_args())
+        assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# _run_once() via entrypoint() — one-shot path
+# ---------------------------------------------------------------------------
+
+class TestRunOncePath:
+    def _cfg_no_interval(self):
+        return _config(run_interval=0)
+
+    def test_success_returns_0(self):
+        cfg = self._cfg_no_interval()
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run"):
+            result = run.entrypoint(args=_args())
+        assert result == 0
+
+    def test_run_raises_exception_returns_1(self, caplog):
+        cfg = self._cfg_no_interval()
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=RuntimeError("export boom")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            result = run.entrypoint(args=_args())
+        assert result == 1
+        assert any("Export failed" in r.message for r in caplog.records)
+
+    def test_run_raises_exception_no_traceback_propagated(self):
+        """Exception must NOT escape entrypoint."""
+        cfg = self._cfg_no_interval()
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=RuntimeError("boom")):
+            # should not raise
+            result = run.entrypoint(args=_args())
+        assert result == 1
+
+    def test_keyboard_interrupt_returns_130(self):
+        cfg = self._cfg_no_interval()
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=KeyboardInterrupt):
+            result = run.entrypoint(args=_args())
+        assert result == 130
+
+
+# ---------------------------------------------------------------------------
+# run_once flag forces _run_once even when run_interval is set
+# ---------------------------------------------------------------------------
+
+class TestRunOnceFlag:
+    def test_run_once_flag_true_forces_single_run_even_with_interval(self):
+        cfg = _config(run_interval=60)
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run") as mock_run:
+            result = run.entrypoint(args=_args(run_once=True))
+        assert result == 0
+        assert mock_run.call_count == 1
+
+    def test_run_once_flag_false_with_no_interval_still_runs_once(self):
+        cfg = _config(run_interval=0)
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run") as mock_run:
+            result = run.entrypoint(args=_args(run_once=False))
+        assert result == 0
+        assert mock_run.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# _run_scheduled() via entrypoint() — daemon path
+# ---------------------------------------------------------------------------
+
+class TestRunScheduledPath:
+    def _cfg_with_interval(self, interval=5):
+        return _config(run_interval=interval)
+
+    def test_sigterm_and_sigint_handlers_installed(self):
+        """signal.signal must be called for both SIGTERM and SIGINT."""
+        cfg = self._cfg_with_interval()
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config):
+            stop_event.set()  # signal stop after first call so loop exits
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal") as mock_signal, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        installed_signals = {c.args[0] for c in mock_signal.call_args_list}
+        assert signal.SIGTERM in installed_signals
+        assert signal.SIGINT in installed_signals
+
+    def test_cycle_exception_loop_continues(self):
+        """A per-cycle Exception must not kill the scheduled loop; run() is called again."""
+        cfg = self._cfg_with_interval(interval=1)
+        stop_event = threading.Event()
+        call_count = 0
+
+        def _run_side_effect(_config):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("transient failure")
+            stop_event.set()  # exit on second call
+
+        # no-op wait so the inter-cycle interval does not actually block the test
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch.object(stop_event, "wait", return_value=False), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        assert call_count == 2
+
+    def test_failed_cycle_still_waits_before_retry(self):
+        """A failed cycle must wait the interval before retrying (no busy-loop).
+
+        Regression guard: an earlier draft used `continue` after logging the
+        error, skipping stop.wait() — so a persistently failing Bookstack would
+        hammer run() with zero delay. The failed cycle must reach stop.wait().
+        """
+        cfg = self._cfg_with_interval(interval=5)
+        stop_event = threading.Event()
+        call_count = 0
+
+        def _run_side_effect(_config):
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError("persistent failure")
+
+        def _wait_side_effect(timeout=None):
+            # stop the loop on the wait that follows the failed cycle
+            stop_event.set()
+            return False
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch.object(stop_event, "wait", side_effect=_wait_side_effect) as mock_wait, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        # the failed cycle reached the interval wait rather than spinning
+        mock_wait.assert_called_once_with(5)
+        assert call_count == 1
+
+    def test_stop_event_exits_loop_with_0(self):
+        """When stop event is set (e.g. via signal), _run_scheduled returns 0."""
+        cfg = self._cfg_with_interval()
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config):
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+
+    def test_stop_wait_used_not_time_sleep(self):
+        """The scheduled loop must use stop.wait(interval) not time.sleep.
+
+        Simulate: run() completes normally; then stop.wait() is called and the
+        wait itself sets the event (as if a signal arrived mid-wait), causing
+        the next loop check to exit.
+        """
+        cfg = self._cfg_with_interval(interval=5)
+        stop_event = threading.Event()
+
+        # Patch stop_event.wait so that calling it sets the event (simulating
+        # SIGINT arriving during the sleep interval), then delegates to the real wait.
+        real_wait = stop_event.wait
+
+        def _wait_side_effect(timeout=None):
+            stop_event.set()
+            return real_wait(0)  # return immediately
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run"), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch.object(stop_event, "wait", side_effect=_wait_side_effect) as mock_wait, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        # wait should have been called with the interval value
+        mock_wait.assert_called_with(5)
+
+
+# ---------------------------------------------------------------------------
+# Legacy entrypoint tests — updated for int-returning API + Event.wait loop
+# ---------------------------------------------------------------------------
 
 def test_entrypoint_runs_once_when_no_interval():
     cfg = _config(run_interval=0)
     with patch.object(run, "ConfigNode", return_value=cfg), \
          patch.object(run, "run") as mock_run:
-        run.entrypoint(args=object())
+        result = run.entrypoint(args=_args())
+    assert result == 0
     assert mock_run.call_count == 1
 
 
 def test_entrypoint_loops_when_interval_set():
     cfg = _config(run_interval=5)
-    # break out of the infinite loop after the first sleep
+    stop_event = threading.Event()
+    call_count = 0
+
+    def _run_side_effect(_config):
+        nonlocal call_count
+        call_count += 1
+        stop_event.set()  # exit after first iteration
+
     with patch.object(run, "ConfigNode", return_value=cfg), \
-         patch.object(run, "run") as mock_run, \
-         patch.object(run.time, "sleep", side_effect=InterruptedError):
-        try:
-            run.entrypoint(args=object())
-        except InterruptedError:
-            pass
-    assert mock_run.call_count == 1
+         patch.object(run, "run", side_effect=_run_side_effect), \
+         patch("bookstack_file_exporter.run.signal.signal"), \
+         patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+        result = run.entrypoint(args=_args())
+
+    assert result == 0
+    assert call_count == 1
 
 
 # ---------------------------------------------------------------------------

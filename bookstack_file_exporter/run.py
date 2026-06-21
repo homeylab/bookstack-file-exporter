@@ -1,6 +1,7 @@
 import argparse
 import logging
-import time
+import signal
+import threading
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
@@ -13,16 +14,66 @@ from bookstack_file_exporter.notify.models import NotifyResult
 
 log = logging.getLogger(__name__)
 
-def entrypoint(args: argparse.Namespace):
-    """entrypoint for export process"""
-    config = ConfigNode(args)
-    if not config.user_inputs.run_interval:
+
+def entrypoint(args: argparse.Namespace) -> int:
+    """Entrypoint for the export process. Returns an exit code."""
+    try:
+        config = ConfigNode(args)
+    except Exception as err:  # pylint: disable=broad-except
+        log.error("Configuration error: %s", err)
+        log.debug("Traceback:", exc_info=True)
+        return 1
+
+    if getattr(args, "run_once", False) or not config.user_inputs.run_interval:
+        return _run_once(config)
+    return _run_scheduled(config)
+
+
+def _run_once(config: ConfigNode) -> int:
+    """Run the export exactly once and return an exit code."""
+    try:
         run(config)
-        return
-    while True:
-        run(config)
-        log.info("Waiting %s seconds for next run", config.user_inputs.run_interval)
-        time.sleep(config.user_inputs.run_interval)
+        return 0
+    except KeyboardInterrupt:
+        log.info("Interrupted, exiting")
+        return 130
+    except Exception as err:  # pylint: disable=broad-except
+        log.error("Export failed: %s", err)
+        log.debug("Traceback:", exc_info=True)
+        return 1
+
+
+def _run_scheduled(config: ConfigNode) -> int:
+    """Run the export on a repeating interval until a stop signal is received."""
+    stop = threading.Event()
+    interval = config.user_inputs.run_interval
+
+    def _handle_signal(signum, _frame):
+        log.info("Received signal %s, shutting down", signum)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    while not stop.is_set():
+        try:
+            run(config)
+        except Exception as err:  # pylint: disable=broad-except
+            # log-and-continue: a failed cycle still waits the interval below
+            # before retrying (no busy-loop), and the failure notification has
+            # already fired inside run().
+            log.error("Export failed: %s", err)
+            log.debug("Traceback:", exc_info=True)
+
+        if stop.is_set():
+            break
+
+        log.info("Waiting %s seconds for next run", interval)
+        stop.wait(interval)
+
+    log.info("Shutdown complete")
+    return 0
+
 
 def run(config: ConfigNode):
     """run export process with error handling and notification support"""
