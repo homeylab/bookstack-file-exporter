@@ -1,4 +1,6 @@
 ---
+# Logging: text by default. For JSON Lines output (aggregators), run with
+# --log-format json or set LOG_FORMAT=json. See README "Log Format".
 # if http/https not specified, defaults to https
 # if you put http here, it will try verify=false, not to check certs
 host: "https://bookstack.mydomain.org"

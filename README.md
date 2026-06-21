@@ -121,6 +121,7 @@ Command line options:
 | ------ | -------- | ----------- |
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
+|`--log-format` |False, default: text|Log output format. `text` (default) or `json` for JSON Lines. CLI overrides the `LOG_FORMAT` env var.|
 |`--run-once` |False|Force a single run and exit, ignoring `run_interval` in the config. Useful for a manual or CI-triggered run against a config that is otherwise set up for application (scheduled) mode.|
 
 #### Environment Variables
@@ -132,6 +133,23 @@ export LOG_LEVEL=debug
 
 # using pip
 python -m bookstack_file_exporter -c <path_to_config_file>
+```
+
+### Log Format
+
+By default logs are human-readable text. Set JSON Lines output (one JSON object
+per line) for log aggregators (Loki/ELK/CloudWatch):
+
+- CLI: `--log-format json`
+- Env (containers): `LOG_FORMAT=json`
+
+The CLI flag overrides the env var; default is `text`. An unrecognized
+`LOG_FORMAT` value falls back to `text` with a warning.
+
+Sample JSON line:
+
+```json
+{"timestamp": "2026-06-21T05:03:59Z", "level": "INFO", "logger": "bookstack_file_exporter.run", "message": "Beginning run"}
 ```
 
 ### Run via Docker
@@ -326,6 +344,7 @@ More descriptions can be found for each section below:
 #### Valid Environment Variables
 General
 - `LOG_LEVEL`: default: `info`. Provide a valid log level: info, debug, warning, error.
+- `LOG_FORMAT`: default: `text`. Set to `json` for JSON Lines output. See [Log Format](#log-format).
 
 [Bookstack Credentials](#authentication)
 - `BOOKSTACK_TOKEN_ID`
