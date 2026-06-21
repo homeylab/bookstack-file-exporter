@@ -393,3 +393,192 @@ class TestCombinedMarkdownRewrite:
         # html IS dispatched and its rewritten output is what gets written.
         assert b"images/pg/99.png" in html and b"http://x/99" not in html
         aa.update_asset_links_html.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 13. Fix-4: standalone asset download at book level (modify_links=False)
+# ---------------------------------------------------------------------------
+
+def _make_img(id_, uploaded_to):
+    img = MagicMock(id_=id_, download_url=f"http://x/{id_}", uploaded_to=uploaded_to)
+    img.get_relative_path = lambda page_name: f"images/{page_name}/{id_}.png"
+    return img
+
+
+def _make_att(id_, uploaded_to):
+    att = MagicMock(id_=id_, download_url=f"http://x/att/{id_}", uploaded_to=uploaded_to)
+    att.get_relative_path = lambda page_name: f"attachments/{page_name}/{id_}.pdf"
+    return att
+
+
+def _make_book_archiver_with_assets(tmp_path, export_images=False, export_attachments=False,
+                                    modify_links=False, formats=None):
+    """Build a BookArchiver with an injected asset double configured per the given flags."""
+    archiver = _make_book_archiver(tmp_path, formats=formats or ["markdown"])
+    archiver.asset_config = MagicMock(
+        export_images=export_images,
+        export_attachments=export_attachments,
+        modify_links=modify_links,
+        export_meta=False,
+    )
+    archiver.modify_links = modify_links
+    archiver.asset_archiver = MagicMock()
+    return archiver
+
+
+class TestFix4StandaloneAssetDownloadBook:
+    """Fix-4: export_images/export_attachments honored standalone at book level."""
+
+    def _book_node(self):
+        return Node(
+            {"id": 1, "name": "bk", "slug": "bk",
+             "contents": [{"id": 10, "type": "page", "slug": "pg", "name": "Pg"}]},
+            parent=None,
+        )
+
+    def test_images_downloaded_without_modify_links(self, tmp_path):
+        """export_images=True + modify_links=False: image written to archive path."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=True)
+        img = _make_img(99, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [img]} if kind == "images" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"PNGDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"content"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        expected = f"{archiver.archive_base_path}/bk/images/pg/99.png"
+        assert expected in written
+        assert written[expected] == b"PNGDATA"
+
+    def test_attachments_downloaded_without_modify_links(self, tmp_path):
+        """export_attachments=True + modify_links=False: attachment written to archive path."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_attachments=True)
+        att = _make_att(55, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [att]} if kind == "attachments" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"ATTDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"content"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        expected = f"{archiver.archive_base_path}/bk/attachments/pg/55.pdf"
+        assert expected in written
+        assert written[expected] == b"ATTDATA"
+
+    def test_markdown_not_rewritten_when_modify_links_false(self, tmp_path):
+        """export_images=True + modify_links=False: original Bookstack URL retained in markdown."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=True)
+        img = _make_img(99, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [img]} if kind == "images" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"PNGDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"![](http://x/99)"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        md = written[f"{archiver.archive_base_path}/bk/bk.md"]
+        assert b"http://x/99" in md
+        archiver.asset_archiver.update_asset_links.assert_not_called()
+
+    def test_images_only_no_attachment_fetch(self, tmp_path):
+        """export_images=True, export_attachments=False: attachment getter returns {}."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=True,
+                                                   export_attachments=False)
+        img = _make_img(99, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [img]} if kind == "images" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"PNGDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"content"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        written_keys = list(written)
+        assert any("images" in k for k in written_keys)
+        assert not any("attachments" in k for k in written_keys)
+
+    def test_attachments_only_no_image_fetch(self, tmp_path):
+        """export_attachments=True, export_images=False: image getter returns {}."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=False,
+                                                   export_attachments=True)
+        att = _make_att(55, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [att]} if kind == "attachments" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"ATTDATA"
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"content"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        written_keys = list(written)
+        assert any("attachments" in k for k in written_keys)
+        assert not any("images" in k for k in written_keys)
+
+    def test_both_flags_false_no_asset_fetch(self, tmp_path):
+        """Both export flags False: no asset bytes fetched."""
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=False,
+                                                   export_attachments=False)
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        written = {}
+        archiver.write_data = written.__setitem__
+        archiver._get_node_data = lambda url: b"content"
+        archiver._archive_level({1: self._book_node()}, "books", "book")
+        archiver.asset_archiver.get_asset_bytes.assert_not_called()
+
+
+class TestFix4InfoNoticeBook:
+    """Fix-4: INFO notice 'Assets downloaded but links not rewritten' behavior."""
+
+    def _book_node(self):
+        return Node(
+            {"id": 1, "name": "bk", "slug": "bk",
+             "contents": [{"id": 10, "type": "page", "slug": "pg", "name": "Pg"}]},
+            parent=None,
+        )
+
+    def test_info_emitted_when_assets_on_modify_links_off(self, tmp_path, caplog):
+        """INFO notice fires when export_images=True and modify_links=False."""
+        import logging  # pylint: disable=import-outside-toplevel
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=True)
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        archiver.write_data = lambda *a: None
+        archiver._get_node_data = lambda url: b"content"
+        with caplog.at_level(logging.INFO,
+                             logger="bookstack_file_exporter.archiver.node_archiver"):
+            archiver._archive_level({1: self._book_node()}, "books", "book")
+        assert any("modify_links disabled" in r.message for r in caplog.records)
+
+    def test_info_not_emitted_when_modify_links_true(self, tmp_path, caplog):
+        """INFO notice NOT fired when modify_links=True (link rewriting is active)."""
+        import logging  # pylint: disable=import-outside-toplevel
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=True,
+                                                   modify_links=True)
+        img = _make_img(99, 10)
+        archiver.asset_archiver.get_asset_nodes.side_effect = (
+            lambda kind: {10: [img]} if kind == "images" else {}
+        )
+        archiver.asset_archiver.get_asset_bytes.return_value = b"PNGDATA"
+        archiver.asset_archiver.update_asset_links.side_effect = lambda *a, **kw: a[2]
+        archiver.write_data = lambda *a: None
+        archiver._get_node_data = lambda url: b"content"
+        with caplog.at_level(logging.INFO,
+                             logger="bookstack_file_exporter.archiver.node_archiver"):
+            archiver._archive_level({1: self._book_node()}, "books", "book")
+        assert not any("modify_links disabled" in r.message for r in caplog.records)
+
+    def test_info_not_emitted_when_both_asset_flags_false(self, tmp_path, caplog):
+        """INFO notice NOT fired when both export flags are False."""
+        import logging  # pylint: disable=import-outside-toplevel
+        archiver = _make_book_archiver_with_assets(tmp_path, export_images=False,
+                                                   export_attachments=False)
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        archiver.write_data = lambda *a: None
+        archiver._get_node_data = lambda url: b"content"
+        with caplog.at_level(logging.INFO,
+                             logger="bookstack_file_exporter.archiver.node_archiver"):
+            archiver._archive_level({1: self._book_node()}, "books", "book")
+        assert not any("modify_links disabled" in r.message for r in caplog.records)
