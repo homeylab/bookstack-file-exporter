@@ -14,6 +14,7 @@ LOG_LEVEL = {
 LOG_FORMAT = ("text", "json")
 _LOG_FORMAT_ENV = "LOG_FORMAT"
 
+
 def get_log_level(log_level:str) -> int:
     """return log level int"""
     return LOG_LEVEL[log_level]

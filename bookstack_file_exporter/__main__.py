@@ -6,6 +6,7 @@ from bookstack_file_exporter import run
 from bookstack_file_exporter import run_args
 from bookstack_file_exporter.common import logging as bfe_logging
 
+
 def main() -> int:
     """run entrypoint"""
     args: argparse.Namespace = run_args.get_args()

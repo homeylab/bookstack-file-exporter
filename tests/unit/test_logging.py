@@ -56,6 +56,14 @@ class TestJsonFormatterExcInfo:
         assert "exc_info" in out
         assert "ValueError: boom" in out["exc_info"]
 
+    def test_output_is_single_line_with_exc_info(self):
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            rec = _record(exc_info=sys.exc_info())
+        line = JsonFormatter().format(rec)  # pylint: disable=used-before-assignment
+        assert "\n" not in line
+
     def test_exc_info_field_absent_when_no_exception(self):
         out = json.loads(JsonFormatter().format(_record()))
         assert "exc_info" not in out
