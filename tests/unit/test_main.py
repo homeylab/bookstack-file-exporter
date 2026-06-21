@@ -13,6 +13,9 @@ class TestMainReturnType:
         with patch.object(run, "entrypoint", return_value=0), \
              patch("bookstack_file_exporter.__main__.run_args.get_args"), \
              patch("bookstack_file_exporter.__main__.run_args.get_log_level", return_value=20), \
+             patch("bookstack_file_exporter.__main__.run_args.resolve_log_format",
+                   return_value="text"), \
+             patch("bookstack_file_exporter.__main__.bfe_logging.build_handler"), \
              patch("bookstack_file_exporter.__main__.logging.basicConfig"):
             result = main()
         assert isinstance(result, int)
@@ -23,6 +26,9 @@ class TestMainReturnType:
         with patch.object(run, "entrypoint", return_value=sentinel), \
              patch("bookstack_file_exporter.__main__.run_args.get_args"), \
              patch("bookstack_file_exporter.__main__.run_args.get_log_level", return_value=20), \
+             patch("bookstack_file_exporter.__main__.run_args.resolve_log_format",
+                   return_value="text"), \
+             patch("bookstack_file_exporter.__main__.bfe_logging.build_handler"), \
              patch("bookstack_file_exporter.__main__.logging.basicConfig"):
             result = main()
         assert result == sentinel
@@ -35,6 +41,9 @@ class TestSysExitWiring:
         with patch.object(run, "entrypoint", return_value=sentinel), \
              patch("bookstack_file_exporter.__main__.run_args.get_args"), \
              patch("bookstack_file_exporter.__main__.run_args.get_log_level", return_value=20), \
+             patch("bookstack_file_exporter.__main__.run_args.resolve_log_format",
+                   return_value="text"), \
+             patch("bookstack_file_exporter.__main__.bfe_logging.build_handler"), \
              patch("bookstack_file_exporter.__main__.logging.basicConfig"), \
              patch("sys.exit") as mock_exit:
             # Simulate the guard block: sys.exit(main())
@@ -46,6 +55,9 @@ class TestSysExitWiring:
         with patch.object(run, "entrypoint", return_value=1), \
              patch("bookstack_file_exporter.__main__.run_args.get_args"), \
              patch("bookstack_file_exporter.__main__.run_args.get_log_level", return_value=20), \
+             patch("bookstack_file_exporter.__main__.run_args.resolve_log_format",
+                   return_value="text"), \
+             patch("bookstack_file_exporter.__main__.bfe_logging.build_handler"), \
              patch("bookstack_file_exporter.__main__.logging.basicConfig"), \
              patch("sys.exit") as mock_exit:
             sys.exit(main())

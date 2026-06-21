@@ -52,7 +52,7 @@ class TestJsonFormatterExcInfo:
             raise ValueError("boom")
         except ValueError:
             rec = _record(exc_info=sys.exc_info())
-        out = json.loads(JsonFormatter().format(rec))
+        out = json.loads(JsonFormatter().format(rec))  # pylint: disable=used-before-assignment
         assert "exc_info" in out
         assert "ValueError: boom" in out["exc_info"]
 
