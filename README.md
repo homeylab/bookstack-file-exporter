@@ -149,7 +149,7 @@ The CLI flag overrides the env var; default is `text`. An unrecognized
 Sample JSON line:
 
 ```json
-{"timestamp": "2026-06-21T05:03:59Z", "level": "INFO", "logger": "bookstack_file_exporter.run", "message": "Beginning run"}
+{"timestamp": "2026-06-21T05:03:59.123Z", "level": "INFO", "logger": "bookstack_file_exporter.run", "message": "Beginning run"}
 ```
 
 ### Run via Docker

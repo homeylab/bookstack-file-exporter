@@ -26,9 +26,10 @@ class TestJsonFormatterCore:
         assert out["message"] == "hello world"
         assert "timestamp" in out
 
-    def test_timestamp_is_iso8601_utc(self):
+    def test_timestamp_is_iso8601_utc_with_millis(self):
         out = json.loads(JsonFormatter().format(_record()))
-        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", out["timestamp"])
+        assert re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", out["timestamp"])
 
     def test_output_is_single_line(self):
         line = JsonFormatter().format(_record())
@@ -67,6 +68,17 @@ class TestJsonFormatterExcInfo:
     def test_exc_info_field_absent_when_no_exception(self):
         out = json.loads(JsonFormatter().format(_record()))
         assert "exc_info" not in out
+
+
+class TestJsonFormatterStackInfo:
+    def test_stack_info_field_present_when_set(self):
+        out = json.loads(JsonFormatter().format(
+            _record(stack_info="Stack (most recent call last):\n  frobnicate")))
+        assert "frobnicate" in out["stack_info"]
+
+    def test_stack_info_field_absent_when_unset(self):
+        out = json.loads(JsonFormatter().format(_record()))
+        assert "stack_info" not in out
 
 
 class TestBuildHandler:

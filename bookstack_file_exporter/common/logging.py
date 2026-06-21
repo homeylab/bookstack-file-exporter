@@ -17,9 +17,10 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         record.message = record.getMessage()
+        ts = datetime.fromtimestamp(record.created, tz=timezone.utc)
         out = {
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            # millisecond precision so aggregators can order within a second
+            "timestamp": f"{ts.strftime('%Y-%m-%dT%H:%M:%S')}.{int(record.msecs):03d}Z",
             "level": record.levelname,
             "logger": record.name,
             "message": record.message,
@@ -29,6 +30,8 @@ class JsonFormatter(logging.Formatter):
                 out[key] = val
         if record.exc_info:
             out["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            out["stack_info"] = self.formatStack(record.stack_info)
         return json.dumps(out, default=str)
 
 
