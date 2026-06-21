@@ -88,7 +88,7 @@ def run(config: ConfigNode):
         try:
             notif = NotifyHandler(config.user_inputs.notifications)
             notif.do_notify(run_err)
-        except Exception as notif_err:
+        except Exception as notif_err:  # pylint: disable=broad-exception-caught
             log.error("Failed to send notification: %s", str(notif_err))
         # raise original error instead of notification error
         raise run_err
