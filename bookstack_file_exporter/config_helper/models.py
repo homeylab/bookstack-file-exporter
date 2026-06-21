@@ -1,8 +1,9 @@
 import re
+from datetime import datetime
 from typing import Literal
 # pylint: disable=import-error
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator, model_validator
-from croniter import croniter
+from croniter import croniter, CroniterError
 
 # pylint: disable=too-few-public-methods
 class ObjectStorageConfig(BaseModel):
@@ -133,4 +134,9 @@ class UserInput(BaseModel):
                     "run_interval and run_schedule are mutually exclusive; set only one")
             if not croniter.is_valid(self.run_schedule):
                 raise ValueError(f"Invalid run_schedule cron expression: {self.run_schedule!r}")
+            try:
+                croniter(self.run_schedule, datetime(2000, 1, 1)).get_next(datetime)
+            except CroniterError as err:
+                raise ValueError(
+                    f"run_schedule cron expression never fires: {self.run_schedule!r}") from err
         return self

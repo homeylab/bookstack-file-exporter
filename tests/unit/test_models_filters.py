@@ -185,3 +185,7 @@ class TestUserInputRunSchedule:
         ui = UserInput(**_base_user_input_kwargs(run_interval=0, run_schedule="0 2 * * *"))
         assert ui.run_schedule == "0 2 * * *"
         assert ui.run_interval == 0
+
+    def test_run_schedule_rejects_impossible_date(self):
+        with pytest.raises(ValidationError):
+            UserInput(**_base_user_input_kwargs(run_schedule="0 2 31 2 *"))
