@@ -2,7 +2,6 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 import argparse
 import logging
-import sys
 
 from bookstack_file_exporter import run_args
 
@@ -12,14 +11,12 @@ def _args(log_format=None):
 
 
 class TestLogFormatArg:
-    def test_default_is_none(self, monkeypatch):
+    def test_default_is_none(self):
         # --log-format absent -> None (so resolve_log_format can fall to env)
-        monkeypatch.setattr(sys, "argv", ["prog"])
-        assert run_args.get_args().log_format is None
+        assert run_args.get_args([]).log_format is None
 
-    def test_flag_parsed_and_lowercased(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["prog", "--log-format", "JSON"])
-        assert run_args.get_args().log_format == "json"
+    def test_flag_parsed_and_lowercased(self):
+        assert run_args.get_args(["--log-format", "JSON"]).log_format == "json"
 
 
 class TestResolveLogFormat:

@@ -19,8 +19,8 @@ def get_log_level(log_level:str) -> int:
     """return log level int"""
     return LOG_LEVEL[log_level]
 
-def get_args() -> argparse.Namespace:
-    """return user cmd line options"""
+def get_args(argv=None) -> argparse.Namespace:
+    """return user cmd line options (argv=None -> sys.argv)"""
     parser = argparse.ArgumentParser(description='BookStack File Exporter')
     parser.add_argument('-c',
                     '--config-file',
@@ -51,7 +51,7 @@ def get_args() -> argparse.Namespace:
                     help=('Log output format. CLI overrides the LOG_FORMAT'
                           ' env var; default text.'),
                     choices=LOG_FORMAT)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def resolve_log_format(args: argparse.Namespace) -> str:
