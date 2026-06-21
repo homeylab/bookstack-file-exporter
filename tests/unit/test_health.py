@@ -104,3 +104,67 @@ class TestRunStatusSnapshot:
         status.mark_running()
         status.mark_success(NotifyResult(local="/a/b.tgz"))
         json.dumps(status.snapshot())  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Health server: real HTTP surface (ephemeral port, real GET)
+# ---------------------------------------------------------------------------
+
+import http.client  # noqa: E402  (grouped with the server tests)
+import contextlib  # noqa: E402
+
+from bookstack_file_exporter.health.server import start_health_server  # noqa: E402
+
+
+@contextlib.contextmanager
+def _running_server(status):
+    server = start_health_server("127.0.0.1", 0, status)
+    try:
+        host, port = server.server_address
+        yield host, port
+    finally:
+        server.shutdown()
+
+
+def _get(host, port, path):
+    conn = http.client.HTTPConnection(host, port, timeout=5)
+    try:
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        return resp.status, resp.getheader("Content-Type"), resp.read()
+    finally:
+        conn.close()
+
+
+class TestHealthServer:
+    def test_healthz_returns_200_json_snapshot(self):
+        status = RunStatus()
+        status.mark_running()
+        status.mark_success(NotifyResult(local="/bkps/export.tgz"))
+        with _running_server(status) as (host, port):
+            code, ctype, raw = _get(host, port, "/healthz")
+        assert code == 200
+        assert ctype == "application/json"
+        body = json.loads(raw)
+        assert body["status"] == "healthy"
+        assert body["last_run"]["status"] == "success"
+        assert body["last_run"]["archive_file"] == "export.tgz"
+
+    def test_unknown_path_returns_404(self):
+        with _running_server(RunStatus()) as (host, port):
+            code, _ctype, _raw = _get(host, port, "/nope")
+        assert code == 404
+
+    def test_snapshot_reflects_live_transitions(self):
+        status = RunStatus()
+        with _running_server(status) as (host, port):
+            code, _c, raw = _get(host, port, "/healthz")
+            assert json.loads(raw)["last_run"]["status"] == "never"
+            status.mark_running()
+            status.mark_failed(RuntimeError("boom"))
+            code, _c, raw = _get(host, port, "/healthz")
+        assert code == 200
+        body = json.loads(raw)
+        assert body["last_run"]["status"] == "failed"
+        assert body["last_run"]["error"] == "boom"
+        assert body["failure_count"] == 1
