@@ -43,7 +43,7 @@ What it does:
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
 - Can push archives to remote object storage like [Minio](https://min.io/)
 - Basic housekeeping option (`keep_last`) to keep a tidy archive destination
-- Can run in application mode (always running) using `run_interval` property. Used for basic scheduling of backups.
+- Can run in application mode (always running) using `run_interval` (interval-based) or `run_schedule` (cron-based) properties. Used for scheduling backups.
 
 Supported backup targets are:
 
@@ -122,7 +122,7 @@ Command line options:
 |`-c`, `--config-file`|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-v`, `--log-level` |False, default: info|Provide a valid log level: info, debug, warning, error.|
 |`--log-format` |False, default: text|Log output format. `text` (default) or `json` for JSON Lines. CLI overrides the `LOG_FORMAT` env var.|
-|`--run-once` |False|Force a single run and exit, ignoring `run_interval` in the config. Useful for a manual or CI-triggered run against a config that is otherwise set up for application (scheduled) mode.|
+|`--run-once` |False|Force a single run and exit, ignoring `run_interval` and `run_schedule` in the config. Useful for a manual or CI-triggered run against a config that is otherwise set up for application (scheduled) mode.|
 
 #### Environment Variables
 See [Valid Environment Variables](#valid-environment-variables) for more options.
@@ -184,13 +184,18 @@ docker run \
 #### Run Modes
 The exporter runs in one of two modes, selected automatically from your config:
 
-- **One-shot** (default): `run_interval` unset or `0` → runs once and exits. Returns exit code `0` on success, `1` on failure (clean error message; pass `-v debug` for the full traceback), and `130` on `Ctrl-C`. Pairs well with an external scheduler (Kubernetes `CronJob`, `cron`, `systemd` timer), which owns restart, backoff, and run history.
-- **Application / scheduled** (long-running): `run_interval` set → runs, sleeps `{run_interval}` seconds, repeats. For a single-container `docker compose` deployment with no external scheduler. A failed cycle is logged (and notifies, if configured) and waits for the next interval rather than crashing. Shuts down gracefully on `SIGTERM` (`docker stop`) and `SIGINT` (`Ctrl-C`), exiting `0`.
+- **One-shot** (default): `run_interval` unset or `0`, and `run_schedule` unset → runs once and exits. Returns exit code `0` on success, `1` on failure (clean error message; pass `-v debug` for the full traceback), and `130` on `Ctrl-C`. Pairs well with an external scheduler (Kubernetes `CronJob`, `cron`, `systemd` timer), which owns restart, backoff, and run history.
+- **Application / scheduled** (long-running): `run_interval` or `run_schedule` set → runs repeatedly, then waits for the next trigger. For a single-container `docker compose` deployment with no external scheduler. A failed cycle is logged (and notifies, if configured) and waits for the next trigger rather than crashing. Shuts down gracefully on `SIGTERM` (`docker stop`) and `SIGINT` (`Ctrl-C`), exiting `0`.
 
-Pass `--run-once` to force a single run regardless of `run_interval`.
+Two scheduling strategies are available for application mode (mutually exclusive — setting both is a config error):
+
+- **`run_interval`** (seconds): sleeps a fixed number of seconds between cycles. Simple but drifts over time — the effective period is `run_interval` + cycle runtime.
+- **`run_schedule`** (cron expression): fires at wall-clock times. Standard 5-field cron syntax (e.g. `"0 2 * * *"` = 2 am daily). croniter also accepts 6/7-field extended forms. Cron is evaluated in container-local time — set the `TZ` environment variable to control the timezone (default: `UTC`). Note: if a cycle runs past its scheduled tick, the missed tick is skipped (no catch-up). During a DST spring-forward, a scheduled time that falls inside the skipped hour will not fire that day.
+
+Pass `--run-once` to force a single run regardless of `run_interval` or `run_schedule`.
 
 #### Docker Compose
-When using the configuration option: `run_interval`, a docker compose set up could be used to run the exporter as an always running application. The exporter will sleep and wait until `{run_interval}` seconds has elapsed before subsequent runs.
+When using `run_interval` or `run_schedule`, a docker compose set up could be used to run the exporter as an always running application. The exporter will wait for the next interval or scheduled time before subsequent runs.
 
 An example is shown in `examples/docker-compose.yaml`
 
@@ -335,7 +340,8 @@ More descriptions can be found for each section below:
 | `http_config.backoff_factor` | `float` | `false` | Optional (default: `2.5`), set the backoff_factor for http request retries. Default backoff_factor `2.5` means we wait 5, 10, 20, and then 40 seconds (with default `http_config.retry_count: 5`) before our last retry. This should allow for per minute rate limits to be refreshed. |
 | `http_config.additional_headers` | `object` | `false` | Optional (default: `{}`), specify key/value pairs that will be added as additional headers to http requests. |
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
-| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Used for basic scheduling of backups. |
+| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. |
+| `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 | `notifications` | `object` | `false` | Optional [notification](#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](#filters) for details. |

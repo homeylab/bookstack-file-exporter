@@ -111,8 +111,15 @@ keep_last: 5
 ## optional - if specified exporter will run in a loop
 # it will run and then pause for {run_interval} seconds before running again
 # specify in seconds, example: 86400 seconds = 24 hours or run once a day
-# omit/commit out or set to 0 if you just want a single run and exit
+# omit/comment out or set to 0 if you just want a single run and exit
+# mutually exclusive with run_schedule below
 run_interval: 0
+## optional - cron schedule as an alternative to run_interval (mutually exclusive)
+# standard 5-field cron; fires at wall-clock times in container-local time (honors TZ env var)
+# default timezone is UTC; invalid expressions are rejected at config load
+# if a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up)
+# example: "0 2 * * *" = 2am daily
+# run_schedule: "0 2 * * *"
 ## optional - if specified exporter will send notifications on failure
 # supported notification services are:
 # - apprise (https://github.com/caronc/apprise)
