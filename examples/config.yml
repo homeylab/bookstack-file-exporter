@@ -21,10 +21,10 @@ formats:
   - zip
 # optional - export granularity
 # "pages" (default): one file per page; supports assets.export_images/attachments/modify_links
-# "books": one combined file per book, in a per-book folder; html/pdf embed assets server-side;
-#          modify_links also localizes assets for books/chapters when exporting markdown
-# "chapters": one combined file per chapter, in a per-chapter folder; same modify_links support
-#             as books; loose pages not under a chapter are skipped
+# "books": one combined file per book, in a per-book folder; set export_images/export_attachments
+#          to download assets; set modify_links to also rewrite links in markdown/html to local paths
+# "chapters": one combined file per chapter, in a per-chapter folder; same export_images/
+#             export_attachments/modify_links support as books; loose pages not under a chapter are skipped
 # export_level: pages
 ## optional - include/exclude resources by display-name regex (uses re.fullmatch)
 # omit/comment out to disable all filtering. See the "Filters" section in the README.

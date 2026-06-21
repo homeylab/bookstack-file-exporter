@@ -198,11 +198,8 @@ class NodeArchiver:
         if not non_empty:
             log.warning("No non-empty %s nodes available. Nothing to archive", label)
             return
-        image_map: dict[int, list] = {}
-        attachment_map: dict[int, list] = {}
-        if self.modify_links:
-            image_map = self._get_image_meta()
-            attachment_map = self._get_attachment_meta()
+        image_map = self._get_image_meta()
+        attachment_map = self._get_attachment_meta()
         self._export_nodes(non_empty, resource_type, image_map, attachment_map)
 
     def _export_nodes(self, nodes: dict[int, Node], resource_type: str,
@@ -213,6 +210,8 @@ class NodeArchiver:
         The only caller (_archive_level) always passes real maps (empty when
         modify_links is off), so no None-defaulting is needed.
         """
+        if (self.export_images or self.export_attachments) and not self.modify_links:
+            log.info("Assets downloaded but links not rewritten (modify_links disabled)")
         for _, node in nodes.items():
             assets_by_page = self._download_node_assets(node, image_map, attachment_map)
             for fmt in self.export_formats:
