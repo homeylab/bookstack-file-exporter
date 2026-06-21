@@ -2,7 +2,7 @@ import argparse
 import logging
 import signal
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
@@ -13,6 +13,8 @@ from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
 from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.health.status import RunStatus
+from bookstack_file_exporter.health.server import start_health_server
 
 log = logging.getLogger(__name__)
 
@@ -60,23 +62,42 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+    status = None
+    server = None
+    if config.user_inputs.health_port:
+        status = RunStatus()
+        server = start_health_server(
+            config.user_inputs.health_host, config.user_inputs.health_port, status)
+        log.info("Health endpoint listening on %s:%s",
+                 config.user_inputs.health_host, config.user_inputs.health_port)
+
     while not stop.is_set():
+        if status:
+            status.mark_running()
         try:
-            run(config)
+            result = run(config)
+            if status:
+                status.mark_success(result)
         except Exception as err:  # pylint: disable=broad-except
             # log-and-continue: a failed cycle still waits the interval below
             # before retrying (no busy-loop), and the failure notification has
             # already fired inside run().
             log.error("Export failed: %s", err)
             log.debug("Traceback:", exc_info=True)
+            if status:
+                status.mark_failed(err)
 
         if stop.is_set():
             break
 
         wait_secs = next_wait()
+        if status:
+            status.set_next_run(datetime.now(timezone.utc) + timedelta(seconds=wait_secs))
         log.info("Waiting %s seconds for next run", wait_secs)
         stop.wait(wait_secs)
 
+    if server:
+        server.shutdown()
     log.info("Shutdown complete")
     return 0
 
@@ -88,6 +109,7 @@ def run(config: ConfigNode):
         if config.user_inputs.notifications:
             notif = NotifyHandler(config.user_inputs.notifications)
             notif.do_notify(result=result)
+        return result
     except Exception as run_err: # general catch all for notifications
         if not config.user_inputs.notifications:
             raise run_err

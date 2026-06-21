@@ -122,6 +122,9 @@ class UserInput(BaseModel):
     keep_last: int | None = 0
     run_interval: int | None = 0
     run_schedule: str | None = None
+    # opt-in scheduled-mode health endpoint; no server unless health_port is set
+    health_port: int | None = None
+    health_host: str | None = "0.0.0.0"
     http_config: HttpConfig | None = HttpConfig()
     notifications: Notifications | None = None
     filters: Filters | None = None

@@ -189,3 +189,25 @@ class TestUserInputRunSchedule:
     def test_run_schedule_rejects_impossible_date(self):
         with pytest.raises(ValidationError):
             UserInput(**_base_user_input_kwargs(run_schedule="0 2 31 2 *"))
+
+
+# ---------------------------------------------------------------------------
+# UserInput: health server config (F4)
+# ---------------------------------------------------------------------------
+
+class TestUserInputHealthConfig:
+    def _base(self, **extra):
+        return UserInput(host="https://bs.example.org", formats=["markdown"], **extra)
+
+    def test_health_defaults(self):
+        cfg = self._base()
+        assert cfg.health_port is None
+        assert cfg.health_host == "0.0.0.0"
+
+    def test_health_port_accepted(self):
+        cfg = self._base(health_port=8080)
+        assert cfg.health_port == 8080
+
+    def test_health_host_override_accepted(self):
+        cfg = self._base(health_port=9000, health_host="127.0.0.1")
+        assert cfg.health_host == "127.0.0.1"
