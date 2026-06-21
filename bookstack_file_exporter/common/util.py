@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from http.cookiejar import DefaultCookiePolicy
 from typing import TypeVar
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
@@ -8,6 +9,7 @@ import urllib3
 import requests
 # pylint: disable=import-error
 from requests.adapters import HTTPAdapter, Retry
+from croniter import croniter
 from pydantic import TypeAdapter, ValidationError
 
 from bookstack_file_exporter.config_helper.models import HttpConfig
@@ -131,6 +133,18 @@ def check_var(env_key: str, default_val: str, required: bool = True) -> str:
             "- at least one should be set"
         )
     return default_val
+
+
+def seconds_until_next_cron(schedule: str, now: datetime) -> float:
+    """Seconds from `now` until the next time `schedule` (cron expr) fires.
+
+    Accepts standard 5-field cron; croniter also tolerates 6/7-field extended forms.
+
+    `now` is naive/container-local; the result is always strictly positive
+    (croniter returns the next future tick), so a cycle that overran its slot
+    waits for the next clock match rather than firing immediately.
+    """
+    return (croniter(schedule, now).get_next(datetime) - now).total_seconds()
 
 
 def resolve_env_json(env_key: str, target: type[T], default_val: T) -> T:
