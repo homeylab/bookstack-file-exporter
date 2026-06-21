@@ -68,6 +68,8 @@ class TestRunStatusSnapshot:
         status.mark_running()
         status.mark_failed(RuntimeError("export boom"))
         snap = status.snapshot()
+        # liveness invariant: a failed cycle must NOT flip the top-level status
+        assert snap["status"] == "healthy"
         last = snap["last_run"]
         assert last["status"] == "failed"
         assert last["error"] == "export boom"
