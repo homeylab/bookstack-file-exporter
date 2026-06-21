@@ -23,6 +23,7 @@ dependencies = [
     "minio>=7.2.20",
     "apprise>=1.10.0",
     "markdown-it-py>=4.2.0",
+    "croniter>=6.2.0",
 ]
 
 [project.urls]

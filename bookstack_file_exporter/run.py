@@ -2,13 +2,15 @@ import argparse
 import logging
 import signal
 import threading
+from datetime import datetime
+from typing import Callable
 
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.exporter.exporter import NodeExporter
 from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
-from bookstack_file_exporter.common.util import HttpHelper
+from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
 from bookstack_file_exporter.notify.models import NotifyResult
 
@@ -24,9 +26,13 @@ def entrypoint(args: argparse.Namespace) -> int:
         log.debug("Traceback:", exc_info=True)
         return 1
 
-    if getattr(args, "run_once", False) or not config.user_inputs.run_interval:
+    inputs = config.user_inputs
+    if getattr(args, "run_once", False) or (not inputs.run_interval and not inputs.run_schedule):
         return _run_once(config)
-    return _run_scheduled(config)
+    if inputs.run_schedule:
+        return _run_scheduled(
+            config, lambda: seconds_until_next_cron(inputs.run_schedule, datetime.now()))
+    return _run_scheduled(config, lambda: inputs.run_interval)
 
 
 def _run_once(config: ConfigNode) -> int:
@@ -43,10 +49,9 @@ def _run_once(config: ConfigNode) -> int:
         return 1
 
 
-def _run_scheduled(config: ConfigNode) -> int:
-    """Run the export on a repeating interval until a stop signal is received."""
+def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
+    """Run the export on a repeating schedule until a stop signal is received."""
     stop = threading.Event()
-    interval = config.user_inputs.run_interval
 
     def _handle_signal(signum, _frame):
         log.info("Received signal %s, shutting down", signum)
@@ -68,8 +73,9 @@ def _run_scheduled(config: ConfigNode) -> int:
         if stop.is_set():
             break
 
-        log.info("Waiting %s seconds for next run", interval)
-        stop.wait(interval)
+        wait_secs = next_wait()
+        log.info("Waiting %s seconds for next run", wait_secs)
+        stop.wait(wait_secs)
 
     log.info("Shutdown complete")
     return 0

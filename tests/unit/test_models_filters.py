@@ -162,3 +162,30 @@ class TestUserInputFilters:
             UserInput(**_base_user_input_kwargs(
                 filters={"pages": {"include": ["[bad"]}}
             ))
+
+
+# ---------------------------------------------------------------------------
+# UserInput: run_schedule field and mutual-exclusion validator
+# ---------------------------------------------------------------------------
+
+class TestUserInputRunSchedule:
+    def test_run_schedule_accepts_valid_cron(self):
+        ui = UserInput(**_base_user_input_kwargs(run_schedule="0 2 * * *"))
+        assert ui.run_schedule == "0 2 * * *"
+
+    def test_run_schedule_rejects_invalid_cron(self):
+        with pytest.raises(ValidationError):
+            UserInput(**_base_user_input_kwargs(run_schedule="not a cron"))
+
+    def test_run_interval_and_schedule_mutually_exclusive(self):
+        with pytest.raises(ValidationError):
+            UserInput(**_base_user_input_kwargs(run_interval=3600, run_schedule="0 2 * * *"))
+
+    def test_run_interval_zero_with_schedule_ok(self):
+        ui = UserInput(**_base_user_input_kwargs(run_interval=0, run_schedule="0 2 * * *"))
+        assert ui.run_schedule == "0 2 * * *"
+        assert ui.run_interval == 0
+
+    def test_run_schedule_rejects_impossible_date(self):
+        with pytest.raises(ValidationError):
+            UserInput(**_base_user_input_kwargs(run_schedule="0 2 31 2 *"))
