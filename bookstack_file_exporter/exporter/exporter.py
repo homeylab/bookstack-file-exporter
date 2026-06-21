@@ -119,19 +119,8 @@ class NodeExporter():
         """
         book_url = self.api_urls["books"]
         all_books: list[dict] = self.http_client.http_get_all(book_url)
-        unassigned = []
-        for book_item in all_books:
-            book_id = book_item['id']
-            if book_id in existing_books:
-                continue
-            if book_id in self._excluded_book_ids:
-                log.debug("Book id=%d suppressed (its shelf was excluded)", book_id)
-                continue
-            book_name = book_item['name']
-            if self._node_filter and not self._node_filter.keep(book_name, "books"):
-                log.debug("Unassigned book '%s' excluded by filter", book_name)
-                continue
-            unassigned.append(book_id)
+        unassigned = selector.selectable_unassigned_books(
+            all_books, set(existing_books), self._excluded_book_ids, self._node_filter)
         if not unassigned:
             return {}
         # books with no shelf treated like a parent resource
