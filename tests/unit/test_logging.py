@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 
-from bookstack_file_exporter.common.logging import JsonFormatter
+from bookstack_file_exporter.common.logging import JsonFormatter, build_handler
 
 
 def _record(msg="hello %s", args=("world",), exc_info=None, **extra):
@@ -59,3 +59,22 @@ class TestJsonFormatterExcInfo:
     def test_exc_info_field_absent_when_no_exception(self):
         out = json.loads(JsonFormatter().format(_record()))
         assert "exc_info" not in out
+
+
+class TestBuildHandler:
+    def test_json_format_uses_jsonformatter(self):
+        handler = build_handler("json")
+        assert isinstance(handler.formatter, JsonFormatter)
+
+    def test_text_format_uses_plain_formatter(self):
+        handler = build_handler("text")
+        assert isinstance(handler.formatter, logging.Formatter)
+        assert not isinstance(handler.formatter, JsonFormatter)
+
+    def test_text_handler_renders_classic_line(self):
+        handler = build_handler("text")
+        rendered = handler.formatter.format(_record(msg="done", args=()))
+        assert rendered.endswith("[INFO] done")
+
+    def test_returns_stream_handler(self):
+        assert isinstance(build_handler("text"), logging.StreamHandler)

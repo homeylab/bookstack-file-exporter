@@ -30,3 +30,17 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             out["exc_info"] = self.formatException(record.exc_info)
         return json.dumps(out, default=str)
+
+
+_TEXT_FMT = "%(asctime)s [%(levelname)s] %(message)s"
+_DATE_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def build_handler(log_format: str) -> logging.StreamHandler:
+    """Return a stream handler whose formatter matches `log_format`."""
+    handler = logging.StreamHandler()
+    if log_format == "json":
+        handler.setFormatter(JsonFormatter())
+    else:
+        handler.setFormatter(logging.Formatter(_TEXT_FMT, datefmt=_DATE_FMT))
+    return handler
