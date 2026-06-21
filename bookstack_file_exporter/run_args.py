@@ -33,4 +33,9 @@ def get_args() -> argparse.Namespace:
                     default='info',
                     help='Set verbosity level for logging.',
                     choices=LOG_LEVEL.keys())
+    parser.add_argument('--run-once',
+                    action='store_true',
+                    default=False,
+                    help=('Force a single run and exit regardless of'
+                          ' run_interval/run_schedule in config.'))
     return parser.parse_args()
