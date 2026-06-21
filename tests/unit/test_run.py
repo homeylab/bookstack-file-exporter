@@ -11,10 +11,15 @@ from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import NotifyResult
 
 
-def _config(run_interval, run_once=False, run_schedule=None):
+def _config(run_interval, run_once=False, run_schedule=None, health_port=None):
     """Return a minimal fake args + config pair for entrypoint tests."""
     return SimpleNamespace(
-        user_inputs=SimpleNamespace(run_interval=run_interval, run_schedule=run_schedule)
+        user_inputs=SimpleNamespace(
+            run_interval=run_interval,
+            run_schedule=run_schedule,
+            health_port=health_port,
+            health_host="0.0.0.0",
+        )
     )
 
 
@@ -673,3 +678,75 @@ class TestExporterReturnValue:
         result_arg = call_kwargs.kwargs.get("result")
         assert isinstance(result_arg, NotifyResult)
         assert result_arg.local == "/local/export.tgz"
+
+
+# ---------------------------------------------------------------------------
+# Health server wiring in _run_scheduled (F4)
+# ---------------------------------------------------------------------------
+
+class TestScheduledHealthServer:
+    def test_no_health_port_does_not_start_server(self):
+        cfg = _config(run_interval=5, health_port=None)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config):
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.start_health_server") as mock_start, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        mock_start.assert_not_called()
+
+    def test_health_port_starts_and_shuts_down_server(self):
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+        fake_server = MagicMock()
+
+        def _run_side_effect(_config):
+            stop_event.set()
+            return None
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.start_health_server",
+                   return_value=fake_server) as mock_start, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        mock_start.assert_called_once()
+        assert mock_start.call_args.args[0] == "0.0.0.0"
+        assert mock_start.call_args.args[1] == 8080
+        fake_server.shutdown.assert_called_once()
+
+    def test_health_status_marks_cycle_outcome(self):
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+        captured = {}
+
+        def _run_side_effect(_config):
+            stop_event.set()
+            return NotifyResult(local="/bkps/export.tgz")
+
+        def _fake_start(host, port, status):
+            captured["status"] = status
+            return MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.start_health_server", side_effect=_fake_start), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        snap = captured["status"].snapshot()
+        assert snap["run_count"] == 1
+        assert snap["last_run"]["status"] == "success"
+        assert snap["last_run"]["archive_file"] == "export.tgz"
