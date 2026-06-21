@@ -11,9 +11,11 @@ from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import NotifyResult
 
 
-def _config(run_interval, run_once=False):
+def _config(run_interval, run_once=False, run_schedule=None):
     """Return a minimal fake args + config pair for entrypoint tests."""
-    return SimpleNamespace(user_inputs=SimpleNamespace(run_interval=run_interval))
+    return SimpleNamespace(
+        user_inputs=SimpleNamespace(run_interval=run_interval, run_schedule=run_schedule)
+    )
 
 
 def _args(run_once=False):
@@ -262,6 +264,63 @@ def test_entrypoint_loops_when_interval_set():
 
     assert result == 0
     assert call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Branch selection: cron vs interval vs run-once
+# ---------------------------------------------------------------------------
+
+def test_entrypoint_uses_cron_when_schedule_set():
+    """run_schedule set + run_interval falsy → cron-based next_wait passed to _run_scheduled."""
+    cfg = _config(run_interval=0, run_schedule="0 2 * * *")
+    with patch.object(run, "ConfigNode", return_value=cfg), \
+         patch.object(run, "_run_scheduled", return_value=0) as mock_scheduled:
+        result = run.entrypoint(args=_args(run_once=False))
+    assert result == 0
+    mock_scheduled.assert_called_once()
+    # exercise the injected provider to prove the CRON branch (not interval) was wired:
+    # the cron lambda calls seconds_until_next_cron(now), always strictly positive.
+    next_wait = mock_scheduled.call_args.args[1]
+    assert next_wait() > 0
+
+
+def test_entrypoint_uses_interval_when_interval_set():
+    """run_interval set + run_schedule None → interval next_wait passed to _run_scheduled."""
+    cfg = _config(run_interval=60, run_schedule=None)
+    with patch.object(run, "ConfigNode", return_value=cfg), \
+         patch.object(run, "_run_scheduled", return_value=0) as mock_scheduled:
+        result = run.entrypoint(args=_args(run_once=False))
+    assert result == 0
+    mock_scheduled.assert_called_once()
+    # exercise the injected provider to prove the INTERVAL branch was wired:
+    # the interval lambda returns the configured run_interval verbatim.
+    next_wait = mock_scheduled.call_args.args[1]
+    assert next_wait() == 60
+
+
+def test_scheduled_loop_uses_injected_wait_provider():
+    """_run_scheduled calls stop.wait with the value returned by next_wait."""
+    cfg = _config(run_interval=0)
+    stop_event = threading.Event()
+    call_count = 0
+
+    def _run_side_effect(_config):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("transient failure")
+
+    def _wait_side_effect(timeout=None):
+        stop_event.set()
+        return False
+
+    with patch.object(run, "run", side_effect=_run_side_effect), \
+         patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(stop_event, "wait", side_effect=_wait_side_effect) as mock_wait, \
+         patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+        result = run._run_scheduled(cfg, lambda: 5)
+
+    assert result == 0
+    mock_wait.assert_called_once_with(5)
 
 
 # ---------------------------------------------------------------------------
