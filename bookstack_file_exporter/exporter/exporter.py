@@ -22,13 +22,35 @@ class NodeExporter():
         NodeExporter instance to handle building shelve/book/chapter/page relations.
     """
     def __init__(self, api_urls: dict[str, str], http_client: HttpHelper,
-                 node_filter: Optional[NodeFilter] = None):
+                 node_filter: Optional[NodeFilter] = None, stop=None):
         self.api_urls = api_urls
         self.http_client = http_client
         self._node_filter = node_filter
+        # Cooperative-cancel flag (threading.Event). None in one-shot mode so the
+        # checks below are no-ops. Scheduled mode injects its shutdown Event so a
+        # signal mid-fetch halts the tree walk at the next node boundary instead of
+        # fetching the entire tree first. Twin of NodeArchiver._stop (archive phase).
+        self._stop = stop
         # Tracks book IDs belonging to dropped shelves; consumed in get_unassigned_books.
         # Populated in get_all_shelves, pruned in get_all_books before unassigned check.
         self._excluded_book_ids: set[int] = set()
+
+    def _stop_requested(self) -> bool:
+        """True when a shutdown signal has flagged this run for cancellation."""
+        return self._stop is not None and self._stop.is_set()
+
+    def _until_stop(self, items):
+        """Yield from items until a shutdown signal is flagged, then stop.
+
+        Wraps each fetch loop's iterable so cancellation lives in one place. This
+        is also the seam a future parallel exporter would attach to: the same
+        boundary that breaks the loop today would stop draining into a thread
+        pool's submit() tomorrow.
+        """
+        for item in items:
+            if self._stop_requested():
+                return
+            yield item
 
     def get_all_shelves(self) -> dict[int, Node]:
         """
@@ -61,7 +83,7 @@ class NodeExporter():
     def _get_parents(self, base_url: str, parent_ids: list[int],
                       path_prefix: str = "") -> dict[int, Node]:
         parent_nodes = {}
-        for parent_id in parent_ids:
+        for parent_id in self._until_stop(parent_ids):
             parent_url = f"{base_url}/{parent_id}"
             parent_data = self._get_json_response(parent_url)
             parent_nodes[parent_id] = Node(parent_data, path_prefix=path_prefix)
@@ -75,7 +97,7 @@ class NodeExporter():
         """
         base_url = self.api_urls["chapters"]
         chapter_nodes = {}
-        for book_node in book_nodes.values():
+        for book_node in self._until_stop(book_nodes.values()):
             for child in selector.selectable_children(
                     book_node.children, "chapters", self._node_filter, node_type="chapter"):
                 chapter_id = child['id']
@@ -93,7 +115,7 @@ class NodeExporter():
     def _get_children(self, base_url: str, resource_type: str, parent_nodes: dict[int, Node],
                       filter_empty: bool, node_type: str = "") -> dict[int, Node]:
         child_nodes = {}
-        for _, parent in parent_nodes.items():
+        for _, parent in self._until_stop(parent_nodes.items()):
             if not parent.children:
                 continue
             for child in selector.selectable_children(

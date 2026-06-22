@@ -32,6 +32,93 @@ def page_archiver(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 0. Cooperative-shutdown stop flag
+# ---------------------------------------------------------------------------
+
+class TestStopFlag:
+    def test_stop_defaults_to_none(self, page_archiver):
+        assert page_archiver._stop is None
+
+    def test_stop_requested_false_when_unset(self, page_archiver):
+        assert page_archiver._stop_requested() is False
+
+    def test_stop_requested_false_when_event_clear(self, page_archiver):
+        import threading
+        page_archiver._stop = threading.Event()
+        assert page_archiver._stop_requested() is False
+
+    def test_stop_requested_true_when_event_set(self, page_archiver):
+        import threading
+        ev = threading.Event()
+        ev.set()
+        page_archiver._stop = ev
+        assert page_archiver._stop_requested() is True
+
+
+class TestCooperativeCancellation:
+    def test_export_nodes_bails_before_first_node_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        page_archiver._download_node_assets = MagicMock()
+        page_archiver._get_node_data = MagicMock()
+
+        nodes = {1: MagicMock(), 2: MagicMock()}
+        page_archiver._export_nodes(nodes, "pages", {}, {})
+
+        page_archiver._download_node_assets.assert_not_called()
+        page_archiver._get_node_data.assert_not_called()
+
+    def test_export_nodes_stops_between_nodes(self, page_archiver):
+        import threading
+        ev = threading.Event()
+        page_archiver._stop = ev
+        page_archiver._download_node_assets = MagicMock(return_value={})
+        # set the flag the moment the first node's data is fetched
+        page_archiver._get_node_data = MagicMock(side_effect=lambda url: ev.set() or b"data")
+        page_archiver._archive_node = MagicMock()
+        page_archiver._archive_node_meta = MagicMock()
+        page_archiver.export_formats = ["markdown"]
+        page_archiver.export_meta = False
+
+        n1, n2 = MagicMock(), MagicMock()
+        n1.id_, n2.id_ = 1, 2
+        page_archiver._export_nodes({1: n1, 2: n2}, "pages", {}, {})
+
+        # only the first node was fetched; loop broke before the second
+        assert page_archiver._get_node_data.call_count == 1
+
+    def test_download_node_assets_breaks_asset_type_loop_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        page_archiver._archive_node_assets = MagicMock(return_value=set())
+        page_archiver._asset_page_map = MagicMock(return_value={1: "page-1"})
+
+        # non-empty maps so the early `return {}` guard does NOT short-circuit;
+        # the stop guard at the asset-type loop must break instead.
+        result = page_archiver._download_node_assets(
+            MagicMock(), {1: ["img"]}, {1: ["att"]})
+
+        page_archiver._archive_node_assets.assert_not_called()
+        assert result == {"images": {}, "attachments": {}}
+
+    def test_archive_node_assets_breaks_asset_loop_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        # asset nodes present; the per-asset guard must break before the first one.
+        page_archiver.asset_archiver = MagicMock()
+        failed = page_archiver._archive_node_assets(
+            "images", "parent/path", "page-1", [MagicMock(), MagicMock()])
+
+        # broke immediately: no asset bytes were fetched (real download call is
+        # asset_archiver.get_asset_bytes, node_archiver.py:144)
+        page_archiver.asset_archiver.get_asset_bytes.assert_not_called()
+        assert failed == set()
+
+
+# ---------------------------------------------------------------------------
 # 1. Construction
 # ---------------------------------------------------------------------------
 
@@ -123,14 +210,43 @@ class TestFileExtensionMap:
 # ---------------------------------------------------------------------------
 
 class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffolding stub
-    def test_create_gzip_called_with_tar_and_archive_file(self, page_archiver):
+    def test_create_gzip_called_with_tar_and_partial_then_renamed(self, page_archiver):
+        # gzip writes to the .partial path; os.rename promotes it to the final .tgz.
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.create_gzip"
-        ) as mock_create_gzip:
+        ) as mock_create_gzip, patch(
+            "bookstack_file_exporter.archiver.node_archiver.os.rename"
+        ) as mock_rename:
             page_archiver.gzip_archive()
-            mock_create_gzip.assert_called_once_with(
-                page_archiver.tar_file, page_archiver.archive_file
-            )
+            partial = f"{page_archiver.archive_file}.partial"
+            mock_create_gzip.assert_called_once_with(page_archiver.tar_file, partial)
+            mock_rename.assert_called_once_with(partial, page_archiver.archive_file)
+
+
+class TestAtomicGzip:  # pylint: disable=too-few-public-methods
+    def test_gzip_writes_via_partial_then_renames(self, page_archiver, tmp_path, monkeypatch):
+        import os
+        from bookstack_file_exporter.archiver import util as archiver_util
+
+        tar = tmp_path / "bkps_2026.tar"
+        tar.write_bytes(b"tar-bytes")
+        page_archiver.tar_file = str(tar)
+        page_archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
+
+        seen_target = {}
+        real_create_gzip = archiver_util.create_gzip
+        def spy(file_path, gzip_file, remove_old=True):
+            seen_target["gzip_file"] = gzip_file
+            return real_create_gzip(file_path, gzip_file, remove_old)
+        monkeypatch.setattr(archiver_util, "create_gzip", spy)
+
+        page_archiver.gzip_archive()
+
+        # gzip was written to the .partial path, not the final name
+        assert seen_target["gzip_file"].endswith(".tgz.partial")
+        # final archive exists; no partial left behind
+        assert os.path.exists(page_archiver.archive_file)
+        assert not os.path.exists(page_archiver.archive_file + ".partial")
 
 
 # ---------------------------------------------------------------------------

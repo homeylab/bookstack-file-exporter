@@ -194,6 +194,29 @@ Two scheduling strategies are available for application mode (mutually exclusive
 
 Pass `--run-once` to force a single run regardless of `run_interval` or `run_schedule`.
 
+#### Graceful shutdown & grace periods
+
+In scheduled mode `SIGTERM`/`SIGINT` shuts down gracefully: the exporter stops at the
+next asset/format/node boundary, discards any partial archive, and exits `0`. A second
+signal force-kills immediately (`130` for SIGINT, `143` for SIGTERM). Exit `0` means a
+clean shutdown, **not** that the last cycle succeeded — alert on notifications or
+`/healthz`, not on the exit code.
+
+One-shot mode (`--run-once`, or no `run_interval`/`run_schedule`) aborts the current run
+on a signal rather than draining, but still discards any partial archive and exits
+`130`/`143`.
+
+A single in-flight export call (e.g. a large-book PDF render) cannot be interrupted
+mid-request, so give the container time to drain:
+
+- Docker: `docker stop -t 60 <container>` (default is 10s).
+- Compose: set `stop_grace_period: 60s` (raise for large instances).
+- Kubernetes: set `terminationGracePeriodSeconds: 60`.
+
+If the grace window elapses the orchestrator sends an uncatchable SIGKILL, which can
+strand a partial archive. The next run sweeps leftover `.tar`/`.tgz.partial` files (at
+any export level) before it writes anything; a finished `.tgz` is never touched.
+
 #### Health Endpoint
 
 In scheduled mode (`run_interval` or `run_schedule`), set `health_port` to expose an
@@ -620,17 +643,7 @@ bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.pdf
 Books without a shelf will be put in a shelve folder named `unassigned`.
 
 #### Empty/New Pages
-Empty/New Pages will be ignored since they have not been modified yet from creation and are empty but also do not have a valid slug. 
-
-Example from Bookstack API:
-```
-{
-    ...
-    "name": "New Page",
-    "slug": "",
-    ...
-}
-```
+Empty/New Pages are ignored: they have not been modified from creation, so they have no content and no valid slug. From the Bookstack API they appear as `"name": "New Page"` with an empty `"slug": ""`.
 
 ### Images
 Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
@@ -673,8 +686,6 @@ The configuration item, `assets.modify_links`, can be set to `true` to rewrite i
 - **Legacy alias**: the old key `modify_markdown` will be removed in a future version. Rename to `modify_links` in your configuration.
 
 #### Markdown example
-
-Page (parent) -> Images (children) relationships are created and then each image/attachment URL is replaced with its respective local export path.
 
 ```
 ## before
@@ -723,9 +734,7 @@ Attachment links are rewritten from the live URL to a local relative path.
 
 #### Known limitations
 
-Markdown exports use raw `bytes.replace` — no structural awareness (e.g. DOM). If an attachment URL for some reason appears verbatim anywhere in the markdown source (code block, pre, comment, plain text), it gets replaced.
-
-HTML exports are safe because bs4 filters to only `<img src> / <a href>` attributes before replacing.
+Markdown link rewriting is a plain text substitution: if an asset URL appears verbatim anywhere in the markdown (code block, comment, plain text), it is also rewritten. HTML rewriting is scoped to `<img src>` / `<a href>` attributes only, so it is unaffected.
 
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:

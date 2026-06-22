@@ -38,13 +38,37 @@ def entrypoint(args: argparse.Namespace) -> int:
 
 
 def _run_once(config: ConfigNode) -> int:
-    """Run the export exactly once and return an exit code."""
+    """Run the export exactly once and return an exit code.
+
+    A SIGTERM/SIGINT mid-run raises KeyboardInterrupt so the export's finally
+    block discards any partial archive before exiting. This matters for ephemeral
+    one-shot containers (`docker run --rm`, a k8s Job) where no later run exists
+    to sweep a stranded `.tgz.partial` off the output volume. Raising mid-write is
+    safe here because the only local artifacts are the tar/.partial, which
+    discard_partial removes (a signal during a remote upload may still leave a
+    partial object on the remote — same as any interrupted upload, not specific to
+    this path). The first signal also restores the default
+    disposition for both signals so a second signal force-kills via the kernel.
+    Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+    """
+    received = {}
+
+    def _handle_signal(signum, _frame):
+        received["signum"] = signum
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
     try:
         run(config)
         return 0
     except KeyboardInterrupt:
-        log.info("Interrupted, exiting")
-        return 130
+        signum = int(received.get("signum", signal.SIGINT))
+        log.info("Interrupted by signal %s, exiting", signum)
+        return 128 + signum
     except Exception as err:  # pylint: disable=broad-except
         log.error("Export failed: %s", err)
         log.debug("Traceback:", exc_info=True)
@@ -56,8 +80,19 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     stop = threading.Event()
 
     def _handle_signal(signum, _frame):
-        log.info("Received signal %s, shutting down", signum)
+        # Signal handlers run in the main thread between bytecodes, mid-anything;
+        # raising across arbitrary code is unsafe and SIGTERM has no default
+        # exception. So we only SET a flag (also breaks the interruptible
+        # stop.wait() below); the export polls it at checkpoints to cancel.
+        log.info("Received signal %s, shutting down (signal again to force)", signum)
         stop.set()
+        # Restore the default disposition for BOTH catchable signals so that ANY
+        # second signal — not only an identical repeat — force-kills via the
+        # kernel with its conventional exit code (SIGINT->130, SIGTERM->143). This
+        # is an operator escape hatch if a slow in-flight download won't drain
+        # inside the grace window (e.g. `docker stop` then an impatient Ctrl-C).
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -75,7 +110,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         if status:
             status.mark_running()
         try:
-            result = run(config)
+            result = run(config, stop)
             if status:
                 status.mark_success(result)
         except Exception as err:  # pylint: disable=broad-except
@@ -102,10 +137,10 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     return 0
 
 
-def run(config: ConfigNode):
+def run(config: ConfigNode, stop=None):
     """run export process with error handling and notification support"""
     try:
-        result = exporter(config)
+        result = exporter(config, stop)
         if config.user_inputs.notifications:
             notif = NotifyHandler(config.user_inputs.notifications)
             notif.do_notify(result=result)
@@ -121,7 +156,7 @@ def run(config: ConfigNode):
         # raise original error instead of notification error
         raise run_err
 
-def exporter(config: ConfigNode):
+def exporter(config: ConfigNode, stop=None):
     """export bookstack nodes and archive locally and/or remotely"""
 
     #### Export Data #####
@@ -136,7 +171,7 @@ def exporter(config: ConfigNode):
 
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     log.info("Building shelve/book/chapter/page relationships")
-    export_helper = NodeExporter(config.urls, http_client, node_filter=node_filter)
+    export_helper = NodeExporter(config.urls, http_client, node_filter=node_filter, stop=stop)
     ## shelves
     shelve_nodes: dict[int, Node] = export_helper.get_all_shelves()
     ## books (always needed - basis for all export levels)
@@ -146,8 +181,15 @@ def exporter(config: ConfigNode):
     ## Build archiver before the level branch (shared for all levels)
     archive: Archiver = Archiver(config, http_client)
 
+    # Inject the cooperative-shutdown flag (None in one-shot mode = no-op).
+    archive.set_stop(stop)
+
     # create export directory if not exists
     archive.create_export_dir()
+
+    # Remove orphaned .tar/.tgz.partial from prior runs (SIGKILL backstop) before
+    # this cycle writes anything.
+    archive.sweep_orphans()
 
     ## Select nodes by export level
     export_level = config.user_inputs.export_level
@@ -159,6 +201,12 @@ def exporter(config: ConfigNode):
         # default: "pages"
         nodes = export_helper.get_all_pages(book_nodes)
 
+    # A shutdown signal during the fetch above leaves the node tree truncated.
+    # Skip the archive phase entirely rather than emit a partial export.
+    if stop is not None and stop.is_set():
+        log.info("Shutdown requested during fetch; skipping archive")
+        return None
+
     if not nodes:
         log.warning(
             "No %s data available from given Bookstack instance. Nothing to archive",
@@ -167,24 +215,38 @@ def exporter(config: ConfigNode):
         return None
 
     log.info("Beginning archive")
-    # get all content for each node
-    archive.get_bookstack_exports(nodes)
-    # nothing was written to the tar (e.g. every node empty or all fetches failed):
-    # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
-    if not archive.has_exported_content:
-        log.warning("No %s content was archived. Nothing to upload", export_level)
-        return None
+    try:
+        # get all content for each node
+        archive.get_bookstack_exports(nodes)
 
-    # create tar if needed and gzip tar
-    archive.create_archive()
+        # Graceful shutdown requested mid-cycle: drop the partial tar and skip
+        # gzip/upload/cleanup so a cancelled cycle never produces an archive.
+        if stop is not None and stop.is_set():
+            log.info("Shutdown requested mid-cycle; discarding partial export")
+            return None
 
-    # archive to remote targets
-    remote = archive.archive_remote()
-    # if remote target is specified and clean is true
-    # clean up the .tgz archive since it is already uploaded
-    removed = archive.clean_up()
+        # nothing was written to the tar (e.g. every node empty or all fetches failed):
+        # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
+        if not archive.has_exported_content:
+            log.warning("No %s content was archived. Nothing to upload", export_level)
+            return None
 
-    local = archive.archive_file
-    log.info("Created file archive: %s.tgz", archive.archive_dir)
-    log.info("Completed run")
-    return NotifyResult(local=local, remote=remote, removed=removed)
+        # create tar if needed and gzip tar
+        archive.create_archive()
+
+        # archive to remote targets
+        remote = archive.archive_remote()
+        # if remote target is specified and clean is true
+        # clean up the .tgz archive since it is already uploaded
+        removed = archive.clean_up()
+
+        local = archive.archive_file
+        log.info("Created file archive: %s.tgz", archive.archive_dir)
+        log.info("Completed run")
+        return NotifyResult(local=local, remote=remote, removed=removed)
+    finally:
+        # Eager cleanup of THIS cycle's partial on every terminal path (stop,
+        # exception, one-shot KeyboardInterrupt). No-op on success: the tar is
+        # already consumed and the .partial renamed away. The run-start sweep is
+        # the backstop for SIGKILL, which kills the process before finally runs.
+        archive.discard_partial()

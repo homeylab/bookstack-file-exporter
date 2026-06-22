@@ -87,6 +87,48 @@ class Archiver:
                         "attempting to skip this step")
             return
 
+    def set_stop(self, stop):
+        """Inject the shutdown flag into the node archiver for cooperative cancel.
+
+        One-shot mode never calls this, so the archiver's flag stays None (no-op
+        at every checkpoint). Scheduled mode forwards its threading.Event here.
+        """
+        self._archiver._stop = stop  # pylint: disable=protected-access
+
+    def discard_partial(self):
+        """Remove this run's intermediate tar and any .tgz.partial; never the final .tgz.
+
+        Idempotent and missing-file tolerant: an all-empty cycle writes no tar, and
+        a successful run has already consumed the tar and renamed the .partial away,
+        so this is a no-op on the success path.
+        """
+        partial = f"{self._archiver.archive_file}.partial"
+        for path in (self._archiver.tar_file, partial):
+            if os.path.exists(path):
+                log.info("Cleaning up partial archive: %s", path)
+                util.remove_file(path)
+
+    def sweep_orphans(self):
+        """Delete prior-run .tar / .tgz.partial orphans (SIGKILL backstop).
+
+        Run at the start of a cycle, BEFORE this run writes any tar or .partial.
+        Safety comes from that ordering, not the glob: scan_archives globs
+        {base}_*{ext}, which would also match this run's own filenames — but none
+        exist on disk yet, so only earlier runs' leftovers are removed. Moving this
+        call after any write would make it delete the live tar.
+
+        Globs on the unscoped base_dir_name (e.g. `bkps`), not the level-scoped
+        base_dir (`bkps_books`): intermediates are always junk regardless of export
+        level, so `bkps_*` clears partials stranded by prior runs at any level. The
+        `bkps_` prefix still anchors the scan so unrelated files are never touched.
+        (keep_last retention deliberately stays level-scoped — those are deliverables.)
+        Also retro-cleans .tar orphans from past failed cycles.
+        """
+        tgz_ext = self._archiver.file_extension_map['tgz']
+        for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.partial"):
+            for path in util.scan_archives(self.config.base_dir_name, ext):
+                util.remove_file(path)
+
     def get_bookstack_exports(self, nodes: dict[int, Node]):
         """export all node content (polymorphic: pages, books, or chapters)"""
         log.info("Exporting all bookstack contents")

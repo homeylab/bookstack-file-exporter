@@ -7,6 +7,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import NotifyResult
 
@@ -56,6 +58,7 @@ class TestRunOncePath:
     def test_success_returns_0(self):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run"):
             result = run.entrypoint(args=_args())
         assert result == 0
@@ -63,6 +66,7 @@ class TestRunOncePath:
     def test_run_raises_exception_returns_1(self, caplog):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=RuntimeError("export boom")), \
              caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
             result = run.entrypoint(args=_args())
@@ -73,17 +77,77 @@ class TestRunOncePath:
         """Exception must NOT escape entrypoint."""
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=RuntimeError("boom")):
             # should not raise
             result = run.entrypoint(args=_args())
         assert result == 1
 
     def test_keyboard_interrupt_returns_130(self):
+        """A bare KeyboardInterrupt (no signal recorded) defaults to SIGINT->130."""
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=KeyboardInterrupt):
             result = run.entrypoint(args=_args())
         assert result == 130
+
+    def test_sigterm_during_run_cleans_up_and_returns_143(self):
+        """SIGTERM mid-run -> KeyboardInterrupt -> finally cleanup -> exit 143."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            result = run.entrypoint(args=_args())
+        assert result == 143
+
+    def test_sigint_during_run_returns_130(self):
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGINT](signal.SIGINT, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            result = run.entrypoint(args=_args())
+        assert result == 130
+
+    def test_first_signal_restores_sig_dfl_for_both_signals(self):
+        """Force-kill escape hatch: first signal restores default for both."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+        calls = []
+
+        def _capture(signum, handler):
+            calls.append((signum, handler))
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            run.entrypoint(args=_args())
+
+        assert (signal.SIGTERM, signal.SIG_DFL) in calls
+        assert (signal.SIGINT, signal.SIG_DFL) in calls
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +158,7 @@ class TestRunOnceFlag:
     def test_run_once_flag_true_forces_single_run_even_with_interval(self):
         cfg = _config(run_interval=60)
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run") as mock_run:
             result = run.entrypoint(args=_args(run_once=True))
         assert result == 0
@@ -102,6 +167,7 @@ class TestRunOnceFlag:
     def test_run_once_flag_false_with_no_interval_still_runs_once(self):
         cfg = _config(run_interval=0)
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run") as mock_run:
             result = run.entrypoint(args=_args(run_once=False))
         assert result == 0
@@ -121,7 +187,7 @@ class TestRunScheduledPath:
         cfg = self._cfg_with_interval()
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()  # signal stop after first call so loop exits
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -141,7 +207,7 @@ class TestRunScheduledPath:
         stop_event = threading.Event()
         call_count = 0
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -170,7 +236,7 @@ class TestRunScheduledPath:
         stop_event = threading.Event()
         call_count = 0
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             nonlocal call_count
             call_count += 1
             raise RuntimeError("persistent failure")
@@ -197,7 +263,7 @@ class TestRunScheduledPath:
         cfg = self._cfg_with_interval()
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -256,7 +322,7 @@ def test_entrypoint_loops_when_interval_set():
     stop_event = threading.Event()
     call_count = 0
 
-    def _run_side_effect(_config):
+    def _run_side_effect(_config, _stop=None):
         nonlocal call_count
         call_count += 1
         stop_event.set()  # exit after first iteration
@@ -309,7 +375,7 @@ def test_scheduled_loop_uses_injected_wait_provider():
     stop_event = threading.Event()
     call_count = 0
 
-    def _run_side_effect(_config):
+    def _run_side_effect(_config, _stop=None):
         nonlocal call_count
         call_count += 1
         raise RuntimeError("transient failure")
@@ -689,7 +755,7 @@ class TestScheduledHealthServer:
         cfg = _config(run_interval=5, health_port=None)
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -707,7 +773,7 @@ class TestScheduledHealthServer:
         stop_event = threading.Event()
         fake_server = MagicMock()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
             return None
 
@@ -730,7 +796,7 @@ class TestScheduledHealthServer:
         stop_event = threading.Event()
         captured = {}
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
             return NotifyResult(local="/bkps/export.tgz")
 
@@ -750,3 +816,140 @@ class TestScheduledHealthServer:
         assert snap["run_count"] == 1
         assert snap["last_run"]["status"] == "success"
         assert snap["last_run"]["archive_file"] == "export.tgz"
+
+
+# ---------------------------------------------------------------------------
+# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_partial)
+# ---------------------------------------------------------------------------
+
+class TestExporterStopWiring:
+    def _cfg(self):
+        # NOTE: unassigned_book_dir is read TOP-LEVEL by exporter()
+        # (`config.unassigned_book_dir`, run.py -> config_helper), NOT off
+        # user_inputs. Putting it under ui raises AttributeError.
+        ui = SimpleNamespace(
+            http_config=MagicMock(), filters=None, export_level="pages",
+            notifications=None)
+        return SimpleNamespace(
+            user_inputs=ui, headers={}, urls={}, unassigned_book_dir=None)
+
+    def test_exporter_injects_stop_into_node_exporter(self):
+        cfg = self._cfg()
+        stop = threading.Event()
+        archive = MagicMock()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {}
+            mock_exp.return_value.get_all_pages.return_value = {}
+            run.exporter(cfg, stop)
+
+        # the fetch layer must receive the same shutdown flag the archiver does
+        _, kwargs = mock_exp.call_args
+        assert kwargs["stop"] is stop
+
+    def test_exporter_skips_archive_when_stop_set_after_fetch(self):
+        cfg = self._cfg()
+        stop = threading.Event(); stop.set()
+        archive = MagicMock()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            result = run.exporter(cfg, stop)
+
+        archive.set_stop.assert_called_once_with(stop)
+        archive.sweep_orphans.assert_called_once()
+        # cancelled during fetch -> skip the archive phase entirely (truncated tree)
+        archive.get_bookstack_exports.assert_not_called()
+        archive.create_archive.assert_not_called()
+        assert result is None
+
+    def test_exporter_discards_partial_on_mid_archive_stop(self):
+        cfg = self._cfg()
+        stop = threading.Event()  # not set during fetch
+        archive = MagicMock()
+        # simulate a signal landing while the archive loop runs
+        archive.get_bookstack_exports.side_effect = lambda _nodes: stop.set()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            result = run.exporter(cfg, stop)
+
+        archive.get_bookstack_exports.assert_called_once()
+        # mid-cycle stop -> discard the partial tar, never gzip/upload
+        archive.create_archive.assert_not_called()
+        archive.discard_partial.assert_called_once()
+        assert result is None
+
+    def test_exporter_discards_partial_on_exception(self):
+        cfg = self._cfg()
+        archive = MagicMock()
+        archive.get_bookstack_exports.side_effect = RuntimeError("mid-cycle boom")
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            with pytest.raises(RuntimeError):
+                run.exporter(cfg, None)
+        archive.discard_partial.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _run_scheduled() — double-signal force-kill (SIG_DFL restore)
+# ---------------------------------------------------------------------------
+
+class TestDoubleSignalForceKill:
+    def test_first_signal_restores_default_handler(self):
+        cfg = _config(run_interval=5)
+        stop_event = threading.Event()
+        captured = {}
+
+        def _capture_signal(signum, handler):
+            # remember the handler installed for SIGTERM so we can invoke it
+            if signum == signal.SIGTERM and callable(handler):
+                captured["handler"] = handler
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture_signal) as mock_signal, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            run.entrypoint(args=_args(run_once=False))
+            # simulate first SIGTERM arriving: invoke the installed handler
+            mock_signal.reset_mock()
+            captured["handler"](signal.SIGTERM, None)
+
+        # handler must (a) set stop, (b) restore SIG_DFL for BOTH catchable
+        # signals so any second signal (not just an identical repeat) force-kills
+        assert stop_event.is_set()
+        mock_signal.assert_any_call(signal.SIGTERM, signal.SIG_DFL)
+        mock_signal.assert_any_call(signal.SIGINT, signal.SIG_DFL)
+
+    def test_run_called_with_stop_event(self):
+        cfg = _config(run_interval=5)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config, _stop=None):
+            assert _stop is stop_event
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect) as mock_run, \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        # run() received the stop event positionally or by keyword
+        assert mock_run.call_count == 1

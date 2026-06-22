@@ -1,6 +1,7 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
 """Unit tests for NodeExporter."""
 import logging
+import threading
 
 import pytest
 
@@ -28,6 +29,55 @@ def _make_filter(**kwargs) -> NodeFilter:
     """
     rf_kwargs = {k: ResourceFilter(**v) for k, v in kwargs.items()}
     return NodeFilter(Filters(**rf_kwargs))
+
+
+# ---------------------------------------------------------------------------
+# Cooperative cancellation (stop flag) — a shutdown signal mid-fetch must halt
+# the tree walk at the next node boundary instead of fetching the whole tree.
+# ---------------------------------------------------------------------------
+
+def test_stop_set_halts_parent_fetch(api_urls, mock_http_client):
+    """A set stop flag breaks the parent fetch before any detail GET."""
+    stop = threading.Event()
+    stop.set()
+    mock_http_client.http_get_all.return_value = [{"id": 1}, {"id": 2}]
+    exporter = NodeExporter(api_urls, mock_http_client, stop=stop)
+    result = exporter.get_all_shelves()
+    assert not result
+    mock_http_client.http_get_request.assert_not_called()
+
+
+def test_stop_set_halts_child_fetch(api_urls, mock_http_client, shelf_detail):
+    """A set stop flag breaks the child fetch before any detail GET."""
+    stop = threading.Event()
+    stop.set()
+    shelf_node = Node(shelf_detail)
+    exporter = NodeExporter(api_urls, mock_http_client, stop=stop)
+    result = exporter.get_child_nodes("books", {1: shelf_node})
+    assert not result
+    mock_http_client.http_get_request.assert_not_called()
+
+
+def test_stop_set_halts_chapter_fetch(api_urls, mock_http_client, book_detail_mixed):
+    """A set stop flag breaks the chapter walk before any detail GET."""
+    stop = threading.Event()
+    stop.set()
+    book_node = Node(book_detail_mixed)
+    exporter = NodeExporter(api_urls, mock_http_client, stop=stop)
+    result = exporter.get_chapter_nodes({10: book_node})
+    assert not result
+    mock_http_client.http_get_request.assert_not_called()
+
+
+def test_clear_stop_does_not_halt_fetch(api_urls, mock_http_client, shelf_detail):
+    """A cleared (un-set) stop flag leaves the fetch fully intact."""
+    stop = threading.Event()  # not set
+    mock_http_client.http_get_all.return_value = [{"id": 1}]
+    mock_http_client.http_get_request.return_value = make_response(shelf_detail)
+    exporter = NodeExporter(api_urls, mock_http_client, stop=stop)
+    result = exporter.get_all_shelves()
+    assert 1 in result
+    assert mock_http_client.http_get_request.call_count == 1
 
 
 # ---------------------------------------------------------------------------
