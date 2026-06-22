@@ -145,7 +145,7 @@ def exporter(config: ConfigNode, stop=None):
 
     ## Use exporter class to get all the resources (pages, books, etc.) and their relationships
     log.info("Building shelve/book/chapter/page relationships")
-    export_helper = NodeExporter(config.urls, http_client, node_filter=node_filter)
+    export_helper = NodeExporter(config.urls, http_client, node_filter=node_filter, stop=stop)
     ## shelves
     shelve_nodes: dict[int, Node] = export_helper.get_all_shelves()
     ## books (always needed - basis for all export levels)
@@ -174,6 +174,12 @@ def exporter(config: ConfigNode, stop=None):
     else:
         # default: "pages"
         nodes = export_helper.get_all_pages(book_nodes)
+
+    # A shutdown signal during the fetch above leaves the node tree truncated.
+    # Skip the archive phase entirely rather than emit a partial export.
+    if stop is not None and stop.is_set():
+        log.info("Shutdown requested during fetch; skipping archive")
+        return None
 
     if not nodes:
         log.warning(

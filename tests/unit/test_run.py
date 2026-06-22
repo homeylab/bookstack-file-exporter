@@ -769,7 +769,23 @@ class TestExporterStopWiring:
         return SimpleNamespace(
             user_inputs=ui, headers={}, urls={}, unassigned_book_dir=None)
 
-    def test_exporter_sets_stop_and_sweeps_then_short_circuits(self):
+    def test_exporter_injects_stop_into_node_exporter(self):
+        cfg = self._cfg()
+        stop = threading.Event()
+        archive = MagicMock()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {}
+            mock_exp.return_value.get_all_pages.return_value = {}
+            run.exporter(cfg, stop)
+
+        # the fetch layer must receive the same shutdown flag the archiver does
+        _, kwargs = mock_exp.call_args
+        assert kwargs["stop"] is stop
+
+    def test_exporter_skips_archive_when_stop_set_after_fetch(self):
         cfg = self._cfg()
         stop = threading.Event(); stop.set()
         archive = MagicMock()
@@ -783,7 +799,27 @@ class TestExporterStopWiring:
 
         archive.set_stop.assert_called_once_with(stop)
         archive.sweep_orphans.assert_called_once()
-        # stop was set -> short-circuit before create_archive, and discard ran
+        # cancelled during fetch -> skip the archive phase entirely (truncated tree)
+        archive.get_bookstack_exports.assert_not_called()
+        archive.create_archive.assert_not_called()
+        assert result is None
+
+    def test_exporter_discards_partial_on_mid_archive_stop(self):
+        cfg = self._cfg()
+        stop = threading.Event()  # not set during fetch
+        archive = MagicMock()
+        # simulate a signal landing while the archive loop runs
+        archive.get_bookstack_exports.side_effect = lambda _nodes: stop.set()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            result = run.exporter(cfg, stop)
+
+        archive.get_bookstack_exports.assert_called_once()
+        # mid-cycle stop -> discard the partial tar, never gzip/upload
         archive.create_archive.assert_not_called()
         archive.discard_partial.assert_called_once()
         assert result is None
