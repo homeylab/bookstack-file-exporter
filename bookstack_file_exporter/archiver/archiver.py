@@ -105,6 +105,7 @@ class Archiver:
         partial = f"{self._archiver.archive_file}.partial"
         for path in (self._archiver.tar_file, partial):
             if os.path.exists(path):
+                log.info("Cleaning up partial archive: %s", path)
                 util.remove_file(path)
 
     def sweep_orphans(self):

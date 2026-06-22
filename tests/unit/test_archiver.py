@@ -64,6 +64,25 @@ class TestDiscardPartial:
         assert not tar.exists()
         assert not partial.exists()
 
+    def test_logs_each_removed_path(self, archiver_instance, tmp_path, caplog):
+        tar = tmp_path / "bkps_2026.tar"
+        tar.write_bytes(b"x")
+        archiver_instance._archiver.tar_file = str(tar)
+        archiver_instance._archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
+
+        with caplog.at_level(logging.INFO):
+            archiver_instance.discard_partial()
+
+        assert any(str(tar) in r.message and "partial" in r.message.lower()
+                   for r in caplog.records)
+
+    def test_no_log_when_nothing_to_discard(self, archiver_instance, tmp_path, caplog):
+        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
+        archiver_instance._archiver.archive_file = str(tmp_path / "absent.tgz")
+        with caplog.at_level(logging.INFO):
+            archiver_instance.discard_partial()
+        assert not any("partial" in r.message.lower() for r in caplog.records)
+
     def test_no_error_when_nothing_to_discard(self, archiver_instance, tmp_path):
         archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
         archiver_instance._archiver.archive_file = str(tmp_path / "absent.tgz")
