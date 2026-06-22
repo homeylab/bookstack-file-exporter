@@ -140,6 +140,8 @@ class NodeArchiver:
         failed_assets: set[int] = set()
         node_base_path = f"{self.archive_base_path}/{parent_path}"
         for asset_node in asset_nodes:
+            if self._stop_requested():
+                break
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(
                     asset_type, asset_node.download_url)
@@ -222,8 +224,17 @@ class NodeArchiver:
         if (self.export_images or self.export_attachments) and not self.modify_links:
             log.info("Assets downloaded but links not rewritten (modify_links disabled)")
         for _, node in nodes.items():
+            # Cooperative cancellation: a shutdown signal set the flag; bail at this
+            # node boundary. Partial output is always discarded (exporter() finally),
+            # so an early return needs no consistent state.
+            if self._stop_requested():
+                return
             assets_by_page = self._download_node_assets(node, image_map, attachment_map)
             for fmt in self.export_formats:
+                # Per-format checkpoint: a single book/chapter export call can be slow
+                # (server-side render); stop between formats instead of after all of them.
+                if self._stop_requested():
+                    return
                 url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
                 try:
                     data = self._get_node_data(url)
@@ -247,6 +258,8 @@ class NodeArchiver:
         page_names = self._asset_page_map(node)
         grouped = {"images": {}, "attachments": {}}
         for asset_type, amap in (("images", image_map), ("attachments", attachment_map)):
+            if self._stop_requested():
+                break
             for page_id, page_name in page_names.items():
                 assets = amap.get(page_id)
                 if not assets:

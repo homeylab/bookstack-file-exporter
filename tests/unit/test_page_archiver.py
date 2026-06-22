@@ -55,6 +55,69 @@ class TestStopFlag:
         assert page_archiver._stop_requested() is True
 
 
+class TestCooperativeCancellation:
+    def test_export_nodes_bails_before_first_node_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        page_archiver._download_node_assets = MagicMock()
+        page_archiver._get_node_data = MagicMock()
+
+        nodes = {1: MagicMock(), 2: MagicMock()}
+        page_archiver._export_nodes(nodes, "pages", {}, {})
+
+        page_archiver._download_node_assets.assert_not_called()
+        page_archiver._get_node_data.assert_not_called()
+
+    def test_export_nodes_stops_between_nodes(self, page_archiver):
+        import threading
+        ev = threading.Event()
+        page_archiver._stop = ev
+        page_archiver._download_node_assets = MagicMock(return_value={})
+        # set the flag the moment the first node's data is fetched
+        page_archiver._get_node_data = MagicMock(side_effect=lambda url: ev.set() or b"data")
+        page_archiver._archive_node = MagicMock()
+        page_archiver._archive_node_meta = MagicMock()
+        page_archiver.export_formats = ["markdown"]
+        page_archiver.export_meta = False
+
+        n1, n2 = MagicMock(), MagicMock()
+        n1.id_, n2.id_ = 1, 2
+        page_archiver._export_nodes({1: n1, 2: n2}, "pages", {}, {})
+
+        # only the first node was fetched; loop broke before the second
+        assert page_archiver._get_node_data.call_count == 1
+
+    def test_download_node_assets_breaks_asset_type_loop_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        page_archiver._archive_node_assets = MagicMock(return_value=set())
+        page_archiver._asset_page_map = MagicMock(return_value={1: "page-1"})
+
+        # non-empty maps so the early `return {}` guard does NOT short-circuit;
+        # the stop guard at the asset-type loop must break instead.
+        result = page_archiver._download_node_assets(
+            MagicMock(), {1: ["img"]}, {1: ["att"]})
+
+        page_archiver._archive_node_assets.assert_not_called()
+        assert result == {"images": {}, "attachments": {}}
+
+    def test_archive_node_assets_breaks_asset_loop_when_stopped(self, page_archiver):
+        import threading
+        ev = threading.Event(); ev.set()
+        page_archiver._stop = ev
+        # asset nodes present; the per-asset guard must break before the first one.
+        page_archiver.asset_archiver = MagicMock()
+        failed = page_archiver._archive_node_assets(
+            "images", "parent/path", "page-1", [MagicMock(), MagicMock()])
+
+        # broke immediately: no asset bytes were fetched (real download call is
+        # asset_archiver.get_asset_bytes, node_archiver.py:144)
+        page_archiver.asset_archiver.get_asset_bytes.assert_not_called()
+        assert failed == set()
+
+
 # ---------------------------------------------------------------------------
 # 1. Construction
 # ---------------------------------------------------------------------------
