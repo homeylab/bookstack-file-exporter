@@ -43,6 +43,60 @@ def archiver_instance(mock_config, mock_http_client):
 # _generate_root_folder
 # ---------------------------------------------------------------------------
 
+class TestSetStop:
+    def test_set_stop_forwards_to_node_archiver(self, archiver_instance):
+        import threading
+        ev = threading.Event()
+        archiver_instance.set_stop(ev)
+        assert archiver_instance._archiver._stop is ev
+
+
+class TestDiscardPartial:
+    def test_removes_tar_and_partial_when_present(self, archiver_instance, tmp_path):
+        tar = tmp_path / "bkps_2026.tar"
+        partial = tmp_path / "bkps_2026.tgz.partial"
+        tar.write_bytes(b"x"); partial.write_bytes(b"y")
+        archiver_instance._archiver.tar_file = str(tar)
+        archiver_instance._archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
+
+        archiver_instance.discard_partial()
+
+        assert not tar.exists()
+        assert not partial.exists()
+
+    def test_no_error_when_nothing_to_discard(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
+        archiver_instance._archiver.archive_file = str(tmp_path / "absent.tgz")
+        # must not raise (all-empty cycle writes no tar)
+        archiver_instance.discard_partial()
+
+    def test_does_not_touch_final_tgz(self, archiver_instance, tmp_path):
+        final = tmp_path / "bkps_2026.tgz"
+        final.write_bytes(b"done")
+        archiver_instance._archiver.tar_file = str(tmp_path / "bkps_2026.tar")
+        archiver_instance._archiver.archive_file = str(final)
+        archiver_instance.discard_partial()
+        assert final.exists()
+
+
+class TestSweepOrphans:
+    def test_removes_prior_tar_and_partial_orphans(self, archiver_instance, tmp_path):
+        from bookstack_file_exporter.archiver.node_archiver import _FILE_EXTENSION_MAP
+        archiver_instance.base_dir = str(tmp_path / "bkps")
+        archiver_instance._archiver.file_extension_map = _FILE_EXTENSION_MAP
+        orphan_tar = tmp_path / "bkps_2026-01-01.tar"
+        orphan_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
+        keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
+        for f in (orphan_tar, orphan_partial, keep_tgz):
+            f.write_bytes(b"x")
+
+        archiver_instance.sweep_orphans()
+
+        assert not orphan_tar.exists()
+        assert not orphan_partial.exists()
+        assert keep_tgz.exists()  # finished archives are not swept
+
+
 class TestHasExportedContent:
     """has_exported_content reflects whether the intermediate tar exists on disk."""
 
