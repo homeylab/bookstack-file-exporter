@@ -198,8 +198,13 @@ Pass `--run-once` to force a single run regardless of `run_interval` or `run_sch
 
 In scheduled mode the exporter handles `SIGTERM`/`SIGINT` gracefully: it stops at
 the next asset/format/node boundary, discards any partial archive, and exits `0`. A
-**second** identical signal force-kills immediately (exit `130` for SIGINT, `143` for
-SIGTERM).
+**second** signal (any of SIGTERM/SIGINT, not only an identical repeat) force-kills
+immediately (exit `130` for SIGINT, `143` for SIGTERM).
+
+Exit `0` here means the process shut down cleanly, **not** that the final cycle
+succeeded — a cycle that errored is logged, notified, and reflected in `/healthz`, then
+the next signal still exits `0`. Alert on notifications or the health endpoint, not on
+the process exit code.
 
 Because a single in-flight export call (e.g. a large-book PDF render) cannot be
 interrupted mid-request, give the container enough time to drain:
