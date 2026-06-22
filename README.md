@@ -208,8 +208,16 @@ interrupted mid-request, give the container enough time to drain:
 - Compose: set `stop_grace_period: 60s` (raise for large instances).
 - Kubernetes: set `terminationGracePeriodSeconds: 60`.
 
-If the grace window elapses the orchestrator sends SIGKILL; the next run's start-up
-sweep removes any leftover partial archive.
+If the grace window elapses the orchestrator sends SIGKILL, which cannot be caught,
+so cleanup is deferred to the next run. Each archive is built under a timestamped base
+name (e.g. `bkps_2026-06-22_00-09-33`): first an intermediate `.tar`, then a
+`.tgz.partial` that is atomically renamed to the final `.tgz` on success. A SIGKILL can
+therefore strand a `<base>.tar` or `<base>.tgz.partial`. At start-up the next run sweeps
+the output directory for `bkps_*.tar` and `bkps_*.tgz.partial` and removes them. The
+`bkps_*` glob is intentionally level-agnostic, so it also clears partials left by prior
+runs at other `export_level`s (`bkps_books_*`, `bkps_chapters_*`) — an orphaned
+intermediate is always junk. It still runs before the new run writes anything, so it only
+ever matches earlier runs' leftovers, never an in-progress archive or a completed `.tgz`.
 
 #### Health Endpoint
 

@@ -101,7 +101,7 @@ class TestDiscardPartial:
 class TestSweepOrphans:
     def test_removes_prior_tar_and_partial_orphans(self, archiver_instance, tmp_path):
         from bookstack_file_exporter.archiver.node_archiver import _FILE_EXTENSION_MAP
-        archiver_instance.base_dir = str(tmp_path / "bkps")
+        archiver_instance.config.base_dir_name = str(tmp_path / "bkps")
         archiver_instance._archiver.file_extension_map = _FILE_EXTENSION_MAP
         orphan_tar = tmp_path / "bkps_2026-01-01.tar"
         orphan_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
@@ -114,6 +114,29 @@ class TestSweepOrphans:
         assert not orphan_tar.exists()
         assert not orphan_partial.exists()
         assert keep_tgz.exists()  # finished archives are not swept
+
+    def test_sweeps_orphans_across_export_levels(self, mock_config, mock_http_client,
+                                                 tmp_path):
+        """Orphan intermediates are always junk, so the sweep clears partials left by
+        prior runs at OTHER export levels, not just its own level's base."""
+        from bookstack_file_exporter.archiver.node_archiver import _FILE_EXTENSION_MAP
+        mock_config.base_dir_name = str(tmp_path / "bkps")
+        mock_config.user_inputs.export_level = "books"
+        archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
+        archiver._archiver.file_extension_map = _FILE_EXTENSION_MAP
+        pages_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
+        books_partial = tmp_path / "bkps_books_2026-01-01.tgz.partial"
+        chapters_partial = tmp_path / "bkps_chapters_2026-01-01.tgz.partial"
+        keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
+        for f in (pages_partial, books_partial, chapters_partial, keep_tgz):
+            f.write_bytes(b"x")
+
+        archiver.sweep_orphans()
+
+        assert not pages_partial.exists()
+        assert not books_partial.exists()
+        assert not chapters_partial.exists()
+        assert keep_tgz.exists()  # finished archives are never swept
 
 
 class TestHasExportedContent:
