@@ -38,13 +38,37 @@ def entrypoint(args: argparse.Namespace) -> int:
 
 
 def _run_once(config: ConfigNode) -> int:
-    """Run the export exactly once and return an exit code."""
+    """Run the export exactly once and return an exit code.
+
+    A SIGTERM/SIGINT mid-run raises KeyboardInterrupt so the export's finally
+    block discards any partial archive before exiting. This matters for ephemeral
+    one-shot containers (`docker run --rm`, a k8s Job) where no later run exists
+    to sweep a stranded `.tgz.partial` off the output volume. Raising mid-write is
+    safe here because the only local artifacts are the tar/.partial, which
+    discard_partial removes (a signal during a remote upload may still leave a
+    partial object on the remote — same as any interrupted upload, not specific to
+    this path). The first signal also restores the default
+    disposition for both signals so a second signal force-kills via the kernel.
+    Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+    """
+    received = {}
+
+    def _handle_signal(signum, _frame):
+        received["signum"] = signum
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
     try:
         run(config)
         return 0
     except KeyboardInterrupt:
-        log.info("Interrupted, exiting")
-        return 130
+        signum = int(received.get("signum", signal.SIGINT))
+        log.info("Interrupted by signal %s, exiting", signum)
+        return 128 + signum
     except Exception as err:  # pylint: disable=broad-except
         log.error("Export failed: %s", err)
         log.debug("Traceback:", exc_info=True)

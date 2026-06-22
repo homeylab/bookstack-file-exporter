@@ -58,6 +58,7 @@ class TestRunOncePath:
     def test_success_returns_0(self):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run"):
             result = run.entrypoint(args=_args())
         assert result == 0
@@ -65,6 +66,7 @@ class TestRunOncePath:
     def test_run_raises_exception_returns_1(self, caplog):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=RuntimeError("export boom")), \
              caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
             result = run.entrypoint(args=_args())
@@ -75,17 +77,77 @@ class TestRunOncePath:
         """Exception must NOT escape entrypoint."""
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=RuntimeError("boom")):
             # should not raise
             result = run.entrypoint(args=_args())
         assert result == 1
 
     def test_keyboard_interrupt_returns_130(self):
+        """A bare KeyboardInterrupt (no signal recorded) defaults to SIGINT->130."""
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run", side_effect=KeyboardInterrupt):
             result = run.entrypoint(args=_args())
         assert result == 130
+
+    def test_sigterm_during_run_cleans_up_and_returns_143(self):
+        """SIGTERM mid-run -> KeyboardInterrupt -> finally cleanup -> exit 143."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            result = run.entrypoint(args=_args())
+        assert result == 143
+
+    def test_sigint_during_run_returns_130(self):
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGINT](signal.SIGINT, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            result = run.entrypoint(args=_args())
+        assert result == 130
+
+    def test_first_signal_restores_sig_dfl_for_both_signals(self):
+        """Force-kill escape hatch: first signal restores default for both."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+        calls = []
+
+        def _capture(signum, handler):
+            calls.append((signum, handler))
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_mid_run(_config, _stop=None):
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            run.entrypoint(args=_args())
+
+        assert (signal.SIGTERM, signal.SIG_DFL) in calls
+        assert (signal.SIGINT, signal.SIG_DFL) in calls
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +158,7 @@ class TestRunOnceFlag:
     def test_run_once_flag_true_forces_single_run_even_with_interval(self):
         cfg = _config(run_interval=60)
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run") as mock_run:
             result = run.entrypoint(args=_args(run_once=True))
         assert result == 0
@@ -104,6 +167,7 @@ class TestRunOnceFlag:
     def test_run_once_flag_false_with_no_interval_still_runs_once(self):
         cfg = _config(run_interval=0)
         with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
              patch.object(run, "run") as mock_run:
             result = run.entrypoint(args=_args(run_once=False))
         assert result == 0

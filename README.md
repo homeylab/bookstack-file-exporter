@@ -206,6 +206,12 @@ succeeded — a cycle that errored is logged, notified, and reflected in `/healt
 the next signal still exits `0`. Alert on notifications or the health endpoint, not on
 the process exit code.
 
+One-shot mode (`--run-once`, or no `run_interval`/`run_schedule`) does not drain on a
+signal — it aborts the current run — but it still discards any partial archive on
+`SIGTERM`/`SIGINT` and exits `128+signum` (`130` for SIGINT, `143` for SIGTERM). This
+keeps an ephemeral one-shot container (`docker run --rm`, a k8s `Job`) from leaving a
+`.tgz.partial` on a mounted volume where no later run would sweep it.
+
 Because a single in-flight export call (e.g. a large-book PDF render) cannot be
 interrupted mid-request, give the container enough time to drain:
 
