@@ -56,8 +56,17 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     stop = threading.Event()
 
     def _handle_signal(signum, _frame):
-        log.info("Received signal %s, shutting down", signum)
+        # Signal handlers run in the main thread between bytecodes, mid-anything;
+        # raising across arbitrary code is unsafe and SIGTERM has no default
+        # exception. So we only SET a flag (also breaks the interruptible
+        # stop.wait() below); the export polls it at checkpoints to cancel.
+        log.info("Received signal %s, shutting down (signal again to force)", signum)
         stop.set()
+        # Restore the default disposition for THIS signal so a second, identical
+        # signal force-kills via the kernel with the correct exit code
+        # (SIGINT->130, SIGTERM->143) — an operator escape hatch if a slow
+        # in-flight download won't drain inside the grace window.
+        signal.signal(signum, signal.SIG_DFL)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
@@ -75,7 +84,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         if status:
             status.mark_running()
         try:
-            result = run(config)
+            result = run(config, stop)
             if status:
                 status.mark_success(result)
         except Exception as err:  # pylint: disable=broad-except

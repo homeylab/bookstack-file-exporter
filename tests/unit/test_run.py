@@ -123,7 +123,7 @@ class TestRunScheduledPath:
         cfg = self._cfg_with_interval()
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()  # signal stop after first call so loop exits
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -143,7 +143,7 @@ class TestRunScheduledPath:
         stop_event = threading.Event()
         call_count = 0
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -172,7 +172,7 @@ class TestRunScheduledPath:
         stop_event = threading.Event()
         call_count = 0
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             nonlocal call_count
             call_count += 1
             raise RuntimeError("persistent failure")
@@ -199,7 +199,7 @@ class TestRunScheduledPath:
         cfg = self._cfg_with_interval()
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -258,7 +258,7 @@ def test_entrypoint_loops_when_interval_set():
     stop_event = threading.Event()
     call_count = 0
 
-    def _run_side_effect(_config):
+    def _run_side_effect(_config, _stop=None):
         nonlocal call_count
         call_count += 1
         stop_event.set()  # exit after first iteration
@@ -311,7 +311,7 @@ def test_scheduled_loop_uses_injected_wait_provider():
     stop_event = threading.Event()
     call_count = 0
 
-    def _run_side_effect(_config):
+    def _run_side_effect(_config, _stop=None):
         nonlocal call_count
         call_count += 1
         raise RuntimeError("transient failure")
@@ -691,7 +691,7 @@ class TestScheduledHealthServer:
         cfg = _config(run_interval=5, health_port=None)
         stop_event = threading.Event()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
@@ -709,7 +709,7 @@ class TestScheduledHealthServer:
         stop_event = threading.Event()
         fake_server = MagicMock()
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
             return None
 
@@ -732,7 +732,7 @@ class TestScheduledHealthServer:
         stop_event = threading.Event()
         captured = {}
 
-        def _run_side_effect(_config):
+        def _run_side_effect(_config, _stop=None):
             stop_event.set()
             return NotifyResult(local="/bkps/export.tgz")
 
@@ -801,3 +801,53 @@ class TestExporterStopWiring:
             with pytest.raises(RuntimeError):
                 run.exporter(cfg, None)
         archive.discard_partial.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _run_scheduled() — double-signal force-kill (SIG_DFL restore)
+# ---------------------------------------------------------------------------
+
+class TestDoubleSignalForceKill:
+    def test_first_signal_restores_default_handler(self):
+        cfg = _config(run_interval=5)
+        stop_event = threading.Event()
+        captured = {}
+
+        def _capture_signal(signum, handler):
+            # remember the handler installed for SIGTERM so we can invoke it
+            if signum == signal.SIGTERM and callable(handler):
+                captured["handler"] = handler
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture_signal) as mock_signal, \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            run.entrypoint(args=_args(run_once=False))
+            # simulate first SIGTERM arriving: invoke the installed handler
+            mock_signal.reset_mock()
+            captured["handler"](signal.SIGTERM, None)
+
+        # handler must (a) set stop, (b) restore SIG_DFL for that signum
+        assert stop_event.is_set()
+        mock_signal.assert_any_call(signal.SIGTERM, signal.SIG_DFL)
+
+    def test_run_called_with_stop_event(self):
+        cfg = _config(run_interval=5)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config, _stop=None):
+            assert _stop is stop_event
+            stop_event.set()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect) as mock_run, \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        # run() received the stop event positionally or by keyword
+        assert mock_run.call_count == 1
