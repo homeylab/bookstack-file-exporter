@@ -210,14 +210,43 @@ class TestFileExtensionMap:
 # ---------------------------------------------------------------------------
 
 class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffolding stub
-    def test_create_gzip_called_with_tar_and_archive_file(self, page_archiver):
+    def test_create_gzip_called_with_tar_and_partial_then_renamed(self, page_archiver):
+        # gzip writes to the .partial path; os.rename promotes it to the final .tgz.
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.create_gzip"
-        ) as mock_create_gzip:
+        ) as mock_create_gzip, patch(
+            "bookstack_file_exporter.archiver.node_archiver.os.rename"
+        ) as mock_rename:
             page_archiver.gzip_archive()
-            mock_create_gzip.assert_called_once_with(
-                page_archiver.tar_file, page_archiver.archive_file
-            )
+            partial = f"{page_archiver.archive_file}.partial"
+            mock_create_gzip.assert_called_once_with(page_archiver.tar_file, partial)
+            mock_rename.assert_called_once_with(partial, page_archiver.archive_file)
+
+
+class TestAtomicGzip:  # pylint: disable=too-few-public-methods
+    def test_gzip_writes_via_partial_then_renames(self, page_archiver, tmp_path, monkeypatch):
+        import os
+        from bookstack_file_exporter.archiver import util as archiver_util
+
+        tar = tmp_path / "bkps_2026.tar"
+        tar.write_bytes(b"tar-bytes")
+        page_archiver.tar_file = str(tar)
+        page_archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
+
+        seen_target = {}
+        real_create_gzip = archiver_util.create_gzip
+        def spy(file_path, gzip_file, remove_old=True):
+            seen_target["gzip_file"] = gzip_file
+            return real_create_gzip(file_path, gzip_file, remove_old)
+        monkeypatch.setattr(archiver_util, "create_gzip", spy)
+
+        page_archiver.gzip_archive()
+
+        # gzip was written to the .partial path, not the final name
+        assert seen_target["gzip_file"].endswith(".tgz.partial")
+        # final archive exists; no partial left behind
+        assert os.path.exists(page_archiver.archive_file)
+        assert not os.path.exists(page_archiver.archive_file + ".partial")
 
 
 # ---------------------------------------------------------------------------

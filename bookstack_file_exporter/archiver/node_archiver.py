@@ -300,8 +300,15 @@ class NodeArchiver:
         archiver_util.write_tar(self.tar_file, file_path, data)
 
     def gzip_archive(self):
-        """Provide the tar to gzip and the name of the gzip output file."""
-        archiver_util.create_gzip(self.tar_file, self.archive_file)
+        """Gzip the tar atomically: write to a .partial then rename to the final .tgz.
+
+        Same-filesystem os.rename is atomic, so a consumer or the next run never
+        observes a half-written .tgz (a SIGKILL/crash mid-gzip leaves only the
+        .partial, which the run-start sweep removes).
+        """
+        partial = f"{self.archive_file}.partial"
+        archiver_util.create_gzip(self.tar_file, partial)
+        os.rename(partial, self.archive_file)
 
     @property
     def file_extension_map(self) -> dict[str, str]:
