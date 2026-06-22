@@ -643,17 +643,7 @@ bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.pdf
 Books without a shelf will be put in a shelve folder named `unassigned`.
 
 #### Empty/New Pages
-Empty/New Pages will be ignored since they have not been modified yet from creation and are empty but also do not have a valid slug. 
-
-Example from Bookstack API:
-```
-{
-    ...
-    "name": "New Page",
-    "slug": "",
-    ...
-}
-```
+Empty/New Pages are ignored: they have not been modified from creation, so they have no content and no valid slug. From the Bookstack API they appear as `"name": "New Page"` with an empty `"slug": ""`.
 
 ### Images
 Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
@@ -696,8 +686,6 @@ The configuration item, `assets.modify_links`, can be set to `true` to rewrite i
 - **Legacy alias**: the old key `modify_markdown` will be removed in a future version. Rename to `modify_links` in your configuration.
 
 #### Markdown example
-
-Page (parent) -> Images (children) relationships are created and then each image/attachment URL is replaced with its respective local export path.
 
 ```
 ## before
@@ -746,9 +734,7 @@ Attachment links are rewritten from the live URL to a local relative path.
 
 #### Known limitations
 
-Markdown exports use raw `bytes.replace` — no structural awareness (e.g. DOM). If an attachment URL for some reason appears verbatim anywhere in the markdown source (code block, pre, comment, plain text), it gets replaced.
-
-HTML exports are safe because bs4 filters to only `<img src> / <a href>` attributes before replacing.
+Markdown link rewriting is a plain text substitution: if an asset URL appears verbatim anywhere in the markdown (code block, comment, plain text), it is also rewritten. HTML rewriting is scoped to `<img src>` / `<a href>` attributes only, so it is unaffected.
 
 ## Object Storage
 Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
