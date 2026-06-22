@@ -62,11 +62,13 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         # stop.wait() below); the export polls it at checkpoints to cancel.
         log.info("Received signal %s, shutting down (signal again to force)", signum)
         stop.set()
-        # Restore the default disposition for THIS signal so a second, identical
-        # signal force-kills via the kernel with the correct exit code
-        # (SIGINT->130, SIGTERM->143) — an operator escape hatch if a slow
-        # in-flight download won't drain inside the grace window.
-        signal.signal(signum, signal.SIG_DFL)
+        # Restore the default disposition for BOTH catchable signals so that ANY
+        # second signal — not only an identical repeat — force-kills via the
+        # kernel with its conventional exit code (SIGINT->130, SIGTERM->143). This
+        # is an operator escape hatch if a slow in-flight download won't drain
+        # inside the grace window (e.g. `docker stop` then an impatient Ctrl-C).
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)

@@ -866,9 +866,11 @@ class TestDoubleSignalForceKill:
             mock_signal.reset_mock()
             captured["handler"](signal.SIGTERM, None)
 
-        # handler must (a) set stop, (b) restore SIG_DFL for that signum
+        # handler must (a) set stop, (b) restore SIG_DFL for BOTH catchable
+        # signals so any second signal (not just an identical repeat) force-kills
         assert stop_event.is_set()
         mock_signal.assert_any_call(signal.SIGTERM, signal.SIG_DFL)
+        mock_signal.assert_any_call(signal.SIGINT, signal.SIG_DFL)
 
     def test_run_called_with_stop_event(self):
         cfg = _config(run_interval=5)
