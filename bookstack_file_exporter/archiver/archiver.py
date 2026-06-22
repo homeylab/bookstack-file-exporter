@@ -93,7 +93,7 @@ class Archiver:
         One-shot mode never calls this, so the archiver's flag stays None (no-op
         at every checkpoint). Scheduled mode forwards its threading.Event here.
         """
-        self._archiver._stop = stop
+        self._archiver._stop = stop  # pylint: disable=protected-access
 
     def discard_partial(self):
         """Remove this run's intermediate tar and any .tgz.partial; never the final .tgz.
