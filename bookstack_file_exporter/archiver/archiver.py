@@ -111,9 +111,12 @@ class Archiver:
     def sweep_orphans(self):
         """Delete prior-run .tar / .tgz.partial orphans (SIGKILL backstop).
 
-        Run at the start of a cycle. Reuses scan_archives (globs {base}_*{ext}), so
-        only timestamped leftovers from earlier runs match — never the current run's
-        not-yet-written files. Also retro-cleans .tar orphans from past failed cycles.
+        Run at the start of a cycle, BEFORE this run writes any tar or .partial.
+        Safety comes from that ordering, not the glob: scan_archives globs
+        {base}_*{ext}, which would also match this run's own filenames — but none
+        exist on disk yet, so only earlier runs' leftovers are removed. Moving this
+        call after any write would make it delete the live tar. Also retro-cleans
+        .tar orphans from past failed cycles.
         """
         tgz_ext = self._archiver.file_extension_map['tgz']
         for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.partial"):
