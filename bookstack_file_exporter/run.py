@@ -102,10 +102,10 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     return 0
 
 
-def run(config: ConfigNode):
+def run(config: ConfigNode, stop=None):
     """run export process with error handling and notification support"""
     try:
-        result = exporter(config)
+        result = exporter(config, stop)
         if config.user_inputs.notifications:
             notif = NotifyHandler(config.user_inputs.notifications)
             notif.do_notify(result=result)
@@ -121,7 +121,7 @@ def run(config: ConfigNode):
         # raise original error instead of notification error
         raise run_err
 
-def exporter(config: ConfigNode):
+def exporter(config: ConfigNode, stop=None):
     """export bookstack nodes and archive locally and/or remotely"""
 
     #### Export Data #####
@@ -146,8 +146,15 @@ def exporter(config: ConfigNode):
     ## Build archiver before the level branch (shared for all levels)
     archive: Archiver = Archiver(config, http_client)
 
+    # Inject the cooperative-shutdown flag (None in one-shot mode = no-op).
+    archive.set_stop(stop)
+
     # create export directory if not exists
     archive.create_export_dir()
+
+    # Remove orphaned .tar/.tgz.partial from prior runs (SIGKILL backstop) before
+    # this cycle writes anything.
+    archive.sweep_orphans()
 
     ## Select nodes by export level
     export_level = config.user_inputs.export_level
@@ -167,24 +174,38 @@ def exporter(config: ConfigNode):
         return None
 
     log.info("Beginning archive")
-    # get all content for each node
-    archive.get_bookstack_exports(nodes)
-    # nothing was written to the tar (e.g. every node empty or all fetches failed):
-    # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
-    if not archive.has_exported_content:
-        log.warning("No %s content was archived. Nothing to upload", export_level)
-        return None
+    try:
+        # get all content for each node
+        archive.get_bookstack_exports(nodes)
 
-    # create tar if needed and gzip tar
-    archive.create_archive()
+        # Graceful shutdown requested mid-cycle: drop the partial tar and skip
+        # gzip/upload/cleanup so a cancelled cycle never produces an archive.
+        if stop is not None and stop.is_set():
+            log.info("Shutdown requested mid-cycle; discarding partial export")
+            return None
 
-    # archive to remote targets
-    remote = archive.archive_remote()
-    # if remote target is specified and clean is true
-    # clean up the .tgz archive since it is already uploaded
-    removed = archive.clean_up()
+        # nothing was written to the tar (e.g. every node empty or all fetches failed):
+        # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
+        if not archive.has_exported_content:
+            log.warning("No %s content was archived. Nothing to upload", export_level)
+            return None
 
-    local = archive.archive_file
-    log.info("Created file archive: %s.tgz", archive.archive_dir)
-    log.info("Completed run")
-    return NotifyResult(local=local, remote=remote, removed=removed)
+        # create tar if needed and gzip tar
+        archive.create_archive()
+
+        # archive to remote targets
+        remote = archive.archive_remote()
+        # if remote target is specified and clean is true
+        # clean up the .tgz archive since it is already uploaded
+        removed = archive.clean_up()
+
+        local = archive.archive_file
+        log.info("Created file archive: %s.tgz", archive.archive_dir)
+        log.info("Completed run")
+        return NotifyResult(local=local, remote=remote, removed=removed)
+    finally:
+        # Eager cleanup of THIS cycle's partial on every terminal path (stop,
+        # exception, one-shot KeyboardInterrupt). No-op on success: the tar is
+        # already consumed and the .partial renamed away. The run-start sweep is
+        # the backstop for SIGKILL, which kills the process before finally runs.
+        archive.discard_partial()

@@ -7,6 +7,8 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import NotifyResult
 
@@ -750,3 +752,52 @@ class TestScheduledHealthServer:
         assert snap["run_count"] == 1
         assert snap["last_run"]["status"] == "success"
         assert snap["last_run"]["archive_file"] == "export.tgz"
+
+
+# ---------------------------------------------------------------------------
+# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_partial)
+# ---------------------------------------------------------------------------
+
+class TestExporterStopWiring:
+    def _cfg(self):
+        # NOTE: unassigned_book_dir is read TOP-LEVEL by exporter()
+        # (`config.unassigned_book_dir`, run.py -> config_helper), NOT off
+        # user_inputs. Putting it under ui raises AttributeError.
+        ui = SimpleNamespace(
+            http_config=MagicMock(), filters=None, export_level="pages",
+            notifications=None)
+        return SimpleNamespace(
+            user_inputs=ui, headers={}, urls={}, unassigned_book_dir=None)
+
+    def test_exporter_sets_stop_and_sweeps_then_short_circuits(self):
+        cfg = self._cfg()
+        stop = threading.Event(); stop.set()
+        archive = MagicMock()
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            result = run.exporter(cfg, stop)
+
+        archive.set_stop.assert_called_once_with(stop)
+        archive.sweep_orphans.assert_called_once()
+        # stop was set -> short-circuit before create_archive, and discard ran
+        archive.create_archive.assert_not_called()
+        archive.discard_partial.assert_called_once()
+        assert result is None
+
+    def test_exporter_discards_partial_on_exception(self):
+        cfg = self._cfg()
+        archive = MagicMock()
+        archive.get_bookstack_exports.side_effect = RuntimeError("mid-cycle boom")
+        with patch.object(run, "HttpHelper"), \
+             patch.object(run, "NodeExporter") as mock_exp, \
+             patch.object(run, "Archiver", return_value=archive):
+            mock_exp.return_value.get_all_shelves.return_value = {}
+            mock_exp.return_value.get_all_books.return_value = {1: MagicMock()}
+            mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
+            with pytest.raises(RuntimeError):
+                run.exporter(cfg, None)
+        archive.discard_partial.assert_called_once()
