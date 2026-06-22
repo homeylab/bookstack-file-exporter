@@ -65,6 +65,15 @@ class NodeArchiver:
             else self._default_asset_archiver(api_urls, http_client)
         )
         self.modify_links: bool = self._check_links_modify()
+        # Cooperative-shutdown flag, injected by Archiver.set_stop() in scheduled
+        # mode (stays None in one-shot mode). Polled at export checkpoints below;
+        # the signal handler only SETS this flag (it cannot safely raise across
+        # arbitrary code), so the export must poll it to cancel.
+        self._stop = None
+
+    def _stop_requested(self) -> bool:
+        """True when a shutdown signal has flagged this run for cancellation."""
+        return self._stop is not None and self._stop.is_set()
 
     def _default_asset_archiver(self, api_urls: dict[str, str], http_client: HttpHelper):
         """Build an AssetArchiver when no double is injected, or return None if assets disabled."""

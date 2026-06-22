@@ -32,6 +32,30 @@ def page_archiver(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 0. Cooperative-shutdown stop flag
+# ---------------------------------------------------------------------------
+
+class TestStopFlag:
+    def test_stop_defaults_to_none(self, page_archiver):
+        assert page_archiver._stop is None
+
+    def test_stop_requested_false_when_unset(self, page_archiver):
+        assert page_archiver._stop_requested() is False
+
+    def test_stop_requested_false_when_event_clear(self, page_archiver):
+        import threading
+        page_archiver._stop = threading.Event()
+        assert page_archiver._stop_requested() is False
+
+    def test_stop_requested_true_when_event_set(self, page_archiver):
+        import threading
+        ev = threading.Event()
+        ev.set()
+        page_archiver._stop = ev
+        assert page_archiver._stop_requested() is True
+
+
+# ---------------------------------------------------------------------------
 # 1. Construction
 # ---------------------------------------------------------------------------
 
