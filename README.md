@@ -194,6 +194,23 @@ Two scheduling strategies are available for application mode (mutually exclusive
 
 Pass `--run-once` to force a single run regardless of `run_interval` or `run_schedule`.
 
+#### Graceful shutdown & grace periods
+
+In scheduled mode the exporter handles `SIGTERM`/`SIGINT` gracefully: it stops at
+the next asset/format/node boundary, discards any partial archive, and exits `0`. A
+**second** identical signal force-kills immediately (exit `130` for SIGINT, `143` for
+SIGTERM).
+
+Because a single in-flight export call (e.g. a large-book PDF render) cannot be
+interrupted mid-request, give the container enough time to drain:
+
+- Docker: `docker stop -t 60 <container>` (default is 10s).
+- Compose: set `stop_grace_period: 60s` (raise for large instances).
+- Kubernetes: set `terminationGracePeriodSeconds: 60`.
+
+If the grace window elapses the orchestrator sends SIGKILL; the next run's start-up
+sweep removes any leftover partial archive.
+
 #### Health Endpoint
 
 In scheduled mode (`run_interval` or `run_schedule`), set `health_port` to expose an
