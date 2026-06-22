@@ -196,39 +196,26 @@ Pass `--run-once` to force a single run regardless of `run_interval` or `run_sch
 
 #### Graceful shutdown & grace periods
 
-In scheduled mode the exporter handles `SIGTERM`/`SIGINT` gracefully: it stops at
-the next asset/format/node boundary, discards any partial archive, and exits `0`. A
-**second** signal (any of SIGTERM/SIGINT, not only an identical repeat) force-kills
-immediately (exit `130` for SIGINT, `143` for SIGTERM).
+In scheduled mode `SIGTERM`/`SIGINT` shuts down gracefully: the exporter stops at the
+next asset/format/node boundary, discards any partial archive, and exits `0`. A second
+signal force-kills immediately (`130` for SIGINT, `143` for SIGTERM). Exit `0` means a
+clean shutdown, **not** that the last cycle succeeded — alert on notifications or
+`/healthz`, not on the exit code.
 
-Exit `0` here means the process shut down cleanly, **not** that the final cycle
-succeeded — a cycle that errored is logged, notified, and reflected in `/healthz`, then
-the next signal still exits `0`. Alert on notifications or the health endpoint, not on
-the process exit code.
+One-shot mode (`--run-once`, or no `run_interval`/`run_schedule`) aborts the current run
+on a signal rather than draining, but still discards any partial archive and exits
+`130`/`143`.
 
-One-shot mode (`--run-once`, or no `run_interval`/`run_schedule`) does not drain on a
-signal — it aborts the current run — but it still discards any partial archive on
-`SIGTERM`/`SIGINT` and exits `128+signum` (`130` for SIGINT, `143` for SIGTERM). This
-keeps an ephemeral one-shot container (`docker run --rm`, a k8s `Job`) from leaving a
-`.tgz.partial` on a mounted volume where no later run would sweep it.
-
-Because a single in-flight export call (e.g. a large-book PDF render) cannot be
-interrupted mid-request, give the container enough time to drain:
+A single in-flight export call (e.g. a large-book PDF render) cannot be interrupted
+mid-request, so give the container time to drain:
 
 - Docker: `docker stop -t 60 <container>` (default is 10s).
 - Compose: set `stop_grace_period: 60s` (raise for large instances).
 - Kubernetes: set `terminationGracePeriodSeconds: 60`.
 
-If the grace window elapses the orchestrator sends SIGKILL, which cannot be caught,
-so cleanup is deferred to the next run. Each archive is built under a timestamped base
-name (e.g. `bkps_2026-06-22_00-09-33`): first an intermediate `.tar`, then a
-`.tgz.partial` that is atomically renamed to the final `.tgz` on success. A SIGKILL can
-therefore strand a `<base>.tar` or `<base>.tgz.partial`. At start-up the next run sweeps
-the output directory for `bkps_*.tar` and `bkps_*.tgz.partial` and removes them. The
-`bkps_*` glob is intentionally level-agnostic, so it also clears partials left by prior
-runs at other `export_level`s (`bkps_books_*`, `bkps_chapters_*`) — an orphaned
-intermediate is always junk. It still runs before the new run writes anything, so it only
-ever matches earlier runs' leftovers, never an in-progress archive or a completed `.tgz`.
+If the grace window elapses the orchestrator sends an uncatchable SIGKILL, which can
+strand a partial archive. The next run sweeps leftover `.tar`/`.tgz.partial` files (at
+any export level) before it writes anything; a finished `.tgz` is never touched.
 
 #### Health Endpoint
 
