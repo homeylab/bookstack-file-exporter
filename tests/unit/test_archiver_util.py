@@ -4,6 +4,7 @@ import gzip
 import json
 import os
 import tarfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -126,8 +127,6 @@ def test_write_tar_concurrent_appends_all_present(tmp_path):
     Without serialization, two concurrent tarfile.open(path,"a") both seek to
     EOF and corrupt the archive. A Barrier maximizes overlap to expose it.
     """
-    import threading
-
     tar_path = str(tmp_path / "concurrent.tar")
     n = 50
     barrier = threading.Barrier(n)
