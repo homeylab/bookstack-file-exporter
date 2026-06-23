@@ -28,10 +28,10 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
-# Soft-warn threshold for export_workers. Rationale: HTTPAdapter pool default 10,
-# typical php-fpm ~5, default API 180/min -> useful range is single digits to ~10;
-# 16 ~= 2x headroom. Past the server's render concurrency / API limit, more workers
-# yield no speedup and may trigger HTTP 429. Not a hard cap (see models.py).
+# Soft-warn threshold for export_workers (not a hard cap). 16 ~= 2x headroom over
+# the practical ceiling: urllib3 pool default 10 and typical php-fpm ~5 render
+# workers, past which more workers add no speedup. The user-facing rate-limit / 429
+# guidance is the single source of truth on the field in config_helper/models.py.
 _EXPORT_WORKERS_SOFT_MAX = 16
 
 
