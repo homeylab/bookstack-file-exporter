@@ -419,6 +419,8 @@ More descriptions can be found for each section below:
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
 | `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. |
 | `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
+| `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](#health-endpoint). |
+| `health_host` | `str` | `false` | Optional (default: `0.0.0.0`). Bind address for the `health_port` server. Set to `127.0.0.1` or a specific NIC to restrict exposure on a multi-homed host. Only used when `health_port` is set. |
 | `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
 | `notifications` | `object` | `false` | Optional [notification](#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](#filters) for details. |
@@ -773,11 +775,11 @@ minio:
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
 
 ## Notifications
-It is possible to send notifications when an export run succeeds orfails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise). Apprise is a general purpose notification service and has a variety of integrations and includes generic HTTP POST.
+It is possible to send notifications when an export run succeeds or fails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise). Apprise is a general purpose notification service and has a variety of integrations and includes generic HTTP POST.
 
 Notifications are optional and the `notification` section can be omitted/removed/commented out entirely to keep a smaller configuration if not required.
 
-The title for notifications is configurable but not if not specified, a default will be used. Example:
+The title for notifications is configurable but if not specified, a default will be used. Example:
 ```
 ##### Failure Message #####
 {TITLE}: Bookstack File Exporter Failed
@@ -786,7 +788,7 @@ Bookstack File Exporter encountered an unrecoverable error.
 
 Occurred At: 2025-09-06 01:02:47
 
-Error: 401 Client Error: Unauthorized for url: https://test.bookstack/api/shelve
+Error message: 401 Client Error: Unauthorized for url: https://test.bookstack/api/shelve
 
 
 ##### Success Message #####
@@ -795,7 +797,11 @@ Error: 401 Client Error: Unauthorized for url: https://test.bookstack/api/shelve
 Bookstack File Exporter completed successfully.
 
 Completed At: 2025-09-06 01:05:27
+Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
+Uploaded to: minio://my-bucket/bookstack, s3://my-bucket/bookstack
+Pruned 2 old local archive(s)
 ```
+The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each remote destination, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
 
 ### apprise
 The apprise configuration is a part of the configuration yaml file under the notifications section and can be modified under `notifications.apprise`.
