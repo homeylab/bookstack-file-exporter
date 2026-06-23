@@ -829,7 +829,7 @@ class TestExporterStopWiring:
         # user_inputs. Putting it under ui raises AttributeError.
         ui = SimpleNamespace(
             http_config=MagicMock(), filters=None, export_level="pages",
-            notifications=None)
+            notifications=None, export_workers=1)
         return SimpleNamespace(
             user_inputs=ui, headers={}, urls={}, unassigned_book_dir=None)
 
