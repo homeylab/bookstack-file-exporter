@@ -245,26 +245,38 @@ class NodeArchiver:
             # so an early return needs no consistent state.
             if self._stop_requested():
                 return
-            assets_by_page = self._download_node_assets(node, image_map, attachment_map)
-            for fmt in self.export_formats:
-                # Per-format checkpoint: a single book/chapter export call can be slow
-                # (server-side render); stop between formats instead of after all of them.
-                if self._stop_requested():
-                    return
-                url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
-                try:
-                    data = self._get_node_data(url)
-                except (HTTPError, RetryError):
-                    log.error("Failed to get %s data for node id=%d format=%s - skipping",
-                              resource_type, node.id_, fmt)
-                    continue
-                if fmt == "markdown" and self.modify_links:
-                    data = self._rewrite_combined_markdown(data, assets_by_page)
-                elif fmt == "html" and self.modify_links:
-                    data = self._rewrite_combined_html(data, assets_by_page)
-                self._archive_node(node, fmt, data)
-            if self.export_meta:
-                self._archive_node_meta(node, node.meta)
+            self._export_node(node, resource_type, image_map, attachment_map)
+
+    def _export_node(self, node: Node, resource_type: str,
+                     image_map: dict[int, list],
+                     attachment_map: dict[int, list]) -> None:
+        """Fetch and archive ONE node in every requested format.
+
+        Self-contained per node (no shared mutable state): safe to run in a
+        worker thread when export_workers > 1. Writes go through write_data ->
+        write_tar, which serializes appends under a module lock. Returns None so
+        completed pool futures retain no payload (peak RAM ~= workers x fattest-node).
+        """
+        assets_by_page = self._download_node_assets(node, image_map, attachment_map)
+        for fmt in self.export_formats:
+            # Per-format checkpoint: a single book/chapter export call can be slow
+            # (server-side render); stop between formats instead of after all of them.
+            if self._stop_requested():
+                return
+            url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
+            try:
+                data = self._get_node_data(url)
+            except (HTTPError, RetryError):
+                log.error("Failed to get %s data for node id=%d format=%s - skipping",
+                          resource_type, node.id_, fmt)
+                continue
+            if fmt == "markdown" and self.modify_links:
+                data = self._rewrite_combined_markdown(data, assets_by_page)
+            elif fmt == "html" and self.modify_links:
+                data = self._rewrite_combined_html(data, assets_by_page)
+            self._archive_node(node, fmt, data)
+        if self.export_meta:
+            self._archive_node_meta(node, node.meta)
 
     def _download_node_assets(self, node: Node, image_map: dict[int, list],
                               attachment_map: dict[int, list]) -> dict:
