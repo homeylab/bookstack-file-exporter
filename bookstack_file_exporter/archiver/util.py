@@ -2,6 +2,7 @@ import json
 import os
 import logging
 import tarfile
+import threading
 import shutil
 from io import BytesIO
 import gzip
@@ -12,6 +13,12 @@ from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
 
+# Serializes tar appends across threads. write_tar opens the archive in append
+# mode ("a") per call; two concurrent opens both seek to EOF and corrupt it.
+# The lock lives HERE (inside the writer) so single-writer safety is structural,
+# not a convention every caller must remember. Used by the export_workers pool.
+_tar_write_lock = threading.Lock()
+
 def get_byte_response(url: str, http_client: HttpHelper) -> bytes:
     """get byte response from http request"""
     response = http_client.http_get_request(url=url)
@@ -19,13 +26,15 @@ def get_byte_response(url: str, http_client: HttpHelper) -> bytes:
 
 # append to a tar file instead of creating files locally and then tar'ing after
 def write_tar(base_tar_dir: str, file_path: str, data: bytes):
-    """append byte data to tar file"""
-    with tarfile.open(base_tar_dir, "a") as tar:
-        data_obj = BytesIO(data)
-        tar_info = tarfile.TarInfo(name=file_path)
-        tar_info.size = data_obj.getbuffer().nbytes
-        log.debug("Adding file: %s with size: %d bytes to tar file", tar_info.name, tar_info.size)
-        tar.addfile(tar_info, fileobj=data_obj)
+    """append byte data to tar file (thread-safe via _tar_write_lock)"""
+    with _tar_write_lock:
+        with tarfile.open(base_tar_dir, "a") as tar:
+            data_obj = BytesIO(data)
+            tar_info = tarfile.TarInfo(name=file_path)
+            tar_info.size = data_obj.getbuffer().nbytes
+            log.debug("Adding file: %s with size: %d bytes to tar file",
+                      tar_info.name, tar_info.size)
+            tar.addfile(tar_info, fileobj=data_obj)
 
 def get_json_bytes(data: dict[str, str | int]) -> bytes:
     """dump dict to json file"""

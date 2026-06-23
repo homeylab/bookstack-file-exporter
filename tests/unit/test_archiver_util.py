@@ -120,6 +120,33 @@ def test_write_tar_entry_size_matches(tmp_path):
     assert member.size == len(content)
 
 
+def test_write_tar_concurrent_appends_all_present(tmp_path):
+    """Concurrent appends from many threads must all land in a valid tar.
+
+    Without serialization, two concurrent tarfile.open(path,"a") both seek to
+    EOF and corrupt the archive. A Barrier maximizes overlap to expose it.
+    """
+    import threading
+
+    tar_path = str(tmp_path / "concurrent.tar")
+    n = 50
+    barrier = threading.Barrier(n)
+
+    def worker(i):
+        barrier.wait()  # release all threads simultaneously
+        util.write_tar(tar_path, f"file{i}.txt", f"data{i}".encode())
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    with tarfile.open(tar_path, "r") as tar:
+        names = set(tar.getnames())
+    assert names == {f"file{i}.txt" for i in range(n)}
+
+
 # ---------------------------------------------------------------------------
 # create_gzip
 # ---------------------------------------------------------------------------
