@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 def make_mock_config(*, formats=None, export_images=False, export_attachments=False,
                      export_meta=False, modify_links=False,
-                     export_level="pages") -> MagicMock:
+                     export_level="pages", export_workers=1) -> MagicMock:
     config = MagicMock()
     config.urls = {
         "books": "https://wiki.test.example/api/books",
@@ -21,4 +21,5 @@ def make_mock_config(*, formats=None, export_images=False, export_attachments=Fa
     config.user_inputs.assets.export_meta = export_meta
     config.user_inputs.assets.modify_links = modify_links
     config.user_inputs.export_level = export_level
+    config.user_inputs.export_workers = export_workers
     return config
