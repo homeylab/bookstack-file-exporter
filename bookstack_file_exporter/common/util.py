@@ -18,6 +18,7 @@ T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
+# pylint: disable=too-many-instance-attributes
 class HttpHelper:
     """
     HttpHelper provides an http request helper with config stored and retries built in
