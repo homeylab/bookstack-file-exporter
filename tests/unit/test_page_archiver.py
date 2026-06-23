@@ -586,3 +586,37 @@ class TestRewriteOrder:
         assert rewrite_order == ["images", "attachments"], (
             f"Expected images before attachments, got {rewrite_order}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 13. export_workers stored and soft-warned
+# ---------------------------------------------------------------------------
+
+class TestExportWorkers:
+    def test_defaults_to_one(self, tmp_path):
+        archiver = PageArchiver(str(tmp_path / "bs"), _make_config(), MagicMock(),
+                                asset_archiver=MagicMock())
+        assert archiver.export_workers == 1
+
+    def test_reads_value_from_config(self, tmp_path):
+        config = _make_config(export_workers=8)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        assert archiver.export_workers == 8
+
+    def test_soft_warns_when_above_threshold(self, tmp_path, caplog):
+        import logging
+        config = _make_config(export_workers=32)
+        with caplog.at_level(logging.WARNING):
+            PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                         asset_archiver=MagicMock())
+        assert any("export_workers" in r.message and "429" in r.message
+                   for r in caplog.records)
+
+    def test_no_warn_at_or_below_threshold(self, tmp_path, caplog):
+        import logging
+        config = _make_config(export_workers=16)
+        with caplog.at_level(logging.WARNING):
+            PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                         asset_archiver=MagicMock())
+        assert not any("export_workers" in r.message for r in caplog.records)

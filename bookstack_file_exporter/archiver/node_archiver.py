@@ -27,6 +27,12 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
+# Soft-warn threshold for export_workers. Rationale: HTTPAdapter pool default 10,
+# typical php-fpm ~5, default API 180/min -> useful range is single digits to ~10;
+# 16 ~= 2x headroom. Past the server's render concurrency / API limit, more workers
+# yield no speedup and may trigger HTTP 429. Not a hard cap (see models.py).
+_EXPORT_WORKERS_SOFT_MAX = 16
+
 
 # pylint: disable=too-many-instance-attributes
 class NodeArchiver:
@@ -47,7 +53,8 @@ class NodeArchiver:
     """
     def __init__(self, archive_dir: str, api_urls: dict[str, str],  # pylint: disable=too-many-arguments,too-many-positional-arguments
                  export_formats: list[str], http_client: HttpHelper,
-                 export_meta: bool, asset_config=None, asset_archiver=None) -> None:
+                 export_meta: bool, asset_config=None, asset_archiver=None,
+                 export_workers: int = 1) -> None:
         self.api_urls = api_urls
         self.export_formats = export_formats
         self.http_client = http_client
@@ -70,6 +77,15 @@ class NodeArchiver:
         # the signal handler only SETS this flag (it cannot safely raise across
         # arbitrary code), so the export must poll it to cancel.
         self._stop = None
+        # Opt-in node-level fetch parallelism (default 1 = serial, today's behavior).
+        self.export_workers = export_workers
+        if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
+            log.warning(
+                "export_workers=%d is high; past your BookStack API limit "
+                "(API_REQUESTS_PER_MIN, default 180/min) / php-fpm render concurrency "
+                "this yields no speedup and may trigger HTTP 429.",
+                self.export_workers,
+            )
 
     def _stop_requested(self) -> bool:
         """True when a shutdown signal has flagged this run for cancellation."""
@@ -355,6 +371,7 @@ class PageArchiver(NodeArchiver):
             export_meta=config.user_inputs.assets.export_meta,
             asset_config=config.user_inputs.assets,
             asset_archiver=asset_archiver,
+            export_workers=config.user_inputs.export_workers,
         )
 
     def _asset_page_map(self, node: Node) -> dict[int, str]:

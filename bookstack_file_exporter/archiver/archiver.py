@@ -58,6 +58,7 @@ class Archiver:
                 http_client=http_client,
                 export_meta=export_meta,
                 asset_config=self.config.user_inputs.assets,
+                export_workers=self.config.user_inputs.export_workers,
             )
         if export_level == "chapters":
             return ChapterArchiver(
@@ -67,6 +68,7 @@ class Archiver:
                 http_client=http_client,
                 export_meta=export_meta,
                 asset_config=self.config.user_inputs.assets,
+                export_workers=self.config.user_inputs.export_workers,
             )
         # default: "pages"
         return PageArchiver(self.archive_dir, self.config, http_client)
