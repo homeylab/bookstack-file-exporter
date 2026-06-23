@@ -275,17 +275,33 @@ class NodeArchiver:
         per-format inside _export_node) is logged and skipped so one bad node never
         aborts the run.
         """
+        # Threads (not processes) because the work is I/O-bound: each node spends
+        # almost all its time waiting on a network round-trip to BookStack, and
+        # Python releases the GIL during blocking I/O, so the waits genuinely
+        # overlap. (Unlike Go goroutines, Python threads do NOT parallelize
+        # CPU-bound work — the GIL serializes that — but that is not our case.)
+        # `with ThreadPoolExecutor(...)` is a context manager: its __exit__ calls
+        # executor.shutdown(wait=True), so we always join every worker before
+        # returning, even on an exception.
         with ThreadPoolExecutor(max_workers=self.export_workers) as executor:
             futures = []
             for _, node in nodes.items():
                 if self._stop_requested():
                     break
+                # submit() schedules the call on a pool thread and returns
+                # immediately with a Future handle (a promise of the result).
                 futures.append(executor.submit(
                     self._export_node, node, resource_type, image_map, attachment_map))
+            # as_completed yields each future the moment it finishes, in
+            # completion order (NOT submission order) — so we react to whichever
+            # node returns first.
             for future in as_completed(futures):
                 if self._stop_requested():
                     executor.shutdown(cancel_futures=True)
                     break
+                # future.result() re-raises, in THIS thread, any exception the
+                # worker thread raised. We catch broadly so one bad node is logged
+                # and skipped rather than aborting every other node's export.
                 try:
                     future.result()
                 except Exception as exc:  # pylint: disable=broad-exception-caught

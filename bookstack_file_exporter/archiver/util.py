@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 # mode ("a") per call; two concurrent opens both seek to EOF and corrupt it.
 # The lock lives HERE (inside the writer) so single-writer safety is structural,
 # not a convention every caller must remember. Used by the export_workers pool.
+# threading.Lock is a plain non-reentrant mutex; `with _tar_write_lock:` acquires
+# on entry and releases on block exit (even if the body raises) — so only one
+# thread is ever inside the append below at a time.
 _tar_write_lock = threading.Lock()
 
 def get_byte_response(url: str, http_client: HttpHelper) -> bytes:
