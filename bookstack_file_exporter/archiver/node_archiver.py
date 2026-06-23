@@ -1,5 +1,6 @@
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
@@ -235,17 +236,60 @@ class NodeArchiver:
         """Fetch and archive each node in every requested format.
 
         The only caller (_archive_level) always passes real maps (empty when
-        modify_links is off), so no None-defaulting is needed.
+        modify_links is off), so no None-defaulting is needed. export_workers==1
+        runs serially (byte-identical to pre-parallel behavior); >1 fans node
+        fetches across a thread pool.
         """
         if (self.export_images or self.export_attachments) and not self.modify_links:
             log.info("Assets downloaded but links not rewritten (modify_links disabled)")
+        if self.export_workers == 1:
+            self._export_nodes_serial(nodes, resource_type, image_map, attachment_map)
+        else:
+            self._export_nodes_parallel(nodes, resource_type, image_map, attachment_map)
+
+    def _export_nodes_serial(self, nodes: dict[int, Node], resource_type: str,
+                             image_map: dict[int, list],
+                             attachment_map: dict[int, list]):
+        """Today's exact serial path: one node at a time, stop at node boundary."""
         for _, node in nodes.items():
-            # Cooperative cancellation: a shutdown signal set the flag; bail at this
-            # node boundary. Partial output is always discarded (exporter() finally),
-            # so an early return needs no consistent state.
             if self._stop_requested():
                 return
             self._export_node(node, resource_type, image_map, attachment_map)
+
+    def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
+                               image_map: dict[int, list],
+                               attachment_map: dict[int, list]):
+        """Fan node fetches across a thread pool; writes serialize in write_tar.
+
+        Memory stays ~= export_workers x fattest-node: only max_workers tasks run
+        at once, and _export_node returns None so completed futures hold nothing.
+
+        Cancellation is cooperative, NOT a hard kill. On stop:
+          - queued (not-yet-started) futures are dropped by shutdown(cancel_futures=True);
+          - in-flight nodes are NOT interrupted -- they keep running until their own
+            _stop_requested() checkpoints inside _export_node bail out, then the
+            with-block exit waits for them to finish.
+        The explicit shutdown(cancel_futures=True) is required: the with-exit shutdown
+        runs WITHOUT cancel_futures, so without this call queued work would all run.
+        A worker raising a non-HTTP error (HTTPError/RetryError are already swallowed
+        per-format inside _export_node) is logged and skipped so one bad node never
+        aborts the run.
+        """
+        with ThreadPoolExecutor(max_workers=self.export_workers) as executor:
+            futures = []
+            for _, node in nodes.items():
+                if self._stop_requested():
+                    break
+                futures.append(executor.submit(
+                    self._export_node, node, resource_type, image_map, attachment_map))
+            for future in as_completed(futures):
+                if self._stop_requested():
+                    executor.shutdown(cancel_futures=True)
+                    break
+                try:
+                    future.result()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    log.error("Node export worker failed, skipping node: %s", exc)
 
     def _export_node(self, node: Node, resource_type: str,
                      image_map: dict[int, list],
