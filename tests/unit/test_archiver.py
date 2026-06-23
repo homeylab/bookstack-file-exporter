@@ -1,8 +1,9 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access,too-few-public-methods
 """Unit tests for Archiver archive and clean-up behavior."""
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from typing import List
 from unittest.mock import MagicMock
@@ -15,6 +16,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,
     ChapterArchiver,
     PageArchiver,
+    _FILE_EXTENSION_MAP,
 )
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
@@ -45,7 +47,6 @@ def archiver_instance(mock_config, mock_http_client):
 
 class TestSetStop:
     def test_set_stop_forwards_to_node_archiver(self, archiver_instance):
-        import threading
         ev = threading.Event()
         archiver_instance.set_stop(ev)
         assert archiver_instance._archiver._stop is ev
@@ -55,7 +56,8 @@ class TestDiscardPartial:
     def test_removes_tar_and_partial_when_present(self, archiver_instance, tmp_path):
         tar = tmp_path / "bkps_2026.tar"
         partial = tmp_path / "bkps_2026.tgz.partial"
-        tar.write_bytes(b"x"); partial.write_bytes(b"y")
+        tar.write_bytes(b"x")
+        partial.write_bytes(b"y")
         archiver_instance._archiver.tar_file = str(tar)
         archiver_instance._archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
 
@@ -100,7 +102,6 @@ class TestDiscardPartial:
 
 class TestSweepOrphans:
     def test_removes_prior_tar_and_partial_orphans(self, archiver_instance, tmp_path):
-        from bookstack_file_exporter.archiver.node_archiver import _FILE_EXTENSION_MAP
         archiver_instance.config.base_dir_name = str(tmp_path / "bkps")
         archiver_instance._archiver.file_extension_map = _FILE_EXTENSION_MAP
         orphan_tar = tmp_path / "bkps_2026-01-01.tar"
@@ -119,7 +120,6 @@ class TestSweepOrphans:
                                                  tmp_path):
         """Orphan intermediates are always junk, so the sweep clears partials left by
         prior runs at OTHER export levels, not just its own level's base."""
-        from bookstack_file_exporter.archiver.node_archiver import _FILE_EXTENSION_MAP
         mock_config.base_dir_name = str(tmp_path / "bkps")
         mock_config.user_inputs.export_level = "books"
         archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())

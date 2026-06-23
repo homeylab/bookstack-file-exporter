@@ -1,8 +1,12 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 """Tests for the opt-in /healthz health server (F4): RunStatus transitions
 and the real HTTP surface."""
+import contextlib
+import http.client
 import json
+from datetime import datetime, timezone
 
+from bookstack_file_exporter.health.server import start_health_server
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.notify.models import NotifyResult
 
@@ -78,7 +82,6 @@ class TestRunStatusSnapshot:
         assert snap["failure_count"] == 1
 
     def test_set_next_run_reflected(self):
-        from datetime import datetime, timezone
         status = RunStatus()
         status.set_next_run(datetime(2026, 6, 22, 2, 0, 0, tzinfo=timezone.utc))
         assert status.snapshot()["next_run"] == "2026-06-22T02:00:00Z"
@@ -111,12 +114,6 @@ class TestRunStatusSnapshot:
 # ---------------------------------------------------------------------------
 # Health server: real HTTP surface (ephemeral port, real GET)
 # ---------------------------------------------------------------------------
-
-import http.client  # noqa: E402  (grouped with the server tests)
-import contextlib  # noqa: E402
-
-from bookstack_file_exporter.health.server import start_health_server  # noqa: E402
-
 
 @contextlib.contextmanager
 def _running_server(status):

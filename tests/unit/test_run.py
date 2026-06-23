@@ -1,11 +1,11 @@
 """Tests for run.entrypoint dispatch (single run vs interval loop) and
 export-level node selection in run.exporter."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,unused-argument
+# pylint: disable=missing-class-docstring,missing-function-docstring,unused-argument,protected-access
 import logging
 import signal
 import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -775,7 +775,6 @@ class TestScheduledHealthServer:
 
         def _run_side_effect(_config, _stop=None):
             stop_event.set()
-            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch.object(run, "run", side_effect=_run_side_effect), \
@@ -851,7 +850,8 @@ class TestExporterStopWiring:
 
     def test_exporter_skips_archive_when_stop_set_after_fetch(self):
         cfg = self._cfg()
-        stop = threading.Event(); stop.set()
+        stop = threading.Event()
+        stop.set()
         archive = MagicMock()
         with patch.object(run, "HttpHelper"), \
              patch.object(run, "NodeExporter") as mock_exp, \
@@ -923,7 +923,8 @@ class TestDoubleSignalForceKill:
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch.object(run, "run", side_effect=_run_side_effect), \
-             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture_signal) as mock_signal, \
+             patch("bookstack_file_exporter.run.signal.signal",
+                   side_effect=_capture_signal) as mock_signal, \
              patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
             run.entrypoint(args=_args(run_once=False))
             # simulate first SIGTERM arriving: invoke the installed handler
