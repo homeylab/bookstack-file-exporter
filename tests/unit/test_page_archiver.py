@@ -625,7 +625,12 @@ class TestExportWorkers:
 
 class TestParallelExport:
     def _collect_writes(self, archiver):
-        """Replace write_data with a thread-safe path collector; returns the list."""
+        """Replace write_data with a thread-safe path collector; returns the list.
+
+        The lock matters: with export_workers>1 several pool threads call write_data
+        concurrently, and list.append from multiple threads can race — guard it so
+        the test harness itself is sound.
+        """
         collected = []
         lock = threading.Lock()
 
@@ -673,6 +678,9 @@ class TestParallelExport:
         pages = {2: build_node(id=2, name="p2", slug="p2", parent=parent)}
 
         self._collect_writes(archiver)
+        # wraps= spies on the call (records max_workers) while still running the
+        # real pool, so the export actually executes — we assert it was constructed
+        # rather than stubbing it out.
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.ThreadPoolExecutor",
             wraps=ThreadPoolExecutor,
