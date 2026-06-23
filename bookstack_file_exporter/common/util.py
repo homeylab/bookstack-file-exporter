@@ -8,7 +8,7 @@ import urllib3
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
-from requests.adapters import HTTPAdapter, Retry
+from requests.adapters import HTTPAdapter, Retry, DEFAULT_POOLSIZE
 from croniter import croniter
 from pydantic import TypeAdapter, ValidationError
 
@@ -17,10 +17,6 @@ from bookstack_file_exporter.config_helper.models import HttpConfig
 T = TypeVar("T")
 
 log = logging.getLogger(__name__)
-
-# urllib3 HTTPAdapter's own default pool_maxsize. Used as the floor so a low
-# export_workers never shrinks the pool below stock requests behavior.
-_DEFAULT_POOL_MAXSIZE = 10
 
 # pylint: disable=too-many-instance-attributes
 class HttpHelper:
@@ -42,15 +38,17 @@ class HttpHelper:
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
         # Size the urllib3 connection pool so export_workers concurrent GETs do
-        # not exhaust it. Single host, so only pool_maxsize matters; pool_connections
-        # default is fine.
+        # not exhaust it. Floor at requests' own default (DEFAULT_POOLSIZE) so a low
+        # worker count never shrinks the pool below stock behavior; we track that
+        # default rather than hardcode it. Single host, so only pool_maxsize matters;
+        # pool_connections default is fine.
         # Thread-safety note: when export_workers > 1 this one Session is shared by
         # every worker thread (see archiver._export_nodes_parallel). requests.Session
         # is not contractually thread-safe, but it is safe HERE: the underlying
         # urllib3 connection pool is thread-safe, we never mutate the Session per
         # request (headers are passed per-call), and cookies are blocked in
         # _build_session — so there is no shared mutable per-request state to race.
-        self._pool_maxsize = max(_DEFAULT_POOL_MAXSIZE, export_workers)
+        self._pool_maxsize = max(DEFAULT_POOLSIZE, export_workers)
         if not self.verify_ssl:
             urllib3.disable_warnings()
         self._headers = headers

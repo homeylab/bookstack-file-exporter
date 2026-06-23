@@ -28,10 +28,12 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
-# Soft-warn threshold for export_workers (not a hard cap). 16 ~= 2x headroom over
-# the practical ceiling: urllib3 pool default 10 and typical php-fpm ~5 render
-# workers, past which more workers add no speedup. The user-facing rate-limit / 429
-# guidance is the single source of truth on the field in config_helper/models.py.
+# Soft-warn threshold for export_workers (not a hard cap). 16 ~= 2x headroom over a
+# DEFAULT instance's practical ceiling (urllib3 pool default 10, typical php-fpm ~5
+# render workers). It is SOFT precisely because we cannot know the server's capacity:
+# a provisioned/scaled BookStack (more php-fpm, raised API_REQUESTS_PER_MIN, multiple
+# app servers) can use more, so we advise rather than cap. User-facing rate-limit /
+# 429 guidance is the single source of truth on the field in config_helper/models.py.
 _EXPORT_WORKERS_SOFT_MAX = 16
 
 
@@ -82,9 +84,11 @@ class NodeArchiver:
         self.export_workers = export_workers
         if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
             log.warning(
-                "export_workers=%d is high; past your BookStack API limit "
-                "(API_REQUESTS_PER_MIN, default 180/min) / php-fpm render concurrency "
-                "this yields no speedup and may trigger HTTP 429.",
+                "export_workers=%d is high. On a default BookStack instance "
+                "(php-fpm ~5 render workers, API_REQUESTS_PER_MIN=180) this likely "
+                "gives diminishing returns and may hit HTTP 429. If your server is "
+                "provisioned for it (more php-fpm workers, raised API_REQUESTS_PER_MIN, "
+                "multiple app servers), higher can be fine — tune to your deployment.",
                 self.export_workers,
             )
 
