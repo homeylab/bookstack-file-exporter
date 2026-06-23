@@ -304,3 +304,25 @@ def test_session_does_not_echo_server_cookies(http_config):
 
     # the second request must NOT carry a Cookie header echoing the server session
     assert "Cookie" not in responses.calls[1].request.headers
+
+
+# ---------------------------------------------------------------------------
+# connection pool sizing
+# ---------------------------------------------------------------------------
+
+def test_pool_maxsize_defaults_to_10_for_low_workers():
+    helper = HttpHelper({}, HttpConfig(), export_workers=4)
+    adapter = helper._session.get_adapter("https://example.com")
+    assert adapter._pool_maxsize == 10
+
+
+def test_pool_maxsize_scales_with_export_workers():
+    helper = HttpHelper({}, HttpConfig(), export_workers=16)
+    adapter = helper._session.get_adapter("https://example.com")
+    assert adapter._pool_maxsize == 16
+
+
+def test_export_workers_defaults_to_one_when_omitted():
+    helper = HttpHelper({}, HttpConfig())
+    adapter = helper._session.get_adapter("https://example.com")
+    assert adapter._pool_maxsize == 10

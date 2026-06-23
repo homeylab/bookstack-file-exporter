@@ -30,12 +30,16 @@ class HttpHelper:
         :HttpHelper: instance with methods to help with http requests.
     """
     def __init__(self, headers: dict[str, str],
-                 config: HttpConfig):
+                 config: HttpConfig, export_workers: int = 1):
         self.backoff_factor = config.backoff_factor
         self.retry_codes = config.retry_codes
         self.retry_count = config.retry_count
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
+        # Size the urllib3 connection pool so export_workers concurrent GETs do
+        # not exhaust it (default pool_maxsize=10). Single host, so only
+        # pool_maxsize matters; pool_connections default is fine.
+        self._pool_maxsize = max(10, export_workers)
         if not self.verify_ssl:
             urllib3.disable_warnings()
         self._headers = headers
@@ -59,7 +63,7 @@ class HttpHelper:
                         backoff_factor=self.backoff_factor,
                         raise_on_status=True,
                         status_forcelist=self.retry_codes)
-        adapter = HTTPAdapter(max_retries=retries)
+        adapter = HTTPAdapter(max_retries=retries, pool_maxsize=self._pool_maxsize)
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         return session
