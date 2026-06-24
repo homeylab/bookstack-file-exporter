@@ -403,7 +403,7 @@ More descriptions can be found for each section below:
 | `credentials.token_secret` | `str` | `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenSecret. |
 | `formats` | `list<str>` | `true` | Which export formats to use for BookStack content. Valid options are: `["markdown", "html", "pdf", "plaintext", "zip"]`|
 | `export_level` | `str` | `false` | Optional (default: `pages`). Export granularity. See [Export Level](#export-level) for details. Valid options: `pages`, `books`, `chapters`. |
-| `export_workers` | `int` | `false` | Optional (default: `1`). Number of nodes (pages/books/chapters) fetched in parallel. `1` keeps the original serial behavior. Raising it speeds up large exports by overlapping network I/O, up to the point your BookStack server saturates — export is a server-side render bound by php-fpm worker count (often ~5 on a default instance, but higher on provisioned/scaled deployments). **Rate limiting:** more workers means more concurrent API requests; BookStack rate-limits the API (`API_REQUESTS_PER_MIN`, default `180`/min per user → HTTP `429`). If you raise this and see `429`s, raise `API_REQUESTS_PER_MIN` in BookStack's `.env`. Values above `16` emit a startup warning (a conservative default-instance heuristic, not a hard cap — a well-provisioned server can use more). |
+| `export_workers` | `int` | `false` | Optional (default: `1`). Number of nodes (pages/books/chapters) fetched in parallel; `1` keeps the original serial behavior. Raising it speeds up large exports but increases concurrent API load. See [Parallel Export](#parallel-export) for tuning and rate-limit guidance. |
 | `output_path` | `str` | `false` | Optional (default: `cwd`) which directory (relative or full path) to place exports. User who runs the command should have access to read/write to this directory. This directory and any parent directories will be attempted to be created if they do not exist. If not provided, will use current run directory by default. If using docker, this option can be omitted. |
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images to an `images` directory. Works at all export levels: per-page directory at `pages` level; per-book or per-chapter directory at `books`/`chapters` level. See [Backup Behavior](#backup-behavior) for more information on layout |
@@ -459,6 +459,18 @@ The shelf/book/chapter hierarchy is preserved as directories inside the archive 
 `assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
 
 For non-default levels the archive filename is suffixed with the level (e.g. `bkps_books_<timestamp>.tgz`, `bkps_chapters_<timestamp>.tgz`); `pages` keeps the unsuffixed `bkps_<timestamp>.tgz`. Because `keep_last` cleanup matches on this prefix, archive retention is scoped independently per level.
+
+## Parallel Export
+
+`export_workers` controls how many nodes (pages/books/chapters) are fetched at once. The default `1` preserves the original one-node-at-a-time behavior; raising it overlaps the network waits across nodes.
+
+**How it works:** each worker is a thread that fetches one node's export renders and assets. The work is I/O-bound — almost all time is spent waiting on BookStack — so the threads overlap those waits rather than competing for CPU. Writes into the tar archive are serialized internally, so the archive stays consistent regardless of worker count.
+
+**Tuning:** raising `export_workers` speeds up large exports up to the point your BookStack server saturates. Export is a server-side render bound by php-fpm worker count (often ~5 on a default instance, higher on provisioned/scaled deployments), so gains diminish past that.
+
+**Rate limiting:** more workers means more concurrent API requests. BookStack rate-limits the API (`API_REQUESTS_PER_MIN`, default `180`/min per user → HTTP `429`). If you raise `export_workers` and start seeing `429`s, raise `API_REQUESTS_PER_MIN` in BookStack's `.env`.
+
+Values above `16` emit a startup warning — a conservative default-instance heuristic, not a hard cap. A well-provisioned server can use more.
 
 ## Filters
 
