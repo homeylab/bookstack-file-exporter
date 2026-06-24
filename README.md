@@ -1,4 +1,9 @@
 # bookstack-file-exporter
+
+> [!NOTE]
+> This documentation tracks the `main` branch and may describe unreleased changes.
+> For docs matching your installed version, use the branch/tag dropdown to switch to your release tag. See [Releases](https://github.com/homeylab/bookstack-file-exporter/releases) for the list of published versions.
+
 Table of Contents
 - [bookstack-file-exporter](#bookstack-file-exporter)
   - [Background](#background)
