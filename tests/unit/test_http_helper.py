@@ -6,6 +6,7 @@ import pytest
 import requests
 import responses
 from responses import matchers
+from requests.adapters import DEFAULT_POOLSIZE
 
 from bookstack_file_exporter.common.util import HttpHelper
 from bookstack_file_exporter.config_helper.models import HttpConfig
@@ -310,10 +311,11 @@ def test_session_does_not_echo_server_cookies(http_config):
 # connection pool sizing
 # ---------------------------------------------------------------------------
 
-def test_pool_maxsize_defaults_to_10_for_low_workers():
+def test_pool_maxsize_floors_at_requests_default_for_low_workers():
     helper = HttpHelper({}, HttpConfig(), export_workers=4)
     adapter = helper._session.get_adapter("https://example.com")
-    assert adapter._pool_maxsize == 10
+    # Floor tracks requests' own DEFAULT_POOLSIZE (see common/util.py), not a literal.
+    assert adapter._pool_maxsize == DEFAULT_POOLSIZE
 
 
 def test_pool_maxsize_scales_with_export_workers():
@@ -325,4 +327,4 @@ def test_pool_maxsize_scales_with_export_workers():
 def test_export_workers_defaults_to_one_when_omitted():
     helper = HttpHelper({}, HttpConfig())
     adapter = helper._session.get_adapter("https://example.com")
-    assert adapter._pool_maxsize == 10
+    assert adapter._pool_maxsize == DEFAULT_POOLSIZE
