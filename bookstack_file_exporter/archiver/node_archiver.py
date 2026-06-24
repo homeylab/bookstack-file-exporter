@@ -1,5 +1,6 @@
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
@@ -27,6 +28,15 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
+# Soft-warn threshold for export_workers (not a hard cap). 16 is a conservative
+# heuristic: ~2x headroom over the urllib3 connection-pool default (10). It is SOFT
+# precisely because we cannot know the server's capacity — the speedup is bound by how
+# fast the BookStack instance answers concurrent requests, which varies by deployment,
+# so we advise rather than cap. User-facing rate-limit /
+# 429 guidance is the single source of truth on the field in config_helper/models.py.
+# NOTE: README's "Parallel Export" section mirrors this 16 in prose; keep in sync.
+_EXPORT_WORKERS_SOFT_MAX = 16
+
 
 # pylint: disable=too-many-instance-attributes
 class NodeArchiver:
@@ -47,7 +57,8 @@ class NodeArchiver:
     """
     def __init__(self, archive_dir: str, api_urls: dict[str, str],  # pylint: disable=too-many-arguments,too-many-positional-arguments
                  export_formats: list[str], http_client: HttpHelper,
-                 export_meta: bool, asset_config=None, asset_archiver=None) -> None:
+                 export_meta: bool, asset_config=None, asset_archiver=None,
+                 export_workers: int = 1) -> None:
         self.api_urls = api_urls
         self.export_formats = export_formats
         self.http_client = http_client
@@ -70,6 +81,17 @@ class NodeArchiver:
         # the signal handler only SETS this flag (it cannot safely raise across
         # arbitrary code), so the export must poll it to cancel.
         self._stop = None
+        # Opt-in node-level fetch parallelism (default 1 = serial, today's behavior).
+        self.export_workers = export_workers
+        if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
+            log.warning(
+                "export_workers=%d is high. The speedup is bound by how fast your "
+                "BookStack instance answers concurrent requests, so beyond a point this "
+                "adds load without speeding up the export and may hit HTTP 429 "
+                "(BookStack API_REQUESTS_PER_MIN, default 180/min). If your server is "
+                "provisioned for it, higher can be fine — tune to your deployment.",
+                self.export_workers,
+            )
 
     def _stop_requested(self) -> bool:
         """True when a shutdown signal has flagged this run for cancellation."""
@@ -219,36 +241,107 @@ class NodeArchiver:
         """Fetch and archive each node in every requested format.
 
         The only caller (_archive_level) always passes real maps (empty when
-        modify_links is off), so no None-defaulting is needed.
+        modify_links is off), so no None-defaulting is needed. export_workers==1
+        runs serially (byte-identical to pre-parallel behavior); >1 fans node
+        fetches across a thread pool.
         """
         if (self.export_images or self.export_attachments) and not self.modify_links:
             log.info("Assets downloaded but links not rewritten (modify_links disabled)")
+        if self.export_workers == 1:
+            self._export_nodes_serial(nodes, resource_type, image_map, attachment_map)
+        else:
+            self._export_nodes_parallel(nodes, resource_type, image_map, attachment_map)
+
+    def _export_nodes_serial(self, nodes: dict[int, Node], resource_type: str,
+                             image_map: dict[int, list],
+                             attachment_map: dict[int, list]):
+        """Today's exact serial path: one node at a time, stop at node boundary."""
         for _, node in nodes.items():
-            # Cooperative cancellation: a shutdown signal set the flag; bail at this
-            # node boundary. Partial output is always discarded (exporter() finally),
-            # so an early return needs no consistent state.
             if self._stop_requested():
                 return
-            assets_by_page = self._download_node_assets(node, image_map, attachment_map)
-            for fmt in self.export_formats:
-                # Per-format checkpoint: a single book/chapter export call can be slow
-                # (server-side render); stop between formats instead of after all of them.
+            self._export_node(node, resource_type, image_map, attachment_map)
+
+    def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
+                               image_map: dict[int, list],
+                               attachment_map: dict[int, list]):
+        """Fan node fetches across a thread pool; writes serialize in write_tar.
+
+        Memory stays ~= export_workers x fattest-node: only max_workers tasks run
+        at once, and _export_node returns None so completed futures hold nothing.
+
+        Cancellation is cooperative, NOT a hard kill. On stop:
+          - queued (not-yet-started) futures are dropped by shutdown(cancel_futures=True);
+          - in-flight nodes are NOT interrupted -- they keep running until their own
+            _stop_requested() checkpoints inside _export_node bail out, then the
+            with-block exit waits for them to finish.
+        The explicit shutdown(cancel_futures=True) is required: the with-exit shutdown
+        runs WITHOUT cancel_futures, so without this call queued work would all run.
+        A worker raising a non-HTTP error (HTTPError/RetryError are already swallowed
+        per-format inside _export_node) is logged and skipped so one bad node never
+        aborts the run.
+        """
+        # Threads (not processes) because the work is I/O-bound: each node spends
+        # almost all its time waiting on a network round-trip to BookStack, and
+        # Python releases the GIL during blocking I/O, so the waits genuinely
+        # overlap. (Unlike Go goroutines, Python threads do NOT parallelize
+        # CPU-bound work — the GIL serializes that — but that is not our case.)
+        # `with ThreadPoolExecutor(...)` is a context manager: its __exit__ calls
+        # executor.shutdown(wait=True), so we always join every worker before
+        # returning, even on an exception.
+        with ThreadPoolExecutor(max_workers=self.export_workers) as executor:
+            futures = []
+            for _, node in nodes.items():
                 if self._stop_requested():
-                    return
-                url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
+                    break
+                # submit() schedules the call on a pool thread and returns
+                # immediately with a Future handle (a promise of the result).
+                futures.append(executor.submit(
+                    self._export_node, node, resource_type, image_map, attachment_map))
+            # as_completed yields each future the moment it finishes, in
+            # completion order (NOT submission order) — so we react to whichever
+            # node returns first.
+            for future in as_completed(futures):
+                if self._stop_requested():
+                    executor.shutdown(cancel_futures=True)
+                    break
+                # future.result() re-raises, in THIS thread, any exception the
+                # worker thread raised. We catch broadly so one bad node is logged
+                # and skipped rather than aborting every other node's export.
                 try:
-                    data = self._get_node_data(url)
-                except (HTTPError, RetryError):
-                    log.error("Failed to get %s data for node id=%d format=%s - skipping",
-                              resource_type, node.id_, fmt)
-                    continue
-                if fmt == "markdown" and self.modify_links:
-                    data = self._rewrite_combined_markdown(data, assets_by_page)
-                elif fmt == "html" and self.modify_links:
-                    data = self._rewrite_combined_html(data, assets_by_page)
-                self._archive_node(node, fmt, data)
-            if self.export_meta:
-                self._archive_node_meta(node, node.meta)
+                    future.result()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    log.error("Node export worker failed, skipping node: %s", exc)
+
+    def _export_node(self, node: Node, resource_type: str,
+                     image_map: dict[int, list],
+                     attachment_map: dict[int, list]) -> None:
+        """Fetch and archive ONE node in every requested format.
+
+        Self-contained per node (no shared mutable state): safe to run in a
+        worker thread when export_workers > 1. Writes go through write_data ->
+        write_tar, which serializes appends under a module lock. Returns None so
+        completed pool futures retain no payload (peak RAM ~= workers x fattest-node).
+        """
+        assets_by_page = self._download_node_assets(node, image_map, attachment_map)
+        for fmt in self.export_formats:
+            # Per-format checkpoint: a single book/chapter export call can be slow
+            # (server-side render); stop between formats instead of after all of them.
+            if self._stop_requested():
+                return
+            url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
+            try:
+                data = self._get_node_data(url)
+            except (HTTPError, RetryError):
+                log.error("Failed to get %s data for node id=%d format=%s - skipping",
+                          resource_type, node.id_, fmt)
+                continue
+            if fmt == "markdown" and self.modify_links:
+                data = self._rewrite_combined_markdown(data, assets_by_page)
+            elif fmt == "html" and self.modify_links:
+                data = self._rewrite_combined_html(data, assets_by_page)
+            self._archive_node(node, fmt, data)
+        if self.export_meta:
+            self._archive_node_meta(node, node.meta)
 
     def _download_node_assets(self, node: Node, image_map: dict[int, list],
                               attachment_map: dict[int, list]) -> dict:
@@ -355,6 +448,7 @@ class PageArchiver(NodeArchiver):
             export_meta=config.user_inputs.assets.export_meta,
             asset_config=config.user_inputs.assets,
             asset_archiver=asset_archiver,
+            export_workers=config.user_inputs.export_workers,
         )
 
     def _asset_page_map(self, node: Node) -> dict[int, str]:

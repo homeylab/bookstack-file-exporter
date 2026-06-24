@@ -1,5 +1,9 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access,too-few-public-methods
 """Happy-path unit tests for PageArchiver."""
+import logging
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
@@ -7,14 +11,14 @@ import pytest
 from requests.exceptions import HTTPError
 
 from bookstack_file_exporter.archiver.node_archiver import NodeArchiver, PageArchiver
+from bookstack_file_exporter.archiver import util as archiver_util
 from bookstack_file_exporter.exporter.node import Node
+from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
-
-from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
 def _make_page_node(build_node, page_id: int, slug: str, parent: Node) -> Node:
@@ -43,12 +47,10 @@ class TestStopFlag:
         assert page_archiver._stop_requested() is False
 
     def test_stop_requested_false_when_event_clear(self, page_archiver):
-        import threading
         page_archiver._stop = threading.Event()
         assert page_archiver._stop_requested() is False
 
     def test_stop_requested_true_when_event_set(self, page_archiver):
-        import threading
         ev = threading.Event()
         ev.set()
         page_archiver._stop = ev
@@ -57,8 +59,8 @@ class TestStopFlag:
 
 class TestCooperativeCancellation:
     def test_export_nodes_bails_before_first_node_when_stopped(self, page_archiver):
-        import threading
-        ev = threading.Event(); ev.set()
+        ev = threading.Event()
+        ev.set()
         page_archiver._stop = ev
         page_archiver._download_node_assets = MagicMock()
         page_archiver._get_node_data = MagicMock()
@@ -70,7 +72,6 @@ class TestCooperativeCancellation:
         page_archiver._get_node_data.assert_not_called()
 
     def test_export_nodes_stops_between_nodes(self, page_archiver):
-        import threading
         ev = threading.Event()
         page_archiver._stop = ev
         page_archiver._download_node_assets = MagicMock(return_value={})
@@ -89,8 +90,8 @@ class TestCooperativeCancellation:
         assert page_archiver._get_node_data.call_count == 1
 
     def test_download_node_assets_breaks_asset_type_loop_when_stopped(self, page_archiver):
-        import threading
-        ev = threading.Event(); ev.set()
+        ev = threading.Event()
+        ev.set()
         page_archiver._stop = ev
         page_archiver._archive_node_assets = MagicMock(return_value=set())
         page_archiver._asset_page_map = MagicMock(return_value={1: "page-1"})
@@ -104,8 +105,8 @@ class TestCooperativeCancellation:
         assert result == {"images": {}, "attachments": {}}
 
     def test_archive_node_assets_breaks_asset_loop_when_stopped(self, page_archiver):
-        import threading
-        ev = threading.Event(); ev.set()
+        ev = threading.Event()
+        ev.set()
         page_archiver._stop = ev
         # asset nodes present; the per-asset guard must break before the first one.
         page_archiver.asset_archiver = MagicMock()
@@ -225,8 +226,6 @@ class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffol
 
 class TestAtomicGzip:  # pylint: disable=too-few-public-methods
     def test_gzip_writes_via_partial_then_renames(self, page_archiver, tmp_path, monkeypatch):
-        import os
-        from bookstack_file_exporter.archiver import util as archiver_util
 
         tar = tmp_path / "bkps_2026.tar"
         tar.write_bytes(b"tar-bytes")
@@ -586,3 +585,190 @@ class TestRewriteOrder:
         assert rewrite_order == ["images", "attachments"], (
             f"Expected images before attachments, got {rewrite_order}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 13. export_workers stored and soft-warned
+# ---------------------------------------------------------------------------
+
+class TestExportWorkers:
+    def test_defaults_to_one(self, tmp_path):
+        archiver = PageArchiver(str(tmp_path / "bs"), _make_config(), MagicMock(),
+                                asset_archiver=MagicMock())
+        assert archiver.export_workers == 1
+
+    def test_reads_value_from_config(self, tmp_path):
+        config = _make_config(export_workers=8)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        assert archiver.export_workers == 8
+
+    def test_soft_warns_when_above_threshold(self, tmp_path, caplog):
+        config = _make_config(export_workers=32)
+        with caplog.at_level(logging.WARNING):
+            PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                         asset_archiver=MagicMock())
+        assert any("export_workers" in r.message and "429" in r.message
+                   for r in caplog.records)
+
+    def test_no_warn_at_or_below_threshold(self, tmp_path, caplog):
+        config = _make_config(export_workers=16)
+        with caplog.at_level(logging.WARNING):
+            PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                         asset_archiver=MagicMock())
+        assert not any("export_workers" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# 14. Parallel export (export_workers > 1)
+# ---------------------------------------------------------------------------
+
+class TestParallelExport:
+    def _collect_writes(self, archiver):
+        """Replace write_data with a thread-safe path collector; returns the list.
+
+        The lock matters: with export_workers>1 several pool threads call write_data
+        concurrently, and list.append from multiple threads can race — guard it so
+        the test harness itself is sound.
+        """
+        collected = []
+        lock = threading.Lock()
+
+        def _record(path, data):
+            with lock:
+                collected.append(path)
+
+        archiver.write_data = _record
+        return collected
+
+    def test_parallel_writes_all_pages_all_formats(self, tmp_path, build_node):
+        """workers>1 over several nodes writes every expected entry (order-independent)."""
+        config = _make_config(formats=["markdown", "html"], export_images=False,
+                              export_attachments=False, export_meta=False,
+                              export_workers=4)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        assert archiver.export_workers == 4
+
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
+                 for i in range(2, 12)}  # 10 pages
+
+        collected = self._collect_writes(archiver)
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"data",
+        ):
+            archiver.archive(pages)
+
+        expected = set()
+        for i in range(2, 12):
+            expected.add(f"{archiver.archive_base_path}/bk/p{i}.md")
+            expected.add(f"{archiver.archive_base_path}/bk/p{i}.html")
+        assert set(collected) == expected
+
+    def test_parallel_uses_thread_pool(self, tmp_path, build_node):
+        """workers>1 routes through ThreadPoolExecutor (serial branch is not taken)."""
+        config = _make_config(formats=["markdown"], export_workers=3)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {2: build_node(id=2, name="p2", slug="p2", parent=parent)}
+
+        self._collect_writes(archiver)
+        # wraps= spies on the call (records max_workers) while still running the
+        # real pool, so the export actually executes — we assert it was constructed
+        # rather than stubbing it out.
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.ThreadPoolExecutor",
+            wraps=ThreadPoolExecutor,
+        ) as mock_pool, patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"data",
+        ):
+            archiver.archive(pages)
+        mock_pool.assert_called_once_with(max_workers=3)
+
+    def test_parallel_node_failure_isolated_run_continues(self, tmp_path, build_node):
+        """A worker raising a NON-HTTP error skips that node; others still written."""
+        config = _make_config(formats=["markdown"], export_workers=4)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
+                 for i in range(2, 7)}  # 5 pages; id 4 will blow up
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            if "/pages/4/" in url:
+                raise KeyError("malformed attachment payload")  # non-HTTP, not swallowed
+            return b"data"
+
+        collected = self._collect_writes(archiver)
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ):
+            archiver.archive(pages)  # must NOT raise
+
+        # Assert full paths (set-membership) rather than string-splitting the id out;
+        # node 4 raised KeyError -> skipped, every other node still written.
+        expected = {f"{archiver.archive_base_path}/bk/p{i}.md" for i in (2, 3, 5, 6)}
+        assert set(collected) == expected
+
+    def test_parallel_stop_mid_run_does_not_crash(self, tmp_path, build_node):
+        """Stop Event set mid-run: no crash, run exits cleanly (partial discarded upstream)."""
+        config = _make_config(formats=["markdown"], export_workers=2)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        ev = threading.Event()
+        archiver._stop = ev
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
+                 for i in range(2, 22)}  # 20 pages
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            ev.set()  # trip the stop flag as soon as any fetch happens
+            return b"data"
+
+        self._collect_writes(archiver)
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ):
+            archiver.archive(pages)  # must not raise or hang
+
+    def test_parallel_stop_before_run_writes_and_fetches_nothing(self, tmp_path, build_node):
+        """Stop flag already set BEFORE archive(): the submit loop's _stop_requested()
+        check breaks on the first node, so no future is submitted -> nothing is
+        fetched or written. Deterministic (no scheduling race), unlike the mid-run
+        smoke test above: it pins the cooperative-stop short-circuit."""
+        config = _make_config(formats=["markdown"], export_workers=4)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        ev = threading.Event()
+        ev.set()  # stop requested up front
+        archiver._stop = ev
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
+                 for i in range(2, 12)}  # 10 pages
+
+        fetched = []
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            fetched.append(url)
+            return b"data"
+
+        collected = self._collect_writes(archiver)
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ):
+            archiver.archive(pages)
+
+        assert not collected  # no node written
+        assert not fetched    # no node even fetched

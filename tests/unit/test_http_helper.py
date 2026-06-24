@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 """Unit tests for HttpHelper in bookstack_file_exporter.common.util."""
 import logging
 
@@ -6,6 +6,7 @@ import pytest
 import requests
 import responses
 from responses import matchers
+from requests.adapters import DEFAULT_POOLSIZE
 
 from bookstack_file_exporter.common.util import HttpHelper
 from bookstack_file_exporter.config_helper.models import HttpConfig
@@ -304,3 +305,26 @@ def test_session_does_not_echo_server_cookies(http_config):
 
     # the second request must NOT carry a Cookie header echoing the server session
     assert "Cookie" not in responses.calls[1].request.headers
+
+
+# ---------------------------------------------------------------------------
+# connection pool sizing
+# ---------------------------------------------------------------------------
+
+def test_pool_maxsize_floors_at_requests_default_for_low_workers():
+    helper = HttpHelper({}, HttpConfig(), export_workers=4)
+    adapter = helper._session.get_adapter("https://example.com")
+    # Floor tracks requests' own DEFAULT_POOLSIZE (see common/util.py), not a literal.
+    assert adapter._pool_maxsize == DEFAULT_POOLSIZE
+
+
+def test_pool_maxsize_scales_with_export_workers():
+    helper = HttpHelper({}, HttpConfig(), export_workers=16)
+    adapter = helper._session.get_adapter("https://example.com")
+    assert adapter._pool_maxsize == 16
+
+
+def test_export_workers_defaults_to_one_when_omitted():
+    helper = HttpHelper({}, HttpConfig())
+    adapter = helper._session.get_adapter("https://example.com")
+    assert adapter._pool_maxsize == DEFAULT_POOLSIZE

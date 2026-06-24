@@ -120,6 +120,13 @@ class UserInput(BaseModel):
     assets: Assets | None = Assets()
     minio: ObjectStorageConfig | None = None
     keep_last: int | None = 0
+    # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
+    # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
+    # nonsense at config-parse time, not mid-run. No hard upper bound: huge values
+    # are self-correcting via 429 backoff / server saturation. Raising this increases
+    # concurrent API requests; BookStack rate-limits (API_REQUESTS_PER_MIN, default
+    # 180/min/user -> HTTP 429). If you raise it and see 429s, raise that .env value.
+    export_workers: int = Field(default=1, ge=1)
     run_interval: int | None = 0
     run_schedule: str | None = None
     # opt-in scheduled-mode health endpoint; no server unless health_port is set

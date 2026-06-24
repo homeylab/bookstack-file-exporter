@@ -164,7 +164,8 @@ def exporter(config: ConfigNode, stop=None):
     log.info("Beginning run")
 
     ## Helper functions with user provided (or defaults) http config
-    http_client = HttpHelper(config.headers, config.user_inputs.http_config)
+    http_client = HttpHelper(config.headers, config.user_inputs.http_config,
+                             export_workers=config.user_inputs.export_workers)
 
     ## Build node filter from user config (None when no filters are configured)
     node_filter = NodeFilter(config.user_inputs.filters) if config.user_inputs.filters else None
