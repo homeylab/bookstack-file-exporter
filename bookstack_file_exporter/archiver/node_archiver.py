@@ -28,11 +28,11 @@ _FILE_EXTENSION_MAP = {
 
 _REWRITABLE_FORMATS = {"markdown", "html"}
 
-# Soft-warn threshold for export_workers (not a hard cap). 16 ~= 2x headroom over a
-# DEFAULT instance's practical ceiling (urllib3 pool default 10, typical php-fpm ~5
-# render workers). It is SOFT precisely because we cannot know the server's capacity:
-# a provisioned/scaled BookStack (more php-fpm, raised API_REQUESTS_PER_MIN, multiple
-# app servers) can use more, so we advise rather than cap. User-facing rate-limit /
+# Soft-warn threshold for export_workers (not a hard cap). 16 is a conservative
+# heuristic: ~2x headroom over the urllib3 connection-pool default (10). It is SOFT
+# precisely because we cannot know the server's capacity — the speedup is bound by how
+# fast the BookStack instance answers concurrent requests, which varies by deployment,
+# so we advise rather than cap. User-facing rate-limit /
 # 429 guidance is the single source of truth on the field in config_helper/models.py.
 # NOTE: README's "Parallel Export" section mirrors this 16 in prose; keep in sync.
 _EXPORT_WORKERS_SOFT_MAX = 16
@@ -85,11 +85,11 @@ class NodeArchiver:
         self.export_workers = export_workers
         if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
             log.warning(
-                "export_workers=%d is high. On a default BookStack instance "
-                "(php-fpm ~5 render workers, API_REQUESTS_PER_MIN=180) this likely "
-                "gives diminishing returns and may hit HTTP 429. If your server is "
-                "provisioned for it (more php-fpm workers, raised API_REQUESTS_PER_MIN, "
-                "multiple app servers), higher can be fine — tune to your deployment.",
+                "export_workers=%d is high. The speedup is bound by how fast your "
+                "BookStack instance answers concurrent requests, so beyond a point this "
+                "adds load without speeding up the export and may hit HTTP 429 "
+                "(BookStack API_REQUESTS_PER_MIN, default 180/min). If your server is "
+                "provisioned for it, higher can be fine — tune to your deployment.",
                 self.export_workers,
             )
 
