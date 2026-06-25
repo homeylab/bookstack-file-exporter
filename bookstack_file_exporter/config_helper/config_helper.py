@@ -33,32 +33,56 @@ def load_yaml_config(path: str) -> dict:
     return data
 
 
-def check_legacy_modify_markdown(raw: dict) -> None:
-    """Emit deprecation warnings if legacy 'assets.modify_markdown' key is present."""
-    assets_raw = raw.get("assets", {}) or {}
-    if not isinstance(assets_raw, dict):
-        # Non-dict value (e.g. assets: true) — let pydantic produce the clear error.
-        return
-    has_legacy = "modify_markdown" in assets_raw
-    has_new = "modify_links" in assets_raw
-    if not has_legacy:
-        return
-    log.warning(
-        "DEPRECATED: 'assets.modify_markdown' IS DEPRECATED, "
-        "USE 'assets.modify_links' INSTEAD. "
-        "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION."
-    )
-    if has_new and assets_raw["modify_links"] != assets_raw["modify_markdown"]:
-        log.warning(
-            "Both 'assets.modify_links' and 'assets.modify_markdown' "
-            "are set with different values. 'assets.modify_links' wins; "
-            "the legacy 'assets.modify_markdown' value is ignored."
-        )
+_MISSING = object()
+
+# Each entry: (path, replacement_path, policy)
+#   path/replacement_path: tuple locating the key in the raw config dict (supports nesting)
+#   policy: "warn"                  -> legacy key still honored (aliased); nudge to rename
+#           "fail_if_no_replacement" -> key removed; error UNLESS the replacement is also
+#                                       present (a stale leftover is only a warning)
+_LEGACY_KEYS = [
+    (("assets", "modify_markdown"), ("assets", "modify_links"), "warn"),
+    (("minio",), ("object_storage",), "fail_if_no_replacement"),
+]
+
+
+def _dig(raw: dict, path: tuple):
+    """Return the value at a nested key path, or _MISSING if any segment is absent."""
+    current = raw
+    for key in path:
+        if not isinstance(current, dict) or key not in current:
+            return _MISSING
+        current = current[key]
+    return current
+
+
+def check_legacy_keys(raw: dict) -> None:
+    """Warn on deprecated keys; fail fast on removed keys that would silently change
+    behavior. Operates on the raw dict BEFORE pydantic (which ignores unknown keys)."""
+    for path, replacement_path, policy in _LEGACY_KEYS:
+        if _dig(raw, path) is _MISSING:
+            continue
+        legacy_name = ".".join(path)
+        replacement_name = ".".join(replacement_path)
+        if policy == "fail_if_no_replacement":
+            if _dig(raw, replacement_path) is _MISSING:
+                raise ValueError(
+                    f"'{legacy_name}' was removed in v3.0.0; migrate to "
+                    f"'{replacement_name}'. See the 'Migrating from v2' section in the "
+                    "README.")
+            log.warning(
+                "DEPRECATED: '%s' was removed in v3.0.0 and is ignored; '%s' is in use. "
+                "Remove the stale '%s' block.", legacy_name, replacement_name, legacy_name)
+        else:  # "warn"
+            log.warning(
+                "DEPRECATED: '%s' IS DEPRECATED, USE '%s' INSTEAD. "
+                "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION.",
+                legacy_name, replacement_name)
 
 
 def build_user_input(raw: dict) -> models.UserInput:
-    """Legacy-key deprecation check + pydantic validation. Returns models.UserInput."""
-    check_legacy_modify_markdown(raw)
+    """Legacy/removed-key guard + pydantic validation. Returns models.UserInput."""
+    check_legacy_keys(raw)
     try:
         return models.UserInput(**raw)
     except Exception:

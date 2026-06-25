@@ -7,7 +7,7 @@ import logging
 from bookstack_file_exporter.config_helper.models import Assets
 from bookstack_file_exporter.config_helper.config_helper import (
     ConfigNode,
-    check_legacy_modify_markdown,
+    check_legacy_keys,
 )
 
 
@@ -89,7 +89,7 @@ assets:
         ]
         assert len(deprecation_warnings) == 1
 
-    def test_second_warning_when_both_keys_present_different_values(self, tmp_path, caplog):
+    def test_deprecation_warning_when_both_keys_present(self, tmp_path, caplog):
         config_content = """
 host: https://wiki.example.com
 credentials:
@@ -109,17 +109,16 @@ assets:
             ConfigNode(args)
 
         warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        # Should have the deprecation warning + ignored legacy warning
-        assert len(warning_msgs) >= 2
-        assert any("ignored" in m.lower() for m in warning_msgs)
+        # modify_links wins via alias; only one DEPRECATED warning emitted
+        assert any("DEPRECATED" in m and "modify_markdown" in m for m in warning_msgs)
 
-    def test_check_legacy_modify_markdown_non_dict_assets_does_not_crash(self, caplog):
+    def test_check_legacy_keys_non_dict_assets_does_not_crash(self, caplog):
         """assets: true (or other non-dict) must not crash before pydantic validates."""
         logger_name = "bookstack_file_exporter.config_helper.config_helper"
         with caplog.at_level(logging.WARNING, logger=logger_name):
-            check_legacy_modify_markdown({"assets": True})
-            check_legacy_modify_markdown({"assets": "bad_string"})
-            check_legacy_modify_markdown({"assets": 42})
+            check_legacy_keys({"assets": True})
+            check_legacy_keys({"assets": "bad_string"})
+            check_legacy_keys({"assets": 42})
         our_records = [r for r in caplog.records if r.name == logger_name]
         assert our_records == [], (
             f"non-dict assets must produce zero warnings from this logger; "
