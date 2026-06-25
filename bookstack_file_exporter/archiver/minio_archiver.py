@@ -13,30 +13,26 @@ from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
-class MinioArchiver:
-    """
-    MinioArchiver handles uploads, lifecycle, and validations for minio archives.
-    
+class S3CompatibleArchiver:
+    """Handles uploads, retention, and bucket validation for any S3-compatible target
+    (MinIO or AWS S3). Both types share this class — the upload/cleanup API surface
+    (fput_object, list_objects, remove_object, bucket_exists) is identical.
+
     Args:
-        :config: <StorageProviderConfig> = minio configuration
-
-        :bucket: <str> = upload bucket
-        
-        :path: <str> (optional) = specify bucket path for upload
-
-    Returns:
-        MinioArchiver instance for archival use
+        :provider_config: <StorageProviderConfig> = resolved endpoint, secure flag,
+            credential Provider, and the raw entry (bucket/path/region/keep_last).
     """
-    def __init__(self, access_key: str, secret_key: str, config: StorageProviderConfig):
+    def __init__(self, provider_config: StorageProviderConfig):
+        cfg = provider_config.config
         self._client = Minio(
-            config.host,
-            access_key=access_key,
-            secret_key=secret_key,
-            region=config.region
+            provider_config.endpoint,
+            credentials=provider_config.credentials,
+            secure=provider_config.secure,
+            region=cfg.region,
         )
-        self.bucket = config.bucket
-        self.path = self._generate_path(config.path)
-        self.keep_last = config.keep_last
+        self.bucket = cfg.bucket
+        self.path = self._generate_path(cfg.path)
+        self.keep_last = cfg.keep_last
         self._validate_bucket()
 
     def _validate_bucket(self):
