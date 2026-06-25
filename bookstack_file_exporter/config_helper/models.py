@@ -6,15 +6,35 @@ from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator
 from croniter import croniter, CroniterError
 
 # pylint: disable=too-few-public-methods
-class ObjectStorageConfig(BaseModel):
-    """YAML schema for minio configuration"""
+class BaseStorageConfig(BaseModel):
+    """YAML schema for one object_storage entry (minio or s3).
+
+    Permissive model: per-type required-ness (minio->host, s3->region) is checked at
+    runtime in remote.py is_valid(); only the always-true cred-pair invariant is enforced
+    here. Separate per-type models are deferred until fields genuinely diverge (YAGNI).
+    """
+    type: Literal["minio", "s3"]
     host: str | None = ""
+    bucket: str
+    region: str | None = None
+    path: str | None = ""
+    secure: bool = True
+    keep_last: int | None = 0
     access_key: str | None = ""
     secret_key: str | None = ""
-    bucket: str
-    path: str | None = ""
-    region: str
-    keep_last: int | None = 0
+    access_key_env: str | None = None
+    secret_key_env: str | None = None
+
+    @model_validator(mode="after")
+    def _check_cred_pairs(self):
+        """A half cred pair is always a mistake, regardless of the fallback chain."""
+        if bool(self.access_key) != bool(self.secret_key):
+            raise ValueError(
+                "access_key and secret_key must be set together (or both omitted)")
+        if bool(self.access_key_env) != bool(self.secret_key_env):
+            raise ValueError(
+                "access_key_env and secret_key_env must be set together (or both omitted)")
+        return self
 
 # pylint: disable=too-few-public-methods
 class BookstackAccess(BaseModel):
@@ -118,7 +138,7 @@ class UserInput(BaseModel):
     # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
-    minio: ObjectStorageConfig | None = None
+    object_storage: list[BaseStorageConfig] | None = None
     keep_last: int | None = 0
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
