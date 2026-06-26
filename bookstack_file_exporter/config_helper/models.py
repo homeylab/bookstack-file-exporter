@@ -1,9 +1,12 @@
+import logging
 import re
 from datetime import datetime
 from typing import Literal
 # pylint: disable=import-error
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator, model_validator
 from croniter import croniter, CroniterError
+
+log = logging.getLogger(__name__)
 
 # pylint: disable=too-few-public-methods
 class BaseStorageConfig(BaseModel):
@@ -56,6 +59,17 @@ class Assets(BaseModel):
         validation_alias=AliasChoices("modify_links", "modify_markdown"),
     )
     export_meta: bool | None = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_keys(cls, raw):
+        """Nudge on the deprecated 'modify_markdown' key. The value is still honored
+        via the validation_alias above; this only logs a rename reminder."""
+        if isinstance(raw, dict) and "modify_markdown" in raw:
+            log.warning(
+                "DEPRECATED: 'assets.modify_markdown' is deprecated, use "
+                "'assets.modify_links' instead. It will be removed in a future version.")
+        return raw
 
 class HttpConfig(BaseModel):
     """YAML schema for user provided http settings"""
@@ -155,6 +169,24 @@ class UserInput(BaseModel):
     http_config: HttpConfig | None = HttpConfig()
     notifications: Notifications | None = None
     filters: Filters | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_keys(cls, raw):
+        """Fail fast on removed v2 keys that pydantic would otherwise silently drop
+        (extra='ignore'). A leftover 'minio:' with no 'object_storage:' yields zero
+        upload targets -> silent backup loss, unacceptable for a backup tool. A 'minio:'
+        next to a real 'object_storage:' is a harmless stale leftover -> warn only.
+        An empty 'object_storage: []' is NOT a real replacement -> still fails."""
+        if isinstance(raw, dict) and "minio" in raw:
+            if not raw.get("object_storage"):
+                raise ValueError(
+                    "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
+                    "See the 'Migrating from v2' section in the README.")
+            log.warning(
+                "DEPRECATED: 'minio' was removed in v3.0.0 and is ignored; "
+                "'object_storage' is in use. Remove the stale 'minio' block.")
+        return raw
 
     @model_validator(mode="after")
     def _check_schedule_config(self):

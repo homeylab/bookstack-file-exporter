@@ -121,11 +121,13 @@ def test_build_user_input_logs_error_on_schema_failure(caplog):
 
 
 def test_build_user_input_emits_deprecation_warning_for_legacy_key(caplog):
-    """build_user_input emits a DEPRECATED warning when modify_markdown is present."""
+    """build_user_input emits a DEPRECATED warning when modify_markdown is present.
+
+    The warning now originates from the Assets model validator, hence the models logger."""
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_markdown": True}
 
-    logger_name = "bookstack_file_exporter.config_helper.config_helper"
+    logger_name = "bookstack_file_exporter.config_helper.models"
     with caplog.at_level(logging.WARNING, logger=logger_name):
         build_user_input(raw)
 
@@ -144,7 +146,7 @@ def test_build_user_input_no_warning_without_legacy_key(caplog):
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_links": True}
 
-    logger_name = "bookstack_file_exporter.config_helper.config_helper"
+    logger_name = "bookstack_file_exporter.config_helper.models"
     with caplog.at_level(logging.WARNING, logger=logger_name):
         build_user_input(raw)
 

@@ -33,63 +33,9 @@ def load_yaml_config(path: str) -> dict:
     return data
 
 
-_MISSING = object()
-
-# Each entry: (path, replacement_path, policy)
-#   path/replacement_path: tuple locating the key in the raw config dict (supports nesting)
-#   policy: "warn"                  -> legacy key still honored (aliased); nudge to rename
-#           "fail_if_no_replacement" -> key removed; error UNLESS the replacement is also
-#                                       present (a stale leftover is only a warning)
-_LEGACY_KEYS = [
-    (("assets", "modify_markdown"), ("assets", "modify_links"), "warn"),
-    (("minio",), ("object_storage",), "fail_if_no_replacement"),
-]
-
-
-def _dig(raw: dict, path: tuple):
-    """Return the value at a nested key path, or _MISSING if any segment is absent."""
-    current = raw
-    for key in path:
-        if not isinstance(current, dict) or key not in current:
-            return _MISSING
-        current = current[key]
-    return current
-
-
-def _present(value) -> bool:
-    """A replacement key counts as present only if found AND non-empty/non-falsy."""
-    return value is not _MISSING and bool(value)
-
-
-def check_legacy_keys(raw: dict) -> None:
-    """Warn on deprecated keys; fail fast on removed keys that would silently change
-    behavior. Operates on the raw dict BEFORE pydantic (which ignores unknown keys)."""
-    for path, replacement_path, policy in _LEGACY_KEYS:
-        if _dig(raw, path) is _MISSING:
-            continue
-        legacy_name = ".".join(path)
-        replacement_name = ".".join(replacement_path)
-        if policy == "fail_if_no_replacement":
-            # an empty/falsy replacement (e.g. object_storage: []) is not a real
-            # migration -> it would silently drop backups, so treat it as absent.
-            if not _present(_dig(raw, replacement_path)):
-                raise ValueError(
-                    f"'{legacy_name}' was removed in v3.0.0; migrate to "
-                    f"'{replacement_name}'. See the 'Migrating from v2' section in the "
-                    "README.")
-            log.warning(
-                "DEPRECATED: '%s' was removed in v3.0.0 and is ignored; '%s' is in use. "
-                "Remove the stale '%s' block.", legacy_name, replacement_name, legacy_name)
-        else:  # "warn"
-            log.warning(
-                "DEPRECATED: '%s' IS DEPRECATED, USE '%s' INSTEAD. "
-                "THE LEGACY KEY WILL BE REMOVED IN A FUTURE VERSION.",
-                legacy_name, replacement_name)
-
-
 def build_user_input(raw: dict) -> models.UserInput:
-    """Legacy/removed-key guard + pydantic validation. Returns models.UserInput."""
-    check_legacy_keys(raw)
+    """Pydantic validation. Deprecated/removed-key handling lives in the models
+    (Assets/UserInput before-validators). Returns models.UserInput."""
     try:
         return models.UserInput(**raw)
     except Exception:
