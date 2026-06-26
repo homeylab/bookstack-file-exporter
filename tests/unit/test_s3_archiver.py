@@ -3,7 +3,7 @@
 """Unit tests for S3CompatibleArchiver: upload return value + client construction."""
 from unittest.mock import MagicMock, patch
 
-from bookstack_file_exporter.archiver.minio_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 
 
 def _make_archiver(bucket: str, path: str | None = None):
@@ -47,7 +47,7 @@ class TestClientConstruction:
         provider_config.credentials = creds
         provider_config.config = MagicMock(bucket="b", path="p", keep_last=0, region="us-east-1")
 
-        with patch("bookstack_file_exporter.archiver.minio_archiver.Minio") as mock_minio:
+        with patch("bookstack_file_exporter.archiver.s3_archiver.Minio") as mock_minio:
             instance = S3CompatibleArchiver.__new__(S3CompatibleArchiver)
             # call the real __init__ but stub bucket validation
             with patch.object(S3CompatibleArchiver, "_validate_bucket", lambda self: None):

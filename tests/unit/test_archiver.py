@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver
-from bookstack_file_exporter.archiver.minio_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,
     ChapterArchiver,

@@ -764,7 +764,7 @@ Optionally, one or more upload targets can be specified to push generated archiv
 ### Object Storage Upload (MinIO / S3)
 
 Configure one or more upload targets under `object_storage:`. Each entry has a `type`
-(`minio` or `s3`).
+(`minio` or `s3`). Any S3-compatible store — Wasabi, Cloudflare R2, Backblaze B2, Ceph, DigitalOcean Spaces — also works under `type: s3` (or `type: minio`) by setting an explicit `host`.
 
 ```yaml
 object_storage:

@@ -10,7 +10,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     ChapterArchiver,
     PageArchiver,
 )
-from bookstack_file_exporter.archiver.minio_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util

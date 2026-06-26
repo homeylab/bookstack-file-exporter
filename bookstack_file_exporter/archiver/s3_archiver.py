@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 class S3CompatibleArchiver:
     """Handles uploads, retention, and bucket validation for any S3-compatible target
-    (MinIO or AWS S3). Both types share this class — the upload/cleanup API surface
+    (AWS S3, MinIO, or any other S3-compatible store). Both types share this class — the upload/cleanup API surface
     (fput_object, list_objects, remove_object, bucket_exists) is identical.
 
     Args:
@@ -43,7 +43,7 @@ class S3CompatibleArchiver:
         return path_name.rstrip('/') if path_name else ""
 
     def upload_backup(self, local_file_path: str) -> str:
-        """upload archive file to minio bucket; return 'bucket/object_path' dest string"""
+        """upload archive file to object storage bucket; return 'bucket/object_path' dest string"""
         # this will be the name of the object to upload
         # only get the file name not path
         # we are going to use path provided by user for object storage
@@ -68,7 +68,7 @@ class S3CompatibleArchiver:
 
     def _scan_objects(self, file_extension: str) -> list[MinioObject]:
         filter_str = "bookstack_export_"
-        # prefix should end in '/' for minio
+        # prefix should end in '/' for object listing
         # ref: https://min.io/docs/minio/linux/developers/python/API.html#list_objects
         path_prefix = self.path + "/"
         # get all objects in archive path/directory
@@ -81,17 +81,17 @@ class S3CompatibleArchiver:
     def _get_stale_objects(self, file_extension: str) -> list[MinioObject]:
         minio_objects = self._scan_objects(file_extension)
         if not minio_objects:
-            log.debug("No minio objects found to clean up")
+            log.debug("No objects found to clean up")
             return []
         if self.keep_last < 0:
             # we want to keep one copy at least
             # last copy that remains if local is deleted
-            log.debug("Minio 'keep_last' set to negative number, ignoring")
+            log.debug("'keep_last' set to negative number, ignoring")
             return []
         to_delete = []
         if len(minio_objects) > self.keep_last:
-            log.debug("Number of minio objects is greater than 'keep_last'")
-            log.debug("Running clean up of minio objects")
+            log.debug("Number of objects is greater than 'keep_last'")
+            log.debug("Running clean up of objects")
             to_delete = self._filter_objects(minio_objects)
         return to_delete
 
@@ -101,7 +101,7 @@ class S3CompatibleArchiver:
             key=lambda d: d.last_modified,
             keep_last=self.keep_last,
         )
-        log.debug("%d minio objects will be cleaned up", len(objects_to_clean))
+        log.debug("%d objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 
     def _delete_objects(self, minio_objects: list[MinioObject]):
