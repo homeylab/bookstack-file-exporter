@@ -3,9 +3,9 @@
 
 Deprecated/removed keys are now handled inside the pydantic models (Assets and
 UserInput before-validators), exercised here through build_user_input:
-  - removed 'minio:' with no usable 'object_storage:' -> hard error (ValidationError)
-  - removed 'minio:' alongside a real 'object_storage:' -> warn only (stale leftover)
-  - deprecated 'assets.modify_markdown' -> warn only (value still honored via alias)
+  - REMOVED 'minio:' -> hard error on ANY presence (deprecated != removed; it no
+    longer does anything, so warning would be misleading)
+  - DEPRECATED 'assets.modify_markdown' -> warn only (value still honored via alias)
 """
 import logging
 
@@ -33,18 +33,18 @@ def test_minio_without_object_storage_raises():
 
 
 def test_minio_with_empty_object_storage_raises():
-    # empty list is not a real replacement -> would silently drop backups; must fail loud
+    # any 'minio:' presence is a hard error regardless of object_storage
     raw = _raw(minio={"host": "x"}, object_storage=[])
     with pytest.raises(ValidationError, match="was removed in v3"):
         build_user_input(raw)
 
 
-def test_minio_with_object_storage_warns_not_raises(caplog):
+def test_minio_alongside_valid_object_storage_still_raises():
+    # removed key is an error even next to a working object_storage block: a removed
+    # key does nothing, so warn-and-continue would be misleading. Force a clean config.
     raw = _raw(minio={"host": "x"}, object_storage=[_VALID_OBJ])
-    with caplog.at_level(logging.WARNING, logger=_LOGGER):
-        build_user_input(raw)  # must NOT raise
-    assert any("minio" in r.message and "ignored" in r.message.lower()
-               for r in caplog.records if r.name == _LOGGER)
+    with pytest.raises(ValidationError, match="was removed in v3"):
+        build_user_input(raw)
 
 
 def test_modify_markdown_warns(caplog):

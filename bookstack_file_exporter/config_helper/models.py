@@ -173,19 +173,14 @@ class UserInput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_keys(cls, raw):
-        """Fail fast on removed v2 keys that pydantic would otherwise silently drop
-        (extra='ignore'). A leftover 'minio:' with no 'object_storage:' yields zero
-        upload targets -> silent backup loss, unacceptable for a backup tool. A 'minio:'
-        next to a real 'object_storage:' is a harmless stale leftover -> warn only.
-        An empty 'object_storage: []' is NOT a real replacement -> still fails."""
+        """Hard-fail on removed v2 keys that pydantic would otherwise silently drop
+        (extra='ignore'). 'minio:' was REMOVED in v3 (not deprecated -- it no longer
+        does anything), so ANY presence is an error: a backup tool must never run on a
+        stale config that silently produces no uploads. v3.0.0 is the expected break."""
         if isinstance(raw, dict) and "minio" in raw:
-            if not raw.get("object_storage"):
-                raise ValueError(
-                    "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
-                    "See the 'Migrating from v2' section in the README.")
-            log.warning(
-                "DEPRECATED: 'minio' was removed in v3.0.0 and is ignored; "
-                "'object_storage' is in use. Remove the stale 'minio' block.")
+            raise ValueError(
+                "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
+                "See the 'Migrating from v2' section in the README.")
         return raw
 
     @model_validator(mode="after")
