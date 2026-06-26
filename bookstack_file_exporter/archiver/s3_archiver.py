@@ -15,8 +15,9 @@ log = logging.getLogger(__name__)
 
 class S3CompatibleArchiver:
     """Handles uploads, retention, and bucket validation for any S3-compatible target
-    (AWS S3, MinIO, or any other S3-compatible store). Both types share this class — the upload/cleanup API surface
-    (fput_object, list_objects, remove_object, bucket_exists) is identical.
+    (AWS S3, MinIO, or any other S3-compatible store). Both types share this class — the
+    upload/cleanup API surface (fput_object, list_objects, remove_object, bucket_exists)
+    is identical.
 
     Args:
         :provider_config: <StorageProviderConfig> = resolved endpoint, secure flag,
