@@ -1,5 +1,5 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
-# pylint: disable=protected-access
+# pylint: disable=protected-access,too-few-public-methods
 """Unit tests for S3CompatibleArchiver: upload return value + client construction."""
 from unittest.mock import MagicMock, patch
 

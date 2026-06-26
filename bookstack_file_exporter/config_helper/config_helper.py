@@ -3,16 +3,16 @@ import argparse
 import logging
 # pylint: disable=import-error
 import yaml
+from minio.credentials import (
+    Provider, StaticProvider, ChainedProvider,
+    EnvAWSProvider, AWSConfigProvider, IamAwsProvider, EnvMinioProvider,
+)
 
 from bookstack_file_exporter.common.util import check_var
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.remote import (
     StorageProviderConfig,
     aws_endpoint_from_region,
-)
-from minio.credentials import (
-    Provider, StaticProvider, ChainedProvider,
-    EnvAWSProvider, AWSConfigProvider, IamAwsProvider, EnvMinioProvider,
 )
 
 log = logging.getLogger(__name__)

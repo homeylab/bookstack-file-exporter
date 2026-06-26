@@ -202,7 +202,9 @@ def _config_with_object_storage(entries) -> ConfigNode:
 
 def test_generate_remote_config_empty_when_unset():
     """No object_storage configured → empty list (not None, not a dict)."""
-    assert _config_with_object_storage(None)._generate_remote_config() == []
+    result = _config_with_object_storage(None)._generate_remote_config()
+    assert isinstance(result, list)
+    assert result == []  # pylint: disable=use-implicit-booleaness-not-comparison
 
 
 def test_generate_remote_config_builds_resolved_list():

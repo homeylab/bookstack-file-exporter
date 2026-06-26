@@ -58,6 +58,8 @@ def test_userinput_parses_object_storage_list():
         ],
     }
     ui = models.UserInput(**raw)
+    assert ui.object_storage is not None
+    # pylint: disable-next=not-an-iterable
     assert [e.type for e in ui.object_storage] == ["minio", "s3"]
 
 

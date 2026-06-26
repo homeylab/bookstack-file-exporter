@@ -14,6 +14,7 @@ def aws_endpoint_from_region(region: str) -> str:
 
 
 ## convenience class — holds one resolved object storage target (minio or s3)
+# pylint: disable=too-few-public-methods
 class StorageProviderConfig:
     """Resolved configuration for a single object storage target.
 
@@ -29,6 +30,7 @@ class StorageProviderConfig:
         config <BaseStorageConfig> = the raw parsed entry (bucket/path/region/keep_last)
     """
 
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(self, storage_type: str, endpoint: str, secure: bool,
                  credentials: Provider, config: BaseStorageConfig):
         self.type = storage_type
