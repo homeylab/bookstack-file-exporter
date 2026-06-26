@@ -23,6 +23,13 @@ def test_minio_with_object_storage_warns_not_raises(caplog):
                for r in caplog.records if r.name == _LOGGER)
 
 
+def test_minio_with_empty_object_storage_raises():
+    # empty list is not a real replacement -> would silently drop backups; must fail loud
+    raw = {"minio": {"host": "x"}, "object_storage": []}
+    with pytest.raises(ValueError, match="was removed in v3"):
+        check_legacy_keys(raw)
+
+
 def test_modify_markdown_warns(caplog):
     raw = {"assets": {"modify_markdown": True}}
     with caplog.at_level(logging.WARNING, logger=_LOGGER):

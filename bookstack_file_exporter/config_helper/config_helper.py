@@ -56,6 +56,11 @@ def _dig(raw: dict, path: tuple):
     return current
 
 
+def _present(value) -> bool:
+    """A replacement key counts as present only if found AND non-empty/non-falsy."""
+    return value is not _MISSING and bool(value)
+
+
 def check_legacy_keys(raw: dict) -> None:
     """Warn on deprecated keys; fail fast on removed keys that would silently change
     behavior. Operates on the raw dict BEFORE pydantic (which ignores unknown keys)."""
@@ -65,7 +70,9 @@ def check_legacy_keys(raw: dict) -> None:
         legacy_name = ".".join(path)
         replacement_name = ".".join(replacement_path)
         if policy == "fail_if_no_replacement":
-            if _dig(raw, replacement_path) is _MISSING:
+            # an empty/falsy replacement (e.g. object_storage: []) is not a real
+            # migration -> it would silently drop backups, so treat it as absent.
+            if not _present(_dig(raw, replacement_path)):
                 raise ValueError(
                     f"'{legacy_name}' was removed in v3.0.0; migrate to "
                     f"'{replacement_name}'. See the 'Migrating from v2' section in the "
