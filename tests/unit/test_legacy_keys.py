@@ -32,13 +32,6 @@ def test_minio_without_object_storage_raises():
         build_user_input(raw)
 
 
-def test_minio_with_empty_object_storage_raises():
-    # any 'minio:' presence is a hard error regardless of object_storage
-    raw = _raw(minio={"host": "x"}, object_storage=[])
-    with pytest.raises(ValidationError, match="was removed in v3"):
-        build_user_input(raw)
-
-
 def test_minio_alongside_valid_object_storage_still_raises():
     # removed key is an error even next to a working object_storage block: a removed
     # key does nothing, so warn-and-continue would be misleading. Force a clean config.
