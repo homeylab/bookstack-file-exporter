@@ -153,16 +153,13 @@ class Archiver:
     def archive_remote(self) -> list[str]:
         """Upload the archive to each configured target; return remote dest strings.
 
-        Both 'minio' and 's3' share S3CompatibleArchiver (identical S3 API surface);
-        the type is validated for a clear error on unknown backends.
+        Both 'minio' and 's3' share S3CompatibleArchiver (identical S3 API surface).
+        Type is constrained to minio|s3 by the config model, so no runtime type guard.
         """
         if not self.config.object_storage_config:
             return []
-        supported = {"minio", "s3"}
         dests: list[str] = []
         for entry in self.config.object_storage_config:
-            if entry.type not in supported:
-                raise ValueError(f"unsupported remote storage type: {entry.type}")
             dests.append(self._upload(entry))
         return dests
 

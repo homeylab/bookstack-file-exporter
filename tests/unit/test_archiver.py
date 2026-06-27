@@ -489,14 +489,6 @@ def test_archive_remote_two_same_type_entries_no_collision(archiver_instance, mo
     assert archiver_instance.archive_remote() == ["b1/x.tgz", "b2/x.tgz"]
 
 
-def test_archive_remote_raises_on_unknown_type(archiver_instance, mock_config):
-    """Entry with an unsupported type → ValueError."""
-    mock_config.object_storage_config = [_provider_entry("gcs")]
-    archiver_instance._s3_archiver_cls = MagicMock()
-    with pytest.raises(ValueError, match="unsupported remote storage type"):
-        archiver_instance.archive_remote()
-
-
 def test_archive_remote_returns_empty_list_when_no_config(archiver_instance, mock_config):
     """No object storage config → returns []."""
     mock_config.object_storage_config = []
