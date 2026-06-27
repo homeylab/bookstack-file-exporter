@@ -796,7 +796,7 @@ object_storage:
     secret_key: wJalr...
 
   # AWS S3 with no creds in config -> AWS default chain
-  #   (AWS_* env -> ~/.aws/credentials -> EC2/ECS/EKS IAM role via IMDS)
+  #   (AWS_* env -> EC2/ECS/EKS IAM role via IMDS)
   - type: s3
     bucket: role-backups
     region: us-east-1
@@ -829,8 +829,8 @@ object_storage:
    Ambient env vars override inline config keys, consistent with the BookStack token
    and standard precedence.
 3. `access_key` + `secret_key` — inline values (config-file fallback).
-4. `type: s3` only — `~/.aws/credentials` (by `AWS_PROFILE`) → EC2/ECS/EKS IAM role
-   (IMDS). Role-based deploys need no secrets in config or env.
+4. `type: s3` only — EC2/ECS IAM role via IMDS. No secrets required in config, env,
+   or files: the instance role supplies them at runtime (the cloud-native k8s/EC2 path).
 
 Setting only one half of an *in-config* credential pair (`access_key` without `secret_key`,
 or `*_env` without its partner) is a config error. A partially-set *ambient* env pair

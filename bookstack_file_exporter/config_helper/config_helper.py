@@ -5,7 +5,7 @@ import logging
 import yaml
 from minio.credentials import (
     Provider, StaticProvider, ChainedProvider,
-    EnvAWSProvider, AWSConfigProvider, IamAwsProvider, EnvMinioProvider,
+    EnvAWSProvider, IamAwsProvider, EnvMinioProvider,
 )
 
 from bookstack_file_exporter.common.util import check_var
@@ -72,7 +72,7 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
     2. ambient env (MINIO_ACCESS_KEY/MINIO_SECRET_KEY for minio; AWS_ACCESS_KEY_ID/
        AWS_SECRET_ACCESS_KEY for s3) — checked before inline config-file keys.
     3. inline access_key/secret_key (config-file fallback).
-    4. type s3 only: ~/.aws/credentials (by AWS_PROFILE) then IAM role via IMDS.
+    4. type s3 only — IMDS / EC2-ECS IAM role (no secrets in config/env/files).
     """
     if entry.access_key_env and entry.secret_key_env:
         access = os.environ.get(entry.access_key_env)
@@ -88,13 +88,13 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
               if entry.access_key and entry.secret_key else None)
 
     if entry.type == "s3":
+        # env > inline > IMDS (EC2/ECS IAM role). No ~/.aws file tier and no static
+        # creds required: a role can supply them at runtime.
         if inline:
-            return ChainedProvider(
-                [EnvAWSProvider(), inline, AWSConfigProvider(), IamAwsProvider()])
-        return ChainedProvider(
-            [EnvAWSProvider(), AWSConfigProvider(), IamAwsProvider()])
+            return ChainedProvider([EnvAWSProvider(), inline, IamAwsProvider()])
+        return ChainedProvider([EnvAWSProvider(), IamAwsProvider()])
 
-    # minio
+    # minio: env > inline (no file tier; minio has no IMDS equivalent)
     if inline:
         return ChainedProvider([EnvMinioProvider(), inline])
     return EnvMinioProvider()

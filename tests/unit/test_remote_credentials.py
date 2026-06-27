@@ -2,6 +2,7 @@
 """Tests for credential resolution precedence and endpoint defaulting."""
 from minio.credentials import (
     StaticProvider, ChainedProvider, EnvMinioProvider,
+    EnvAWSProvider, IamAwsProvider,
 )
 
 from bookstack_file_exporter.config_helper.models import BaseStorageConfig
@@ -62,7 +63,9 @@ def test_s3_ambient_env_beats_inline(monkeypatch):
     assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
 
 
-def test_s3_inline_beats_aws_files_when_env_unset(monkeypatch):
+def test_s3_inline_beats_imds_when_env_unset(monkeypatch):
+    # With AWS_* env unset, inline StaticProvider precedes IamAwsProvider in the chain
+    # and short-circuits — retrieve() returns the inline key without any network/IMDS call.
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_ACCESS_KEY", raising=False)
     monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
@@ -72,8 +75,12 @@ def test_s3_inline_beats_aws_files_when_env_unset(monkeypatch):
 
 
 def test_s3_bare_uses_aws_chain():
+    # Chain must be [EnvAWSProvider, IamAwsProvider] — no ~/.aws file tier.
     entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1")
-    assert isinstance(_resolve_credentials(entry), ChainedProvider)
+    provider = _resolve_credentials(entry)
+    assert isinstance(provider, ChainedProvider)
+    types = [type(p) for p in provider._providers]
+    assert types == [EnvAWSProvider, IamAwsProvider]
 
 
 def test_minio_bare_uses_env_minio_provider():
