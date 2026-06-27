@@ -38,6 +38,28 @@ class TestUploadBackupReturnValue:
         )
 
 
+class TestScanObjectsPrefix:
+    def test_scan_uses_path_slash_prefix_when_path_set(self):
+        archiver = _make_archiver("b", "uploads")
+        archiver._client.list_objects.return_value = []
+        archiver._scan_objects(".tgz")
+        archiver._client.list_objects.assert_called_once_with("b", prefix="uploads/")
+
+    def test_scan_uses_empty_prefix_when_path_empty(self):
+        # empty path -> root listing; a "/" prefix matches nothing, silently breaking retention
+        archiver = _make_archiver("b", None)
+        archiver._client.list_objects.return_value = []
+        archiver._scan_objects(".tgz")
+        archiver._client.list_objects.assert_called_once_with("b", prefix="")
+
+    def test_scan_filters_managed_objects_at_root(self):
+        archiver = _make_archiver("b", None)
+        managed = MagicMock(object_name="bookstack_export_2024.tgz")
+        unmanaged = MagicMock(object_name="unrelated.tgz")
+        archiver._client.list_objects.return_value = [managed, unmanaged]
+        assert archiver._scan_objects(".tgz") == [managed]
+
+
 class TestClientConstruction:
     def test_minio_client_built_with_endpoint_secure_region_credentials(self):
         creds = MagicMock()

@@ -69,9 +69,10 @@ class S3CompatibleArchiver:
 
     def _scan_objects(self, file_extension: str) -> list[MinioObject]:
         filter_str = "bookstack_export_"
-        # prefix should end in '/' for object listing
+        # prefix should end in '/' for object listing; empty path -> root listing
+        # (a "/" prefix matches nothing, so empty-path retention would silently no-op)
         # ref: https://min.io/docs/minio/linux/developers/python/API.html#list_objects
-        path_prefix = self.path + "/"
+        path_prefix = f"{self.path}/" if self.path else ""
         # get all objects in archive path/directory
         full_list: list[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
         # validate and filter out non managed objects
