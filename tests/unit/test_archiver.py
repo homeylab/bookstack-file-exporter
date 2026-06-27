@@ -561,7 +561,7 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 
 
 # ---------------------------------------------------------------------------
-# MinioArchiver._generate_path — trailing-slash normalisation
+# S3CompatibleArchiver._generate_path — trailing-slash normalisation
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("input_path,expected", [

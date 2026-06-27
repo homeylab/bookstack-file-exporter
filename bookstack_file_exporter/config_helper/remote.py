@@ -43,9 +43,9 @@ class StorageProviderConfig:
             "s3": self._is_s3_valid,
         }
 
-    def is_valid(self, storage_type: str) -> bool:
-        """check if object storage config is valid for the given type"""
-        return self._valid_checker[storage_type]()
+    def is_valid(self) -> bool:
+        """check if this target's config is valid, dispatched on its own type"""
+        return self._valid_checker[self.type]()
 
     def _is_minio_valid(self) -> bool:
         """minio requires an explicit host; creds may resolve at call time."""

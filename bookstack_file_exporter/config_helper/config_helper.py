@@ -161,7 +161,7 @@ class ConfigNode:
                 credentials=_resolve_credentials(entry),
                 config=entry,
             )
-            if not provider_config.is_valid(entry.type):
+            if not provider_config.is_valid():
                 raise ValueError(f"provided {entry.type} configuration is invalid")
             configs.append(provider_config)
         return configs

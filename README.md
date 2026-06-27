@@ -831,8 +831,10 @@ object_storage:
 4. `type: s3` only — `~/.aws/credentials` (by `AWS_PROFILE`) → EC2/ECS/EKS IAM role
    (IMDS). Role-based deploys need no secrets in config or env.
 
-Setting only one half of a credential pair (key without secret, or `*_env` without its
-partner) is a config error.
+Setting only one half of an *in-config* credential pair (`access_key` without `secret_key`,
+or `*_env` without its partner) is a config error. A partially-set *ambient* env pair
+(e.g. `MINIO_ACCESS_KEY` set but `MINIO_SECRET_KEY` unset) is **ignored, not an error** —
+resolution falls through to the next source.
 
 ## Migrating from v2
 

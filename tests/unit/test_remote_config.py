@@ -22,22 +22,22 @@ def _provider(entry: BaseStorageConfig) -> StorageProviderConfig:
 
 def test_minio_valid_when_host_present():
     entry = BaseStorageConfig(type="minio", bucket="b", host="minio.local")
-    assert _provider(entry).is_valid("minio") is True
+    assert _provider(entry).is_valid() is True
 
 
 def test_minio_invalid_when_host_missing():
     entry = BaseStorageConfig(type="minio", bucket="b", host="")
-    assert _provider(entry).is_valid("minio") is False
+    assert _provider(entry).is_valid() is False
 
 
 def test_s3_valid_when_region_present():
     entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1")
-    assert _provider(entry).is_valid("s3") is True
+    assert _provider(entry).is_valid() is True
 
 
 def test_s3_invalid_when_region_missing():
     entry = BaseStorageConfig(type="s3", bucket="b", region=None)
-    assert _provider(entry).is_valid("s3") is False
+    assert _provider(entry).is_valid() is False
 
 
 def test_aws_endpoint_from_region():
