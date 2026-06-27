@@ -31,8 +31,9 @@ class BaseStorageConfig(BaseModel):
 
     @property
     def label(self) -> str:
-        """Identity for logs/notifications. Excludes creds (secrets) and host/region by
-        design, so a bare type/bucket collision forces the user to set a distinct name."""
+        """Target identity, intended for logs/notifications (consumed today only by the
+        uniqueness check below; wired into output in a later task). Excludes creds (secrets)
+        and host/region by design, so a bare type/bucket collision forces a distinct name."""
         return self.name or f"{self.type}/{self.bucket}"
 
     @model_validator(mode="after")

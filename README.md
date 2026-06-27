@@ -795,7 +795,7 @@ object_storage:
     access_key: AKIA...
     secret_key: wJalr...
 
-  # AWS S3 with no creds in config -> standard AWS_* env, else EC2/ECS IAM role via IMDS
+  # AWS S3 with no creds in config -> standard AWS_* env, else IAM role (EC2/ECS/EKS, auto-detected)
   - type: s3
     bucket: role-backups
     region: us-east-1
@@ -817,7 +817,7 @@ object_storage:
 | `secret_key` | `str` | `false` | Inline secret key credential. |
 | `access_key_env` | `str` | `false` | Name of an environment variable to read for the access key. Use with `secret_key_env` to keep credentials out of the config file, or to give two targets of the same type distinct credentials. |
 | `secret_key_env` | `str` | `false` | Name of an environment variable to read for the secret key. Must be paired with `access_key_env`. |
-| `name` | `str` | `false` | Optional human-readable label for this target, used in logs and notifications. If two entries share the same `type` and `bucket` (e.g. same bucket reached via different credentials), each **must** set a distinct `name` — the exporter rejects the config if two entries would produce the same derived `type/bucket` label and no `name` is set to disambiguate. |
+| `name` | `str` | `false` | Optional human-readable label for this target (intended for logs and notifications). If two entries share the same `type` and `bucket` (e.g. same bucket reached via different credentials), each **must** set a distinct `name` — the exporter rejects the config if two entries would produce the same derived `type/bucket` label and no `name` is set to disambiguate. |
 
 #### Credential resolution (per entry, first match wins)
 
@@ -860,8 +860,10 @@ full key pair wins.
      access_key: AKIA...
      secret_key: wJalr...
    ```
-4. **IAM role via IMDS** (`type: s3` only) — no secrets anywhere; the EC2/ECS instance role
-   supplies short-lived credentials at runtime (the cloud-native k8s/EC2 path).
+4. **IAM role** (`type: s3` only) — no secrets anywhere; the instance/pod role supplies
+   short-lived credentials at runtime. Auto-detected by minio-py's `IamAwsProvider`: EC2
+   (IMDS), ECS (container credentials), and EKS (IRSA web-identity / Pod Identity) — the
+   cloud-native k8s/EC2 path.
    ```yaml
    - type: s3
      bucket: role-backups
