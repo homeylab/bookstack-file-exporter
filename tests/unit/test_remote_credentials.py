@@ -40,11 +40,35 @@ def test_per_entry_env_names_unset_raises(monkeypatch):
         assert "MISSING_AK" in str(err)
 
 
-def test_inline_used_when_no_env_names():
+def test_inline_used_when_no_env_names(monkeypatch):
+    monkeypatch.delenv("MINIO_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("MINIO_SECRET_KEY", raising=False)
     entry = _entry(access_key="inline-ak", secret_key="inline-sk")
-    provider = _resolve_credentials(entry)
-    assert isinstance(provider, StaticProvider)
-    assert provider.retrieve().access_key == "inline-ak"
+    assert _resolve_credentials(entry).retrieve().access_key == "inline-ak"
+
+
+def test_minio_ambient_env_beats_inline(monkeypatch):
+    monkeypatch.setenv("MINIO_ACCESS_KEY", "env-ak")
+    monkeypatch.setenv("MINIO_SECRET_KEY", "env-sk")
+    entry = _entry(access_key="inline-ak", secret_key="inline-sk")
+    assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
+
+
+def test_s3_ambient_env_beats_inline(monkeypatch):
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "env-ak")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
+    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
+                              access_key="inline-ak", secret_key="inline-sk")
+    assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
+
+
+def test_s3_inline_beats_aws_files_when_env_unset(monkeypatch):
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
+                              access_key="inline-ak", secret_key="inline-sk")
+    assert _resolve_credentials(entry).retrieve().access_key == "inline-ak"
 
 
 def test_s3_bare_uses_aws_chain():

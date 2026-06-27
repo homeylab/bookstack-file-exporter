@@ -69,9 +69,10 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
 
     1. per-entry env NAMES (access_key_env/secret_key_env) -> StaticProvider. Only scheme
        that supports two same-type targets with distinct out-of-file creds.
-    2. inline access_key/secret_key -> StaticProvider.
-    3. type s3, nothing set -> AWS default chain (env -> ~/.aws -> IAM role via IMDS).
-    4. type minio, nothing set -> EnvMinioProvider (fixed MINIO_ACCESS_KEY/MINIO_SECRET_KEY).
+    2. ambient env (MINIO_ACCESS_KEY/MINIO_SECRET_KEY for minio; AWS_ACCESS_KEY_ID/
+       AWS_SECRET_ACCESS_KEY for s3) — checked before inline config-file keys.
+    3. inline access_key/secret_key (config-file fallback).
+    4. type s3 only: ~/.aws/credentials (by AWS_PROFILE) then IAM role via IMDS.
     """
     if entry.access_key_env and entry.secret_key_env:
         access = os.environ.get(entry.access_key_env)
@@ -81,14 +82,21 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
                 f"credential env vars {entry.access_key_env}/{entry.secret_key_env} "
                 "are referenced but not set or empty")
         return StaticProvider(access, secret)
-    if entry.access_key and entry.secret_key:
-        return StaticProvider(entry.access_key, entry.secret_key)
+
+    # inline keys, when present, sit BELOW ambient env (env > config file)
+    inline = (StaticProvider(entry.access_key, entry.secret_key)
+              if entry.access_key and entry.secret_key else None)
+
     if entry.type == "s3":
-        return ChainedProvider([
-            EnvAWSProvider(),
-            AWSConfigProvider(),
-            IamAwsProvider(),
-        ])
+        if inline:
+            return ChainedProvider(
+                [EnvAWSProvider(), inline, AWSConfigProvider(), IamAwsProvider()])
+        return ChainedProvider(
+            [EnvAWSProvider(), AWSConfigProvider(), IamAwsProvider()])
+
+    # minio
+    if inline:
+        return ChainedProvider([EnvMinioProvider(), inline])
     return EnvMinioProvider()
 
 

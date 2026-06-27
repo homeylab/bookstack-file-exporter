@@ -823,12 +823,13 @@ object_storage:
 
 1. `access_key_env` + `secret_key_env` — read those named env vars. The only way to give
    two targets of the same type distinct, out-of-file credentials.
-2. `access_key` + `secret_key` — inline values.
-3. `type: s3` with none of the above — AWS default chain: `AWS_ACCESS_KEY_ID` /
-   `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` → `~/.aws/credentials` (by `AWS_PROFILE`)
-   → EC2/ECS/EKS IAM role (IMDS). Role-based deploys need no secrets in config or env.
-4. `type: minio` with none of the above — fixed `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`
-   env vars (the v2 single-MinIO behavior).
+2. Ambient env vars — `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` for minio;
+   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` for s3.
+   Ambient env vars override inline config keys, consistent with the BookStack token
+   and standard precedence.
+3. `access_key` + `secret_key` — inline values (config-file fallback).
+4. `type: s3` only — `~/.aws/credentials` (by `AWS_PROFILE`) → EC2/ECS/EKS IAM role
+   (IMDS). Role-based deploys need no secrets in config or env.
 
 Setting only one half of a credential pair (key without secret, or `*_env` without its
 partner) is a config error.
