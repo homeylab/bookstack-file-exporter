@@ -48,14 +48,14 @@ def test_inline_used_when_no_env_names(monkeypatch):
     assert _resolve_credentials(entry).retrieve().access_key == "inline-ak"
 
 
-def test_minio_ambient_env_beats_inline(monkeypatch):
+def test_minio_standard_env_beats_inline(monkeypatch):
     monkeypatch.setenv("MINIO_ACCESS_KEY", "env-ak")
     monkeypatch.setenv("MINIO_SECRET_KEY", "env-sk")
     entry = _entry(access_key="inline-ak", secret_key="inline-sk")
     assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
 
 
-def test_s3_ambient_env_beats_inline(monkeypatch):
+def test_s3_standard_env_beats_inline(monkeypatch):
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "env-ak")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
     entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",

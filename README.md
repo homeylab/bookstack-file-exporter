@@ -795,8 +795,7 @@ object_storage:
     access_key: AKIA...
     secret_key: wJalr...
 
-  # AWS S3 with no creds in config -> AWS default chain
-  #   (AWS_* env -> EC2/ECS/EKS IAM role via IMDS)
+  # AWS S3 with no creds in config -> standard AWS_* env, else EC2/ECS IAM role via IMDS
   - type: s3
     bucket: role-backups
     region: us-east-1
@@ -822,18 +821,55 @@ object_storage:
 
 #### Credential resolution (per entry, first match wins)
 
-1. `access_key_env` + `secret_key_env` — read those named env vars. The only way to give
-   two targets of the same type distinct, out-of-file credentials.
-2. Ambient env vars — `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` for minio;
-   `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` for s3.
-   Ambient env vars override inline config keys, consistent with the BookStack token
-   and standard precedence.
-3. `access_key` + `secret_key` — inline values (config-file fallback).
-4. `type: s3` only — EC2/ECS IAM role via IMDS. No secrets required in config, env,
-   or files: the instance role supplies them at runtime (the cloud-native k8s/EC2 path).
+Each entry resolves credentials through an ordered chain; the first source that supplies a
+full key pair wins.
+
+1. **Per-entry named env vars** — `access_key_env` + `secret_key_env` give the *names* of the
+   env vars to read. The only way to give two same-type targets *distinct* credentials kept
+   out of the config file (the standard env vars in tier 2 are global, so they cannot).
+   ```yaml
+   - type: minio
+     host: minio2.local:9000
+     bucket: backups2
+     access_key_env: MINIO2_ACCESS_KEY   # the value is the env var NAME, not the secret
+     secret_key_env: MINIO2_SECRET_KEY
+   ```
+   ```bash
+   export MINIO2_ACCESS_KEY=AKIA... MINIO2_SECRET_KEY=wJalr...
+   ```
+2. **Standard env vars** — the fixed, SDK-recognized names, picked up automatically. These are
+   global: every entry of that type shares them.
+   - minio: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+   - s3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (optional)
+
+   They override inline keys (tier 3), consistent with the BookStack token and 12-factor
+   precedence.
+   ```yaml
+   - type: minio
+     host: minio.local:9000
+     bucket: backups        # no creds in the YAML
+   ```
+   ```bash
+   export MINIO_ACCESS_KEY=AKIA... MINIO_SECRET_KEY=wJalr...
+   ```
+3. **Inline keys** — `access_key` + `secret_key` in the entry itself.
+   ```yaml
+   - type: s3
+     bucket: aws-backups
+     region: us-east-1
+     access_key: AKIA...
+     secret_key: wJalr...
+   ```
+4. **IAM role via IMDS** (`type: s3` only) — no secrets anywhere; the EC2/ECS instance role
+   supplies short-lived credentials at runtime (the cloud-native k8s/EC2 path).
+   ```yaml
+   - type: s3
+     bucket: role-backups
+     region: us-east-1      # no creds in the YAML, no env vars
+   ```
 
 Setting only one half of an *in-config* credential pair (`access_key` without `secret_key`,
-or `*_env` without its partner) is a config error. A partially-set *ambient* env pair
+or `*_env` without its partner) is a config error. A partially-set *standard env var* pair
 (e.g. `MINIO_ACCESS_KEY` set but `MINIO_SECRET_KEY` unset) is **ignored, not an error** —
 resolution falls through to the next source.
 

@@ -69,7 +69,7 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
 
     1. per-entry env NAMES (access_key_env/secret_key_env) -> StaticProvider. Only scheme
        that supports two same-type targets with distinct out-of-file creds.
-    2. ambient env (MINIO_ACCESS_KEY/MINIO_SECRET_KEY for minio; AWS_ACCESS_KEY_ID/
+    2. standard env vars (MINIO_ACCESS_KEY/MINIO_SECRET_KEY for minio; AWS_ACCESS_KEY_ID/
        AWS_SECRET_ACCESS_KEY for s3) — checked before inline config-file keys.
     3. inline access_key/secret_key (config-file fallback).
     4. type s3 only — IMDS / EC2-ECS IAM role (no secrets in config/env/files).
@@ -83,7 +83,7 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
                 "are referenced but not set or empty")
         return StaticProvider(access, secret)
 
-    # inline keys, when present, sit BELOW ambient env (env > config file)
+    # inline keys, when present, sit BELOW the standard env vars (env > config file)
     inline = (StaticProvider(entry.access_key, entry.secret_key)
               if entry.access_key and entry.secret_key else None)
 
