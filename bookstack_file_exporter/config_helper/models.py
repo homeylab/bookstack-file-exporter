@@ -27,6 +27,13 @@ class BaseStorageConfig(BaseModel):
     secret_key: str | None = ""
     access_key_env: str | None = None
     secret_key_env: str | None = None
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        """Identity for logs/notifications. Excludes creds (secrets) and host/region by
+        design, so a bare type/bucket collision forces the user to set a distinct name."""
+        return self.name or f"{self.type}/{self.bucket}"
 
     @model_validator(mode="after")
     def _check_cred_pairs(self):
@@ -182,6 +189,22 @@ class UserInput(BaseModel):
                 "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
                 "See the 'Migrating from v2' section in the README.")
         return raw
+
+    @model_validator(mode="after")
+    def _check_unique_object_storage_labels(self):
+        """Enforce distinct labels across all object_storage entries."""
+        if not self.object_storage:
+            return self
+        seen: set[str] = set()
+        # pylint: disable-next=not-an-iterable
+        for entry in self.object_storage:
+            lbl = entry.label
+            if lbl in seen:
+                raise ValueError(
+                    f"Duplicate object_storage label {lbl!r}. "
+                    "Two entries share the same type/bucket; set a distinct 'name' on each.")
+            seen.add(lbl)
+        return self
 
     @model_validator(mode="after")
     def _check_schedule_config(self):

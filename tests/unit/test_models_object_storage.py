@@ -66,3 +66,68 @@ def test_userinput_parses_object_storage_list():
 def test_userinput_object_storage_defaults_none():
     ui = models.UserInput(host="https://x", formats=["markdown"])
     assert ui.object_storage is None
+
+
+# --- name field and label property ---
+
+def test_name_defaults_none():
+    cfg = models.BaseStorageConfig(**_entry())
+    assert cfg.name is None
+
+
+def test_name_parses_when_given():
+    cfg = models.BaseStorageConfig(**_entry(name="primary"))
+    assert cfg.name == "primary"
+
+
+def test_label_falls_back_to_type_bucket():
+    cfg = models.BaseStorageConfig(**_entry(type="minio", bucket="b"))
+    assert cfg.label == "minio/b"
+
+
+def test_label_uses_name_when_set():
+    cfg = models.BaseStorageConfig(**_entry(name="primary"))
+    assert cfg.label == "primary"
+
+
+# --- UserInput label-uniqueness validator ---
+
+def _user_input(*entries):
+    return {
+        "host": "https://wiki.example.com",
+        "formats": ["markdown"],
+        "object_storage": list(entries),
+    }
+
+
+def test_duplicate_derived_label_raises():
+    # Two entries with same type/bucket produce the same derived label → must fail
+    e1 = _entry(type="minio", bucket="b")
+    e2 = _entry(type="minio", bucket="b")
+    with pytest.raises(ValidationError, match="name"):
+        models.UserInput(**_user_input(e1, e2))
+
+
+def test_duplicate_derived_label_with_distinct_names_ok():
+    e1 = _entry(type="minio", bucket="b", name="primary")
+    e2 = _entry(type="minio", bucket="b", name="secondary")
+    ui = models.UserInput(**_user_input(e1, e2))
+    assert ui.object_storage is not None
+    # pylint: disable-next=not-an-iterable
+    assert [e.name for e in ui.object_storage] == ["primary", "secondary"]
+
+
+def test_duplicate_explicit_name_raises():
+    e1 = _entry(name="same")
+    e2 = _entry(bucket="other", name="same")
+    with pytest.raises(ValidationError, match="name"):
+        models.UserInput(**_user_input(e1, e2))
+
+
+def test_distinct_buckets_no_name_ok():
+    e1 = _entry(type="minio", bucket="b1")
+    e2 = _entry(type="minio", bucket="b2")
+    ui = models.UserInput(**_user_input(e1, e2))
+    assert ui.object_storage is not None
+    # pylint: disable-next=not-an-iterable
+    assert len(ui.object_storage) == 2

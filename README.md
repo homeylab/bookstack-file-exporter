@@ -818,6 +818,7 @@ object_storage:
 | `secret_key` | `str` | `false` | Inline secret key credential. |
 | `access_key_env` | `str` | `false` | Name of an environment variable to read for the access key. Use with `secret_key_env` to keep credentials out of the config file, or to give two targets of the same type distinct credentials. |
 | `secret_key_env` | `str` | `false` | Name of an environment variable to read for the secret key. Must be paired with `access_key_env`. |
+| `name` | `str` | `false` | Optional human-readable label for this target, used in logs and notifications. If two entries share the same `type` and `bucket` (e.g. same bucket reached via different credentials), each **must** set a distinct `name` — the exporter rejects the config if two entries would produce the same derived `type/bucket` label and no `name` is set to disambiguate. |
 
 #### Credential resolution (per entry, first match wins)
 
