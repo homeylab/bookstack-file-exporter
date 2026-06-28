@@ -875,6 +875,25 @@ or `*_env` without its partner) is a config error. A partially-set *standard env
 (e.g. `MINIO_ACCESS_KEY` set but `MINIO_SECRET_KEY` unset) is **ignored, not an error** —
 resolution falls through to the next source.
 
+#### Multi-target upload behavior
+
+Every configured `object_storage` target is attempted, even if an earlier one fails. The run
+outcome is one of:
+
+| Outcome | When | Exit code | Notification |
+|---|---|---|---|
+| Success | all targets uploaded | `0` | "Success" (`on_success`) |
+| Partial | some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
+| Failure | the export itself failed, **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
+
+A *partial* run means at least one durable copy of the backup survived (a remote target, or the
+local `.tgz` when `keep_last >= 0`). It is reported via the `on_failure` notification so it is
+not silently treated as a clean success. When `keep_last < 0` (local archive deleted) AND every
+upload fails, the run is a hard failure — the local archive is preserved so the run can be retried.
+
+In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
+run (distinct from `success` and `failed`).
+
 ## Migrating from v2
 
 v3.0.0 removes the single `minio:` block. Move your settings into an `object_storage:`
