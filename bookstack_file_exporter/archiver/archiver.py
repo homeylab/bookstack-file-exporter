@@ -159,7 +159,8 @@ class Archiver:
     def archive_remote(self) -> list[UploadOutcome]:
         """Upload to every configured target, attempting all even if some fail.
 
-        Returns one UploadOutcome per target (dest on success, error on failure). Never
+        Returns one UploadOutcome per target (dest on success, error on upload
+        failure, or dest+warning when the upload landed but retention cleanup failed). Never
         raises on a per-target upload error — aggregate status is decided by
         resolve_remote_status. Both 'minio' and 's3' share S3CompatibleArchiver.
         """
