@@ -12,6 +12,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
 )
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
 from bookstack_file_exporter.common.util import HttpHelper
@@ -19,6 +20,11 @@ from bookstack_file_exporter.common.util import HttpHelper
 log = logging.getLogger(__name__)
 
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+
+class AggregateUploadError(Exception):
+    """All upload targets failed AND no durable local copy survives (keep_last < 0)."""
+
 
 # pylint: disable=too-many-instance-attributes
 class Archiver:
@@ -150,24 +156,45 @@ class Archiver:
         self._archiver.gzip_archive()
 
     # send to remote systems
-    def archive_remote(self) -> list[str]:
-        """Upload the archive to each configured target; return remote dest strings.
+    def archive_remote(self) -> list[UploadOutcome]:
+        """Upload to every configured target, attempting all even if some fail.
 
-        Both 'minio' and 's3' share S3CompatibleArchiver (identical S3 API surface).
-        Type is constrained to minio|s3 by the config model, so no runtime type guard.
+        Returns one UploadOutcome per target (dest on success, error on failure). Never
+        raises on a per-target upload error — aggregate status is decided by
+        resolve_remote_status. Both 'minio' and 's3' share S3CompatibleArchiver.
         """
-        if not self.config.object_storage_config:
-            return []
-        dests: list[str] = []
-        for entry in self.config.object_storage_config:
-            dests.append(self._upload(entry))
-        return dests
+        outcomes: list[UploadOutcome] = []
+        for entry in self.config.object_storage_config or []:
+            outcomes.append(self._upload(entry))
+        return outcomes
 
-    def _upload(self, provider_config: StorageProviderConfig) -> str:
-        archiver = self._s3_archiver_cls(provider_config)
-        dest = archiver.upload_backup(self._archiver.archive_file)
-        archiver.clean_up(self._archiver.file_extension_map['tgz'])
-        return dest
+    def _upload(self, provider_config: StorageProviderConfig) -> UploadOutcome:
+        label = provider_config.config.label
+        try:
+            archiver = self._s3_archiver_cls(provider_config)
+            dest = archiver.upload_backup(self._archiver.archive_file)
+            archiver.clean_up(self._archiver.file_extension_map['tgz'])
+            return UploadOutcome(label=label, dest=dest, error=None)
+        except Exception as err:  # pylint: disable=broad-except
+            # attempt-all: record and continue so other targets still run
+            log.error("Upload to target '%s' failed: %s", label, err)
+            return UploadOutcome(label=label, dest=None, error=str(err))
+
+    def resolve_remote_status(self, outcomes: list[UploadOutcome]) -> ExportStatus:
+        """Derive run status from upload outcomes. Raise AggregateUploadError only when
+        NO durable copy survives: every upload failed AND keep_last<0 deletes the local."""
+        if not outcomes:
+            return ExportStatus.SUCCESS
+        n_ok = sum(1 for o in outcomes if o.dest is not None)
+        if n_ok == len(outcomes):
+            return ExportStatus.SUCCESS
+        if n_ok == 0 and self.config.user_inputs.keep_last is not None \
+                and self.config.user_inputs.keep_last < 0:
+            failed = ", ".join(o.label for o in outcomes)
+            raise AggregateUploadError(
+                f"all upload targets failed and no local copy is kept "
+                f"(keep_last<0): {failed}")
+        return ExportStatus.PARTIAL
 
     def clean_up(self) -> list[str]:
         """remove archive after sending to remote target; return files deleted"""

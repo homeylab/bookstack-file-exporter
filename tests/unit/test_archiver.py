@@ -10,8 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bookstack_file_exporter.archiver.archiver import Archiver
+from bookstack_file_exporter.archiver.archiver import Archiver, AggregateUploadError
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,
     ChapterArchiver,
@@ -444,14 +445,18 @@ def test_create_export_dir_permission_error_logs_warning(
 # archive_remote
 # ---------------------------------------------------------------------------
 
-def _provider_entry(storage_type="minio"):
+# ---------------------------------------------------------------------------
+# archive_remote — attempt-all, returns list[UploadOutcome]
+# ---------------------------------------------------------------------------
+
+def _provider_entry(storage_type="minio", label="minio/b"):
     obj = MagicMock()
     obj.type = storage_type
+    obj.config.label = label
     return obj
 
 
-def test_archive_remote_empty_list_no_calls(archiver_instance, mock_config):
-    """object_storage_config=[] → returns [], no archiver constructed."""
+def test_archive_remote_empty_list_no_outcomes(archiver_instance, mock_config):
     mock_config.object_storage_config = []
     fake_cls = MagicMock()
     archiver_instance._s3_archiver_cls = fake_cls
@@ -459,40 +464,91 @@ def test_archive_remote_empty_list_no_calls(archiver_instance, mock_config):
     fake_cls.assert_not_called()
 
 
-def test_archive_remote_uploads_each_entry_via_shared_archiver(archiver_instance, mock_config):
-    """Both minio and s3 entries go through the same S3CompatibleArchiver; dests collected."""
-    mock_config.object_storage_config = [_provider_entry("minio"), _provider_entry("s3")]
+def test_archive_remote_all_success(archiver_instance, mock_config):
+    mock_config.object_storage_config = [
+        _provider_entry("minio", "minio/b"), _provider_entry("s3", "s3/aws")]
     fake_instance = MagicMock()
-    fake_instance.upload_backup.side_effect = ["bucket1/a.tgz", "bucket2/b.tgz"]
-    fake_cls = MagicMock(return_value=fake_instance)
-    archiver_instance._s3_archiver_cls = fake_cls
-    archiver_instance._archiver.archive_file = "/local/archive.tgz"
-    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
-
-    result = archiver_instance.archive_remote()
-
-    assert result == ["bucket1/a.tgz", "bucket2/b.tgz"]
-    assert fake_cls.call_count == 2
-    fake_instance.upload_backup.assert_called_with("/local/archive.tgz")
-    assert fake_instance.clean_up.call_count == 2
-
-
-def test_archive_remote_two_same_type_entries_no_collision(archiver_instance, mock_config):
-    """Two minio entries both upload (list permits same-type; a dict would drop one)."""
-    mock_config.object_storage_config = [_provider_entry("minio"), _provider_entry("minio")]
-    fake_instance = MagicMock()
-    fake_instance.upload_backup.side_effect = ["b1/x.tgz", "b2/x.tgz"]
+    fake_instance.upload_backup.side_effect = ["minio-b/a.tgz", "s3-aws/a.tgz"]
     archiver_instance._s3_archiver_cls = MagicMock(return_value=fake_instance)
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
 
-    assert archiver_instance.archive_remote() == ["b1/x.tgz", "b2/x.tgz"]
+    outcomes = archiver_instance.archive_remote()
+
+    assert [(o.label, o.dest, o.error) for o in outcomes] == [
+        ("minio/b", "minio-b/a.tgz", None), ("s3/aws", "s3-aws/a.tgz", None)]
 
 
-def test_archive_remote_returns_empty_list_when_no_config(archiver_instance, mock_config):
-    """No object storage config → returns []."""
-    mock_config.object_storage_config = []
-    assert archiver_instance.archive_remote() == []
+def test_archive_remote_one_fails_others_still_attempted(archiver_instance, mock_config):
+    """A failing target does not abort the loop; its outcome records the error."""
+    mock_config.object_storage_config = [
+        _provider_entry("minio", "minio/b"), _provider_entry("s3", "s3/dr")]
+    good = MagicMock()
+    good.upload_backup.return_value = "minio-b/a.tgz"
+    bad = MagicMock()
+    bad.upload_backup.side_effect = RuntimeError("connection refused")
+    archiver_instance._s3_archiver_cls = MagicMock(side_effect=[good, bad])
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert outcomes[0].dest == "minio-b/a.tgz" and outcomes[0].error is None
+    assert outcomes[1].dest is None
+    assert "connection refused" in outcomes[1].error
+
+
+def test_archive_remote_construction_failure_recorded(archiver_instance, mock_config):
+    """A failure constructing the archiver (e.g. bucket validation) is also caught."""
+    mock_config.object_storage_config = [_provider_entry("s3", "s3/dr")]
+    archiver_instance._s3_archiver_cls = MagicMock(side_effect=ValueError("no such bucket"))
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert outcomes[0].label == "s3/dr"
+    assert outcomes[0].dest is None
+    assert "no such bucket" in outcomes[0].error
+
+
+# ---------------------------------------------------------------------------
+# resolve_remote_status
+# ---------------------------------------------------------------------------
+
+def _ok(label="a"):
+    return UploadOutcome(label=label, dest=f"{label}/x.tgz", error=None)
+
+
+def _fail(label="a"):
+    return UploadOutcome(label=label, dest=None, error="boom")
+
+
+def test_resolve_status_all_success(archiver_instance):
+    status = archiver_instance.resolve_remote_status([_ok("a"), _ok("b")])
+    assert status is ExportStatus.SUCCESS
+
+
+def test_resolve_status_some_fail_is_partial(archiver_instance, mock_config):
+    mock_config.user_inputs.keep_last = -1   # even with -1, a remote copy survived
+    status = archiver_instance.resolve_remote_status([_ok("a"), _fail("b")])
+    assert status is ExportStatus.PARTIAL
+
+
+def test_resolve_status_all_fail_local_kept_is_partial(archiver_instance, mock_config):
+    mock_config.user_inputs.keep_last = 0    # local copy retained -> degraded, not lost
+    status = archiver_instance.resolve_remote_status([_fail("a"), _fail("b")])
+    assert status is ExportStatus.PARTIAL
+
+
+def test_resolve_status_all_fail_no_local_raises(archiver_instance, mock_config):
+    mock_config.user_inputs.keep_last = -1   # local deleted + all uploads fail = total loss
+    with pytest.raises(AggregateUploadError, match="a, b"):
+        archiver_instance.resolve_remote_status([_fail("a"), _fail("b")])
+
+
+def test_resolve_status_empty_is_success(archiver_instance):
+    assert archiver_instance.resolve_remote_status([]) is ExportStatus.SUCCESS
 
 
 # ---------------------------------------------------------------------------
