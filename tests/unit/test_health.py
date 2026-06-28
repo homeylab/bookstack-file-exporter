@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from bookstack_file_exporter.health.server import start_health_server
 from bookstack_file_exporter.health.status import RunStatus
-from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +109,20 @@ class TestRunStatusSnapshot:
         status.mark_running()
         status.mark_success(NotifyResult(local="/a/b.tgz"))
         json.dumps(status.snapshot())  # must not raise
+
+    def test_mark_degraded_sets_status_and_counts(self):
+        status = RunStatus()
+        status.mark_degraded(NotifyResult(status=ExportStatus.PARTIAL, local="/a/b.tgz"))
+        snap = status.snapshot()
+        assert snap["last_run"]["status"] == "degraded"
+        assert snap["run_count"] == 1
+        assert snap["failure_count"] == 0          # degraded is NOT a hard failure
+        assert snap["last_run"]["archive_file"] == "b.tgz"
+
+    def test_mark_degraded_no_error_field(self):
+        status = RunStatus()
+        status.mark_degraded(NotifyResult(status=ExportStatus.PARTIAL, local="/a/b.tgz"))
+        assert status.snapshot()["last_run"]["error"] is None
 
 
 # ---------------------------------------------------------------------------

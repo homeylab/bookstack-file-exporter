@@ -27,7 +27,7 @@ def _now() -> datetime:
 class RunStatus:  # pylint: disable=too-many-instance-attributes
     """Thread-safe last-run/next-run status for the health endpoint."""
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    _last_run_status: str = "never"   # never -> running -> success | failed
+    _last_run_status: str = "never"   # never -> running -> success | degraded | failed
     _started_at: datetime | None = None
     _finished_at: datetime | None = None
     _archive_file: str | None = None
@@ -49,6 +49,20 @@ class RunStatus:  # pylint: disable=too-many-instance-attributes
         """Transition to success state, record finish time, and increment run count."""
         with self._lock:
             self._last_run_status = "success"
+            self._finished_at = _now()
+            self._error = None
+            self._archive_file = (
+                os.path.basename(result.local)
+                if result is not None and result.local
+                else None
+            )
+            self._run_count += 1
+
+    def mark_degraded(self, result: NotifyResult | None) -> None:
+        """Partial run: a copy survived but a target failed. Counts as a run, NOT a
+        failure (operators alert on it via the notification, not failure_count)."""
+        with self._lock:
+            self._last_run_status = "degraded"
             self._finished_at = _now()
             self._error = None
             self._archive_file = (
