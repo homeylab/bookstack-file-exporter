@@ -1,7 +1,7 @@
 # pylint: disable=missing-function-docstring,protected-access
 """Tests for credential resolution precedence and endpoint defaulting."""
 from minio.credentials import (
-    StaticProvider, ChainedProvider, EnvMinioProvider,
+    StaticProvider, EnvMinioProvider,
     EnvAWSProvider, IamAwsProvider,
 )
 
@@ -9,6 +9,7 @@ from bookstack_file_exporter.config_helper.models import BaseStorageConfig
 from bookstack_file_exporter.config_helper.config_helper import (
     _resolve_credentials,
     _resolve_endpoint,
+    _s3_provider_chain,
 )
 
 
@@ -75,12 +76,17 @@ def test_s3_inline_beats_imds_when_env_unset(monkeypatch):
 
 
 def test_s3_bare_uses_aws_chain():
-    # Chain must be [EnvAWSProvider, IamAwsProvider] — no ~/.aws file tier.
+    # Assert composition on OUR returned list (no reach into minio-py private _providers).
     entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1")
-    provider = _resolve_credentials(entry)
-    assert isinstance(provider, ChainedProvider)
-    types = [type(p) for p in provider._providers]
-    assert types == [EnvAWSProvider, IamAwsProvider]
+    chain = _s3_provider_chain(entry)
+    assert [type(p) for p in chain] == [EnvAWSProvider, IamAwsProvider]
+
+
+def test_s3_chain_inserts_inline_between_env_and_iam():
+    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
+                              access_key="ak", secret_key="sk")
+    chain = _s3_provider_chain(entry)
+    assert [type(p) for p in chain] == [EnvAWSProvider, StaticProvider, IamAwsProvider]
 
 
 def test_minio_bare_uses_env_minio_provider():

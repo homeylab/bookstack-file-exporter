@@ -64,6 +64,17 @@ _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
 
+def _s3_provider_chain(entry: models.BaseStorageConfig) -> list[Provider]:
+    """Provider list for an s3 entry: env > [inline] > IAM role (EC2/ECS/EKS). No ~/.aws
+    file tier. Returned as a list so the composition is testable without reaching into
+    minio-py's private ChainedProvider internals."""
+    chain: list[Provider] = [EnvAWSProvider()]
+    if entry.access_key and entry.secret_key:
+        chain.append(StaticProvider(entry.access_key, entry.secret_key))
+    chain.append(IamAwsProvider())
+    return chain
+
+
 def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
     """Resolve one entry's credentials to a minio-py Provider (first match wins):
 
@@ -89,11 +100,7 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
               if entry.access_key and entry.secret_key else None)
 
     if entry.type == "s3":
-        # env > inline > IAM role (IamAwsProvider auto-detects EC2/ECS/EKS). No ~/.aws
-        # file tier and no static creds required: a role can supply them at runtime.
-        if inline:
-            return ChainedProvider([EnvAWSProvider(), inline, IamAwsProvider()])
-        return ChainedProvider([EnvAWSProvider(), IamAwsProvider()])
+        return ChainedProvider(_s3_provider_chain(entry))
 
     # minio: env > inline (no file tier; minio has no IMDS equivalent)
     if inline:
