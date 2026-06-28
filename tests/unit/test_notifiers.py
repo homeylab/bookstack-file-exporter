@@ -4,7 +4,8 @@
 import os
 from unittest.mock import MagicMock
 
-from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.notify import notifiers
+from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 from bookstack_file_exporter.notify.notifiers import AppRiseNotify
 
 
@@ -34,14 +35,14 @@ class TestGetMessageTextSuccessBranch:
 
     def test_result_local_none_produces_generic_success_body(self):
         notifier = _make_notifier()
-        result = NotifyResult(local=None, remote=[], removed=[])
+        result = NotifyResult(local=None, uploads=[], removed=[])
         body = notifier._get_message_text(None, result=result)
         assert "completed successfully" in body
         assert "Archive:" not in body
 
     def test_local_only_shows_archive_line_no_suffix_no_remote_no_pruned(self):
         notifier = _make_notifier()
-        result = NotifyResult(local="/data/export.tgz", remote=[], removed=[])
+        result = NotifyResult(local="/data/export.tgz", uploads=[], removed=[])
         body = notifier._get_message_text(None, result=result)
         assert "Archive: /data/export.tgz" in body
         assert "(removed locally after upload)" not in body
@@ -51,7 +52,7 @@ class TestGetMessageTextSuccessBranch:
     def test_local_in_removed_shows_suffix(self):
         notifier = _make_notifier()
         local = "/data/export.tgz"
-        result = NotifyResult(local=local, remote=[], removed=[local])
+        result = NotifyResult(local=local, uploads=[], removed=[local])
         body = notifier._get_message_text(None, result=result)
         assert "Archive: /data/export.tgz (removed locally after upload)" in body
 
@@ -59,7 +60,8 @@ class TestGetMessageTextSuccessBranch:
         notifier = _make_notifier()
         result = NotifyResult(
             local="/data/export.tgz",
-            remote=["bucket1/backups/export.tgz", "bucket2/export.tgz"],
+            uploads=[UploadOutcome("t1", "bucket1/backups/export.tgz"),
+                     UploadOutcome("t2", "bucket2/export.tgz")],
             removed=[],
         )
         body = notifier._get_message_text(None, result=result)
@@ -69,7 +71,7 @@ class TestGetMessageTextSuccessBranch:
         notifier = _make_notifier()
         local = "/data/new.tgz"
         removed = ["/data/old1.tgz", "/data/old2.tgz", local]
-        result = NotifyResult(local=local, remote=[], removed=removed)
+        result = NotifyResult(local=local, uploads=[], removed=removed)
         body = notifier._get_message_text(None, result=result)
         # local is in removed (suffix present) + 2 old archives pruned
         assert "(removed locally after upload)" in body
@@ -79,7 +81,7 @@ class TestGetMessageTextSuccessBranch:
         notifier = _make_notifier()
         local = "/data/new.tgz"
         removed = ["/data/old1.tgz", "/data/old2.tgz"]
-        result = NotifyResult(local=local, remote=[], removed=removed)
+        result = NotifyResult(local=local, uploads=[], removed=removed)
         body = notifier._get_message_text(None, result=result)
         assert "(removed locally after upload)" not in body
         assert "Pruned 2 old local archive(s)" in body
@@ -92,7 +94,7 @@ class TestGetMessageTextSuccessBranch:
         local_abs = os.path.join(cwd, "export.tgz")
         local_rel = "export.tgz"
         # Pass abs as local, relative form in removed — should still match
-        result = NotifyResult(local=local_abs, remote=[], removed=[local_rel])
+        result = NotifyResult(local=local_abs, uploads=[], removed=[local_rel])
         body = notifier._get_message_text(None, result=result)
         assert "(removed locally after upload)" in body
 
@@ -101,7 +103,7 @@ class TestGetMessageTextSuccessBranch:
         notifier = _make_notifier()
         local_rel = "export.tgz"
         removed_abs = os.path.join(os.getcwd(), "export.tgz")
-        result = NotifyResult(local=local_rel, remote=[], removed=[removed_abs])
+        result = NotifyResult(local=local_rel, uploads=[], removed=[removed_abs])
         body = notifier._get_message_text(None, result=result)
         assert "(removed locally after upload)" in body
 
@@ -111,7 +113,7 @@ class TestGetMessageTextSuccessBranch:
         notifier = _make_notifier()
         local_rel = "new.tgz"
         removed = [os.path.join(os.getcwd(), "new.tgz"), "/data/old1.tgz", "/data/old2.tgz"]
-        result = NotifyResult(local=local_rel, remote=[], removed=removed)
+        result = NotifyResult(local=local_rel, uploads=[], removed=removed)
         body = notifier._get_message_text(None, result=result)
         # current archive (mixed form) → suffix, NOT counted among pruned old archives
         assert "(removed locally after upload)" in body
@@ -120,10 +122,49 @@ class TestGetMessageTextSuccessBranch:
     def test_failure_branch_unchanged_no_archive_lines(self):
         notifier = _make_notifier()
         err = ValueError("something broke")
-        result = NotifyResult(local="/data/export.tgz", remote=["bucket/x"], removed=[])
+        result = NotifyResult(
+            local="/data/export.tgz", uploads=[UploadOutcome("t", "bucket/x")], removed=[]
+        )
         body = notifier._get_message_text(err, result=result)
         assert "unrecoverable error" in body
         assert "something broke" in body
         assert "Archive:" not in body
         assert "Uploaded to:" not in body
         assert "Pruned" not in body
+
+
+# ---------------------------------------------------------------------------
+# New tests for 3-state title and partial body rendering (Task 3)
+# ---------------------------------------------------------------------------
+
+def _notifier():
+    inst = notifiers.AppRiseNotify.__new__(notifiers.AppRiseNotify)
+    inst.config = MagicMock(custom_title=None)
+    return inst
+
+
+def test_title_partial():
+    inst = _notifier()
+    result = NotifyResult(status=ExportStatus.PARTIAL, local="/a/b.tgz")
+    assert inst._get_title(None, result).endswith("Partial")
+
+
+def test_title_success():
+    inst = _notifier()
+    result = NotifyResult(status=ExportStatus.SUCCESS, local="/a/b.tgz")
+    assert inst._get_title(None, result).endswith("Success")
+
+
+def test_title_failed_on_exception():
+    assert _notifier()._get_title(ValueError("x"), None).endswith("Failed")
+
+
+def test_body_lists_ok_and_failed_targets():
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", None),
+                 UploadOutcome("s3/dr", None, "connection refused")])
+    body = inst._get_message_text(None, result)
+    assert "Uploaded to: minio-b/a.tgz" in body      # ok target -> dest
+    assert "Failed: s3/dr - connection refused" in body  # failed target -> label + error
