@@ -891,6 +891,10 @@ local `.tgz` when `keep_last >= 0`). It is reported via the `on_failure` notific
 not silently treated as a clean success. When `keep_last < 0` (local archive deleted) AND every
 upload fails, the run is a hard failure — the local archive is preserved so the run can be retried.
 
+A target that uploads successfully but whose retention cleanup (pruning old objects per `keep_last`)
+fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced
+(exit 3 / `on_failure` / `degraded` health) so unbounded object growth is noticed.
+
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
 

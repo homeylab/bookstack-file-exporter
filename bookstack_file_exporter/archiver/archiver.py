@@ -173,20 +173,29 @@ class Archiver:
         try:
             archiver = self._s3_archiver_cls(provider_config)
             dest = archiver.upload_backup(self._archiver.archive_file)
-            archiver.clean_up(self._archiver.file_extension_map['tgz'])
-            return UploadOutcome(label=label, dest=dest, error=None)
         except Exception as err:  # pylint: disable=broad-except
             # attempt-all: record and continue so other targets still run
             log.error("Upload to target '%s' failed: %s", label, err)
             return UploadOutcome(label=label, dest=None, error=str(err))
+        # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
+        # keep dest (never flip to failed) but flag a warning so the run is degraded.
+        try:
+            archiver.clean_up(self._archiver.file_extension_map['tgz'])
+        except Exception as err:  # pylint: disable=broad-except
+            log.error("Remote retention cleanup for target '%s' failed (upload OK): %s",
+                      label, err)
+            return UploadOutcome(label=label, dest=dest, error=None, warning=str(err))
+        return UploadOutcome(label=label, dest=dest, error=None)
 
     def resolve_remote_status(self, outcomes: list[UploadOutcome]) -> ExportStatus:
         """Derive run status from upload outcomes. Raise AggregateUploadError only when
-        NO durable copy survives: every upload failed AND keep_last<0 deletes the local."""
+        NO durable copy survives: every upload failed AND keep_last<0 deletes the local.
+        A target that uploaded but whose retention cleanup failed (warning) downgrades
+        SUCCESS to PARTIAL."""
         if not outcomes:
             return ExportStatus.SUCCESS
         n_ok = sum(1 for o in outcomes if o.dest is not None)
-        if n_ok == len(outcomes):
+        if n_ok == len(outcomes) and not any(o.warning for o in outcomes):
             return ExportStatus.SUCCESS
         if n_ok == 0 and self.config.user_inputs.keep_last is not None \
                 and self.config.user_inputs.keep_last < 0:

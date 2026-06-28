@@ -66,7 +66,7 @@ class AppRiseNotify:
                 f"Error message: {str(error_msg)}",
             ])
         partial = result is not None and result.status is ExportStatus.PARTIAL
-        headline = ("Bookstack File Exporter completed with upload errors."
+        headline = ("Bookstack File Exporter completed with errors."
                     if partial else
                     "Bookstack File Exporter completed successfully.")
         lines = ["", headline, "", f"Completed At: {timestamp}"]
@@ -85,6 +85,8 @@ class AppRiseNotify:
             for outcome in result.uploads:
                 if not outcome.dest:
                     lines.append(f"Failed: {outcome.label} - {outcome.error}")
+                elif outcome.warning:
+                    lines.append(f"Warning: {outcome.label} - {outcome.warning}")
             pruned_count = len(removed_abs - {local_abs})
             if pruned_count > 0:
                 lines.append(f"Pruned {pruned_count} old local archive(s)")

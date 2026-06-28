@@ -168,3 +168,13 @@ def test_body_lists_ok_and_failed_targets():
     body = inst._get_message_text(None, result)
     assert "Uploaded to: minio-b/a.tgz" in body      # ok target -> dest
     assert "Failed: s3/dr - connection refused" in body  # failed target -> label + error
+
+
+def test_body_lists_retention_warning():
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")])
+    body = inst._get_message_text(None, result)
+    assert "Uploaded to: s3-aws/a.tgz" in body
+    assert "Warning: s3/aws - delete denied" in body

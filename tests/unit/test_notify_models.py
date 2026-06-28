@@ -28,3 +28,8 @@ def test_notify_result_carries_uploads():
     out = [UploadOutcome("minio/b", "b/x.tgz", None)]
     r = NotifyResult(status=ExportStatus.PARTIAL, local="/a/b.tgz", uploads=out)
     assert r.uploads[0].label == "minio/b"
+
+
+def test_upload_outcome_warning_defaults_none_and_settable():
+    assert UploadOutcome(label="x").warning is None
+    assert UploadOutcome(label="x", dest="d", warning="w").warning == "w"

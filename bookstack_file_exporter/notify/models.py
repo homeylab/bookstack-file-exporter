@@ -10,10 +10,12 @@ class ExportStatus(Enum):
 
 @dataclass
 class UploadOutcome:
-    """Per-target upload result. dest set on success, error set on failure."""
+    """Per-target upload result. dest set on success; error set on upload failure;
+    warning set when the upload landed but post-upload retention cleanup failed."""
     label: str                  # provider_config.config.label
     dest: str | None = None     # "bucket/object" on success
-    error: str | None = None    # str(exception) on failure
+    error: str | None = None    # str(exception) on upload failure
+    warning: str | None = None  # str(exception) when upload OK but retention cleanup failed
 
 
 @dataclass
