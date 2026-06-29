@@ -159,9 +159,7 @@ class ConfigNode:
 
     def _generate_remote_config(self) -> list[StorageProviderConfig]:
         configs: list[StorageProviderConfig] = []
-        if not self.user_inputs.object_storage:
-            return configs
-        for entry in self.user_inputs.object_storage:
+        for entry in self.user_inputs.object_storage or []:
             provider_config = StorageProviderConfig(
                 storage_type=entry.type,
                 endpoint=_resolve_endpoint(entry),
