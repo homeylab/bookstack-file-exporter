@@ -12,7 +12,7 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
-from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
@@ -63,7 +63,9 @@ def _run_once(config: ConfigNode) -> int:
     signal.signal(signal.SIGINT, _handle_signal)
 
     try:
-        run(config)
+        result = run(config)
+        if result is not None and result.status is ExportStatus.PARTIAL:
+            return 3
         return 0
     except KeyboardInterrupt:
         signum = int(received.get("signum", signal.SIGINT))
@@ -112,7 +114,10 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         try:
             result = run(config, stop)
             if status:
-                status.mark_success(result)
+                if result is not None and result.status is ExportStatus.PARTIAL:
+                    status.mark_degraded(result)
+                else:
+                    status.mark_success(result)
         except Exception as err:  # pylint: disable=broad-except
             # log-and-continue: a failed cycle still waits the interval below
             # before retrying (no busy-loop), and the failure notification has
@@ -235,16 +240,18 @@ def exporter(config: ConfigNode, stop=None):
         # create tar if needed and gzip tar
         archive.create_archive()
 
-        # archive to remote targets
-        remote = archive.archive_remote()
-        # if remote target is specified and clean is true
-        # clean up the .tgz archive since it is already uploaded
+        # attempt every remote target, then derive status (raises only when no copy survives)
+        outcomes = archive.archive_remote()
+        status = archive.resolve_remote_status(outcomes)
+
+        # clean_up only runs when a durable copy survives (hard-fail raised above, so the
+        # local .tgz is preserved for retry).
         removed = archive.clean_up()
 
         local = archive.archive_file
         log.info("Created file archive: %s.tgz", archive.archive_dir)
         log.info("Completed run")
-        return NotifyResult(local=local, remote=remote, removed=removed)
+        return NotifyResult(status=status, local=local, uploads=outcomes, removed=removed)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
         # exception, one-shot KeyboardInterrupt). No-op on success: the tar is

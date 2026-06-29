@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bookstack_file_exporter import run
-from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 
 
 def _config(run_interval, run_once=False, run_schedule=None, health_port=None):
@@ -707,7 +707,9 @@ class TestExporterReturnValue:
             chapter_nodes={}, page_nodes={10: MagicMock()}
         )
         mock_archiver.has_exported_content = True
-        mock_archiver.archive_remote.return_value = ["bucket/export.tgz"]
+        mock_archiver.archive_remote.return_value = [
+            UploadOutcome("s3/b", "bucket/export.tgz", None)]
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
         mock_archiver.clean_up.return_value = ["/local/export.tgz"]
         mock_archiver.archive_file = "/local/export.tgz"
 
@@ -715,7 +717,8 @@ class TestExporterReturnValue:
 
         assert isinstance(result, NotifyResult)
         assert result.local == "/local/export.tgz"
-        assert result.remote == ["bucket/export.tgz"]
+        assert result.status is ExportStatus.SUCCESS
+        assert [o.dest for o in result.uploads] == ["bucket/export.tgz"]
         assert result.removed == ["/local/export.tgz"]
 
     def test_success_path_do_notify_called_with_result(self, monkeypatch):
@@ -728,6 +731,7 @@ class TestExporterReturnValue:
         )
         mock_archiver.has_exported_content = True
         mock_archiver.archive_remote.return_value = []
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
         mock_archiver.clean_up.return_value = []
         mock_archiver.archive_file = "/local/export.tgz"
 
@@ -954,3 +958,33 @@ class TestDoubleSignalForceKill:
         assert result == 0
         # run() received the stop event positionally or by keyword
         assert mock_run.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# _run_once() — direct status/exit-code tests
+# ---------------------------------------------------------------------------
+
+def test_run_once_returns_zero_on_success():
+    with patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run",
+                      return_value=NotifyResult(status=ExportStatus.SUCCESS, local="/a/b.tgz")):
+        assert run._run_once(MagicMock()) == 0
+
+
+def test_run_once_returns_three_on_partial():
+    with patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run",
+                      return_value=NotifyResult(status=ExportStatus.PARTIAL, local="/a/b.tgz")):
+        assert run._run_once(MagicMock()) == 3
+
+
+def test_run_once_returns_one_on_exception():
+    with patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run", side_effect=RuntimeError("boom")):
+        assert run._run_once(MagicMock()) == 1
+
+
+def test_run_once_returns_zero_when_result_none():
+    with patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run", return_value=None):
+        assert run._run_once(MagicMock()) == 0

@@ -10,8 +10,9 @@ from bookstack_file_exporter.archiver.node_archiver import (
     ChapterArchiver,
     PageArchiver,
 )
-from bookstack_file_exporter.archiver.minio_archiver import MinioArchiver
+from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
 from bookstack_file_exporter.common.util import HttpHelper
@@ -19,6 +20,11 @@ from bookstack_file_exporter.common.util import HttpHelper
 log = logging.getLogger(__name__)
 
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+
+class AggregateUploadError(Exception):
+    """All upload targets failed AND no durable local copy survives (keep_last < 0)."""
+
 
 # pylint: disable=too-many-instance-attributes
 class Archiver:
@@ -35,7 +41,7 @@ class Archiver:
         for use for handling bookstack exports and remote uploads.
     """
     def __init__(self, config: ConfigNode, http_client: HttpHelper,
-                 node_archiver=None, minio_archiver_cls=MinioArchiver):
+                 node_archiver=None, s3_archiver_cls=S3CompatibleArchiver):
         self.config = config
         # for convenience
         self.base_dir = self._level_base_dir(config.base_dir_name,
@@ -44,7 +50,7 @@ class Archiver:
         self._archiver: NodeArchiver = (
             node_archiver if node_archiver is not None else self._build_archiver(http_client)
         )
-        self._minio_archiver_cls = minio_archiver_cls
+        self._s3_archiver_cls = s3_archiver_cls
 
     def _build_archiver(self, http_client: HttpHelper) -> NodeArchiver:
         """Return the appropriate archiver based on the configured export level."""
@@ -150,31 +156,55 @@ class Archiver:
         self._archiver.gzip_archive()
 
     # send to remote systems
-    def archive_remote(self) -> list[str]:
-        """for each target, do their respective tasks; return list of remote dest strings"""
-        if not self.config.object_storage_config:
-            return []
-        handlers = {
-            "minio": self._archive_minio,
-            "s3": self._archive_s3,
-        }
-        dests: list[str] = []
-        for key, value in self.config.object_storage_config.items():
-            handler = handlers.get(key)
-            if handler is None:
-                raise ValueError(f"unsupported remote storage type: {key}")
-            dests.append(handler(value))
-        return dests
+    def archive_remote(self) -> list[UploadOutcome]:
+        """Upload to every configured target, attempting all even if some fail.
 
-    def _archive_minio(self, obj_config: StorageProviderConfig) -> str:
-        minio_archiver = self._minio_archiver_cls(obj_config.access_key,
-                                                  obj_config.secret_key, obj_config.config)
-        dest = minio_archiver.upload_backup(self._archiver.archive_file)
-        minio_archiver.clean_up(self._archiver.file_extension_map['tgz'])
-        return dest
+        Returns one UploadOutcome per target (dest on success, error on upload
+        failure, or dest+warning when the upload landed but retention cleanup failed). Never
+        raises on a per-target upload error — aggregate status is decided by
+        resolve_remote_status. Both 'minio' and 's3' share S3CompatibleArchiver.
+        """
+        outcomes: list[UploadOutcome] = []
+        for entry in self.config.object_storage_config or []:
+            outcomes.append(self._upload(entry))
+        return outcomes
 
-    def _archive_s3(self, obj_config: StorageProviderConfig):
-        raise NotImplementedError("S3 remote storage is not yet implemented")
+    def _upload(self, provider_config: StorageProviderConfig) -> UploadOutcome:
+        label = provider_config.config.label
+        try:
+            archiver = self._s3_archiver_cls(provider_config)
+            dest = archiver.upload_backup(self._archiver.archive_file)
+        except Exception as err:  # pylint: disable=broad-except
+            # attempt-all: record and continue so other targets still run
+            log.error("Upload to target '%s' failed: %s", label, err)
+            return UploadOutcome(label=label, dest=None, error=str(err))
+        # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
+        # keep dest (never flip to failed) but flag a warning so the run is degraded.
+        try:
+            archiver.clean_up(self._archiver.file_extension_map['tgz'])
+        except Exception as err:  # pylint: disable=broad-except
+            log.error("Remote retention cleanup for target '%s' failed (upload OK): %s",
+                      label, err)
+            return UploadOutcome(label=label, dest=dest, error=None, warning=str(err))
+        return UploadOutcome(label=label, dest=dest, error=None)
+
+    def resolve_remote_status(self, outcomes: list[UploadOutcome]) -> ExportStatus:
+        """Derive run status from upload outcomes. Raise AggregateUploadError only when
+        NO durable copy survives: every upload failed AND keep_last<0 deletes the local.
+        A target that uploaded but whose retention cleanup failed (warning) downgrades
+        SUCCESS to PARTIAL."""
+        if not outcomes:
+            return ExportStatus.SUCCESS
+        n_ok = sum(1 for o in outcomes if o.dest is not None)
+        if n_ok == len(outcomes) and not any(o.warning for o in outcomes):
+            return ExportStatus.SUCCESS
+        if n_ok == 0 and self.config.user_inputs.keep_last is not None \
+                and self.config.user_inputs.keep_last < 0:
+            failed = ", ".join(o.label for o in outcomes)
+            raise AggregateUploadError(
+                f"all upload targets failed and no local copy is kept "
+                f"(keep_last<0): {failed}")
+        return ExportStatus.PARTIAL
 
     def clean_up(self) -> list[str]:
         """remove archive after sending to remote target; return files deleted"""

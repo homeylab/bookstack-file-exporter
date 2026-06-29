@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime
 from typing import Literal
@@ -5,16 +6,46 @@ from typing import Literal
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator, model_validator
 from croniter import croniter, CroniterError
 
+log = logging.getLogger(__name__)
+
 # pylint: disable=too-few-public-methods
-class ObjectStorageConfig(BaseModel):
-    """YAML schema for minio configuration"""
+class BaseStorageConfig(BaseModel):
+    """YAML schema for one object_storage entry (minio or s3).
+
+    Permissive model: per-type required-ness (minio->host, s3->region) is checked at
+    runtime in remote.py is_valid(); only the always-true cred-pair invariant is enforced
+    here. Separate per-type models are deferred until fields genuinely diverge (YAGNI).
+    """
+    type: Literal["minio", "s3"]
     host: str | None = ""
+    bucket: str
+    region: str | None = None
+    path: str | None = ""
+    secure: bool = True
+    keep_last: int | None = 0
     access_key: str | None = ""
     secret_key: str | None = ""
-    bucket: str
-    path: str | None = ""
-    region: str
-    keep_last: int | None = 0
+    access_key_env: str | None = None
+    secret_key_env: str | None = None
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        """Target identity, intended for logs/notifications (consumed today only by the
+        uniqueness check below; wired into output in a later task). Excludes creds (secrets)
+        and host/region by design, so a bare type/bucket collision forces a distinct name."""
+        return self.name or f"{self.type}/{self.bucket}"
+
+    @model_validator(mode="after")
+    def _check_cred_pairs(self):
+        """A half cred pair is always a mistake, regardless of the fallback chain."""
+        if bool(self.access_key) != bool(self.secret_key):
+            raise ValueError(
+                "access_key and secret_key must be set together (or both omitted)")
+        if bool(self.access_key_env) != bool(self.secret_key_env):
+            raise ValueError(
+                "access_key_env and secret_key_env must be set together (or both omitted)")
+        return self
 
 # pylint: disable=too-few-public-methods
 class BookstackAccess(BaseModel):
@@ -36,6 +67,17 @@ class Assets(BaseModel):
         validation_alias=AliasChoices("modify_links", "modify_markdown"),
     )
     export_meta: bool | None = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _warn_deprecated_keys(cls, raw):
+        """Nudge on the deprecated 'modify_markdown' key. The value is still honored
+        via the validation_alias above; this only logs a rename reminder."""
+        if isinstance(raw, dict) and "modify_markdown" in raw:
+            log.warning(
+                "DEPRECATED: 'assets.modify_markdown' is deprecated, use "
+                "'assets.modify_links' instead. It will be removed in a future version.")
+        return raw
 
 class HttpConfig(BaseModel):
     """YAML schema for user provided http settings"""
@@ -118,7 +160,7 @@ class UserInput(BaseModel):
     # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
-    minio: ObjectStorageConfig | None = None
+    object_storage: list[BaseStorageConfig] | None = None
     keep_last: int | None = 0
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
@@ -135,6 +177,35 @@ class UserInput(BaseModel):
     http_config: HttpConfig | None = HttpConfig()
     notifications: Notifications | None = None
     filters: Filters | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_keys(cls, raw):
+        """Hard-fail on removed v2 keys that pydantic would otherwise silently drop
+        (extra='ignore'). 'minio:' was REMOVED in v3 (not deprecated -- it no longer
+        does anything), so ANY presence is an error: a backup tool must never run on a
+        stale config that silently produces no uploads. v3.0.0 is the expected break."""
+        if isinstance(raw, dict) and "minio" in raw:
+            raise ValueError(
+                "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
+                "See the 'Migrating from v2' section in the README.")
+        return raw
+
+    @model_validator(mode="after")
+    def _check_unique_object_storage_labels(self):
+        """Enforce distinct labels across all object_storage entries."""
+        if not self.object_storage:
+            return self
+        seen: set[str] = set()
+        # pylint: disable-next=not-an-iterable
+        for entry in self.object_storage:
+            lbl = entry.label
+            if lbl in seen:
+                raise ValueError(
+                    f"Duplicate object_storage label {lbl!r}. "
+                    "Two entries share the same type/bucket; set a distinct 'name' on each.")
+            seen.add(lbl)
+        return self
 
     @model_validator(mode="after")
     def _check_schedule_config(self):

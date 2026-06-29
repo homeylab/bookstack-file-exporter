@@ -121,11 +121,13 @@ def test_build_user_input_logs_error_on_schema_failure(caplog):
 
 
 def test_build_user_input_emits_deprecation_warning_for_legacy_key(caplog):
-    """build_user_input emits a DEPRECATED warning when modify_markdown is present."""
+    """build_user_input emits a DEPRECATED warning when modify_markdown is present.
+
+    The warning now originates from the Assets model validator, hence the models logger."""
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_markdown": True}
 
-    logger_name = "bookstack_file_exporter.config_helper.config_helper"
+    logger_name = "bookstack_file_exporter.config_helper.models"
     with caplog.at_level(logging.WARNING, logger=logger_name):
         build_user_input(raw)
 
@@ -144,7 +146,7 @@ def test_build_user_input_no_warning_without_legacy_key(caplog):
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_links": True}
 
-    logger_name = "bookstack_file_exporter.config_helper.config_helper"
+    logger_name = "bookstack_file_exporter.config_helper.models"
     with caplog.at_level(logging.WARNING, logger=logger_name):
         build_user_input(raw)
 
@@ -186,3 +188,43 @@ def test_generate_urls_preserves_existing_scheme(host):
     """Hosts that already carry a scheme are left untouched (no prefix added)."""
     urls = _config_with_host(host)._generate_urls()
     assert urls["books"] == f"{host}/api/books"
+
+
+# ---------------------------------------------------------------------------
+# _generate_remote_config — orchestration loop (list build + per-entry validate)
+# ---------------------------------------------------------------------------
+def _config_with_object_storage(entries) -> ConfigNode:
+    """Build a bare ConfigNode exposing only what _generate_remote_config reads."""
+    node = ConfigNode.__new__(ConfigNode)
+    node.user_inputs = SimpleNamespace(object_storage=entries)
+    return node
+
+
+def test_generate_remote_config_empty_when_unset():
+    """No object_storage configured → empty list (not None, not a dict)."""
+    result = _config_with_object_storage(None)._generate_remote_config()
+    assert isinstance(result, list)
+    assert result == []  # pylint: disable=use-implicit-booleaness-not-comparison
+
+
+def test_generate_remote_config_builds_resolved_list():
+    """Each entry becomes a StorageProviderConfig with resolved type + endpoint, in order.
+
+    Exercises the full orchestration seam: list iteration, _resolve_endpoint (minio host
+    vs s3 default-from-region), _resolve_credentials, and is_valid acceptance.
+    """
+    entries = [
+        models.BaseStorageConfig(type="minio", bucket="b1", host="minio.local:9000"),
+        models.BaseStorageConfig(type="s3", bucket="b2", region="eu-west-1"),
+    ]
+    result = _config_with_object_storage(entries)._generate_remote_config()
+    assert [c.type for c in result] == ["minio", "s3"]
+    assert result[0].endpoint == "minio.local:9000"           # explicit host
+    assert result[1].endpoint == "s3.eu-west-1.amazonaws.com"  # s3 default-from-region
+
+
+def test_generate_remote_config_raises_on_invalid_entry():
+    """An entry failing per-type validation (s3 without region) raises at config load."""
+    entries = [models.BaseStorageConfig(type="s3", bucket="b", region=None)]
+    with pytest.raises(ValueError, match="provided s3 configuration is invalid"):
+        _config_with_object_storage(entries)._generate_remote_config()

@@ -2,7 +2,7 @@ import logging
 
 from bookstack_file_exporter.config_helper import models, notifications
 from bookstack_file_exporter.notify import notifiers
-from bookstack_file_exporter.notify.models import NotifyResult
+from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult
 
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,10 @@ class NotifyHandler:
         a_config = notifications.AppRiseNotifyConfig(config)
         a_config.validate()
         apprise = notifiers.AppRiseNotify(a_config)
-        # only send notification if on_success or on_failure is set
-        if (not excep and a_config.on_success) or (excep and a_config.on_failure):
+        # PARTIAL is a degraded run: treat it like a failure for gating so on_failure
+        # subscribers are alerted (a copy survived, but a target did not receive it).
+        is_partial = result is not None and result.status is ExportStatus.PARTIAL
+        fire_failure = excep is not None or is_partial
+        if (not fire_failure and a_config.on_success) or (fire_failure and a_config.on_failure):
             log.info("Sending notification for run status")
             apprise.notify(excep, result)

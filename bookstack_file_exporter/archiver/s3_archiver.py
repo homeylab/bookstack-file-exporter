@@ -13,30 +13,27 @@ from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
-class MinioArchiver:
-    """
-    MinioArchiver handles uploads, lifecycle, and validations for minio archives.
-    
+class S3CompatibleArchiver:
+    """Handles uploads, retention, and bucket validation for any S3-compatible target
+    (AWS S3, MinIO, or any other S3-compatible store). Both types share this class — the
+    upload/cleanup API surface (fput_object, list_objects, remove_object, bucket_exists)
+    is identical.
+
     Args:
-        :config: <StorageProviderConfig> = minio configuration
-
-        :bucket: <str> = upload bucket
-        
-        :path: <str> (optional) = specify bucket path for upload
-
-    Returns:
-        MinioArchiver instance for archival use
+        :provider_config: <StorageProviderConfig> = resolved endpoint, secure flag,
+            credential Provider, and the raw entry (bucket/path/region/keep_last).
     """
-    def __init__(self, access_key: str, secret_key: str, config: StorageProviderConfig):
+    def __init__(self, provider_config: StorageProviderConfig):
+        cfg = provider_config.config
         self._client = Minio(
-            config.host,
-            access_key=access_key,
-            secret_key=secret_key,
-            region=config.region
+            provider_config.endpoint,
+            credentials=provider_config.credentials,
+            secure=provider_config.secure,
+            region=cfg.region,
         )
-        self.bucket = config.bucket
-        self.path = self._generate_path(config.path)
-        self.keep_last = config.keep_last
+        self.bucket = cfg.bucket
+        self.path = self._generate_path(cfg.path)
+        self.keep_last = cfg.keep_last
         self._validate_bucket()
 
     def _validate_bucket(self):
@@ -47,7 +44,7 @@ class MinioArchiver:
         return path_name.rstrip('/') if path_name else ""
 
     def upload_backup(self, local_file_path: str) -> str:
-        """upload archive file to minio bucket; return 'bucket/object_path' dest string"""
+        """upload archive file to object storage bucket; return 'bucket/object_path' dest string"""
         # this will be the name of the object to upload
         # only get the file name not path
         # we are going to use path provided by user for object storage
@@ -72,9 +69,10 @@ class MinioArchiver:
 
     def _scan_objects(self, file_extension: str) -> list[MinioObject]:
         filter_str = "bookstack_export_"
-        # prefix should end in '/' for minio
+        # prefix should end in '/' for object listing; empty path -> root listing
+        # (a "/" prefix matches nothing, so empty-path retention would silently no-op)
         # ref: https://min.io/docs/minio/linux/developers/python/API.html#list_objects
-        path_prefix = self.path + "/"
+        path_prefix = f"{self.path}/" if self.path else ""
         # get all objects in archive path/directory
         full_list: list[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
         # validate and filter out non managed objects
@@ -85,17 +83,17 @@ class MinioArchiver:
     def _get_stale_objects(self, file_extension: str) -> list[MinioObject]:
         minio_objects = self._scan_objects(file_extension)
         if not minio_objects:
-            log.debug("No minio objects found to clean up")
+            log.debug("No objects found to clean up")
             return []
         if self.keep_last < 0:
             # we want to keep one copy at least
             # last copy that remains if local is deleted
-            log.debug("Minio 'keep_last' set to negative number, ignoring")
+            log.debug("'keep_last' set to negative number, ignoring")
             return []
         to_delete = []
         if len(minio_objects) > self.keep_last:
-            log.debug("Number of minio objects is greater than 'keep_last'")
-            log.debug("Running clean up of minio objects")
+            log.debug("Number of objects is greater than 'keep_last'")
+            log.debug("Running clean up of objects")
             to_delete = self._filter_objects(minio_objects)
         return to_delete
 
@@ -105,7 +103,7 @@ class MinioArchiver:
             key=lambda d: d.last_modified,
             keep_last=self.keep_last,
         )
-        log.debug("%d minio objects will be cleaned up", len(objects_to_clean))
+        log.debug("%d objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 
     def _delete_objects(self, minio_objects: list[MinioObject]):

@@ -25,7 +25,7 @@ Table of Contents
     - [Attachments](#attachments)
     - [Modify Links](#modify-links)
   - [Object Storage](#object-storage)
-    - [Minio Backups](#minio-backups)
+    - [Object Storage Upload (MinIO / S3)](#object-storage-upload-minio--s3)
   - [Notifications](#notifications)
     - [apprise](#apprise)
   - [Potential Breaking Upgrades](#potential-breaking-upgrades)
@@ -48,7 +48,7 @@ What it does:
 - The exporter can also [Modify Links](#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
 - YAML configuration file for repeatable and easy runs
 - Can be run via [Python](#run-via-pip) or [Docker](#run-via-docker)
-- Can push archives to remote object storage like [Minio](https://min.io/)
+- Can push archives to remote object storage like [MinIO](https://min.io/) or [AWS S3](https://aws.amazon.com/s3/)
 - Basic housekeeping option (`keep_last`) to keep a tidy archive destination
 - Can run in application mode (always running) using `run_interval` (interval-based) or `run_schedule` (cron-based) properties. Used for scheduling backups.
 
@@ -56,7 +56,7 @@ Supported backup targets are:
 
 1. local
 2. minio
-3. s3 (Not Yet Implemented)
+3. s3
 
 Supported backup formats are based on Bookstack API and shown [here](https://demo.bookstackapp.com/api/docs#pages-exportHtml) and below:
 
@@ -335,8 +335,7 @@ _Ensure [Authentication](#authentication-and-permissions) has been set up before
 
 A full example is also shown below. Optionally, look at `examples/` folder of the github repo for more examples with long descriptions.
 
-For object storage configuration, find more information in their respective sections
-- [Minio](#minio-backups)
+For object storage configuration, find more information in the [Object Storage Upload](#object-storage-upload-minio--s3) section.
 
 **Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.**
 
@@ -362,14 +361,14 @@ http_config:
   retry_count: 5
   additional_headers:
     User-Agent: "test-agent"
-minio:
-  host: "minio.yourdomain.com"
-  access_key: ""
-  secret_key: ""
-  region: "us-east-1"
-  bucket: "mybucket"
-  path: "bookstack/file_backups"
-  keep_last: 5
+object_storage:
+  - type: minio
+    host: "minio.yourdomain.com"
+    region: "us-east-1"
+    bucket: "mybucket"
+    path: "bookstack/file_backups"
+    secure: false
+    keep_last: 5
 output_path: "bkps/"
 assets:
   export_images: true
@@ -429,7 +428,7 @@ More descriptions can be found for each section below:
 | `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
 | `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](#health-endpoint). |
 | `health_host` | `str` | `false` | Optional (default: `0.0.0.0`). Bind address for the `health_port` server. Set to `127.0.0.1` or a specific NIC to restrict exposure on a multi-homed host. Only used when `health_port` is set. |
-| `minio` | `object` | `false` | Optional [Minio](#minio-backups) configuration options. |
+| `object_storage` | `list` | `false` | Optional list of object storage upload targets. See [Object Storage Upload](#object-storage-upload-minio--s3) for details. |
 | `notifications` | `object` | `false` | Optional [notification](#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](#filters) for details. |
 | `filters.exclude_unassigned_books` | `bool` | `false` | Optional (default: `false`). When `true`, drop all books that are not on any shelf, independent of the `books` patterns. See [Filters](#filters) for details. |
@@ -443,9 +442,10 @@ General
 - `BOOKSTACK_TOKEN_ID`
 - `BOOKSTACK_TOKEN_SECRET`
 
-[Minio Credentials](#authentication-1)
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
+[Object Storage Credentials](#object-storage-upload-minio--s3)
+- `MINIO_ACCESS_KEY` — default MinIO access key (single-target MinIO, backward-compatible with v2)
+- `MINIO_SECRET_KEY` — default MinIO secret key
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` — AWS default chain for S3 targets
 
 ## Export Level
 
@@ -759,40 +759,172 @@ Attachment links are rewritten from the live URL to a local relative path.
 Markdown link rewriting is a plain text substitution: if an asset URL appears verbatim anywhere in the markdown (code block, comment, plain text), it is also rewritten. HTML rewriting is scoped to `<img src>` / `<a href>` attributes only, so it is unaffected.
 
 ## Object Storage
-Optionally, target(s) can be specified to upload generated archives to a remote location. Supported object storage providers can be found below:
-- [Minio](#minio-backups)
+Optionally, one or more upload targets can be specified to push generated archives to remote object storage. Optionally, look at `examples/config.yml` in the github repo for a commented-out example.
 
-### Minio Backups
-Optionally, look at `examples/config.yml` in the github repo, which includes a commented-out `minio:` block to enable object storage upload. 
+### Object Storage Upload (MinIO / S3)
 
-#### Authentication
-Credentials can be specified directly in the `minio` configuration section or as environment variables. If specified in config and env, env variable will take precedence.
+Configure one or more upload targets under `object_storage:`. Each entry has a `type`
+(`minio` or `s3`). Any S3-compatible store — Wasabi, Cloudflare R2, Backblaze B2, Ceph, DigitalOcean Spaces — also works under `type: s3` (or `type: minio`) by setting an explicit `host`.
 
-Environment variables:
-- `MINIO_ACCESS_KEY`
-- `MINIO_SECRET_KEY`
-
-#### Example
 ```yaml
-minio:
-    host: "minio.yourdomain.com"
-    region: "us-east-1"
-    bucket: "mybucket"
-    access_key: ""
-    secret_key: ""
-    path: "bookstack/file_backups"
+object_storage:
+  # MinIO, creds from fixed MINIO_ACCESS_KEY / MINIO_SECRET_KEY env vars (default)
+  - type: minio
+    host: minio.local:9000        # required for minio (host:port)
+    bucket: backups
+    region: us-east-1             # optional for minio
+    secure: false                 # local minio is often non-TLS
+    path: exports                 # optional object key prefix
     keep_last: 5
+
+  # Second MinIO with DISTINCT creds kept out of the file -> per-entry env NAMES
+  - type: minio
+    host: minio2.local:9000
+    bucket: backups2
+    secure: false
+    access_key_env: MINIO2_ACCESS_KEY   # names of env vars to read
+    secret_key_env: MINIO2_SECRET_KEY
+
+  # AWS S3 with inline creds
+  - type: s3
+    bucket: aws-backups
+    region: us-east-1             # required for s3
+    # host optional; defaults to s3.<region>.amazonaws.com
+    # secure defaults to true for s3
+    keep_last: 10
+    access_key: AKIA...
+    secret_key: wJalr...
+
+  # AWS S3 with no creds in config -> standard AWS_* env, else IAM role (EC2/ECS/EKS, auto-detected)
+  - type: s3
+    bucket: role-backups
+    region: us-east-1
+    keep_last: 10
 ```
-#### Configuration
+
+#### Entry fields
+
 | Item | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
-| `host` | `str` | `true` | Hostname for minio. A host/ip + port combination is also allowed, example: `minio.yourdomain.com:8443` |
-| `region` | `str` | `true` | This is required since minio api appears to require it. Set to the region your bucket resides in, if unsure, try `us-east-1` |
+| `type` | `str` | `true` | `minio` or `s3` |
+| `host` | `str` | required for `minio` | Hostname (and optional port) for the MinIO instance, e.g. `minio.yourdomain.com:9000`. For `s3`, defaults to `s3.<region>.amazonaws.com` if omitted. |
 | `bucket` | `str` | `true` | Bucket to upload to |
-| `access_key` | `str` | `false` if specified through env var instead, otherwise `true` | Access key for the minio instance |
-| `secret_key` | `str` | `false` if specified through env var, otherwise `true` | Secret key for the minio instance |
-| `path` | `str` | `false` | Optional, path of the backup to use. Will use root bucket path if not set. `<bucket_name>:/<path>/bookstack-<timestamp>.tgz` |
-| `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives in minio.<br>- set to `1+` if you want to retain a certain number of archives<br>-  `0` will result in no action done |
+| `region` | `str` | required for `s3`, optional for `minio` | AWS region or MinIO region. If unsure for MinIO, try `us-east-1`. |
+| `secure` | `bool` | `false` | Optional (default: `true`). Set `false` for plain-HTTP local MinIO. |
+| `path` | `str` | `false` | Optional object key prefix. Will use root bucket path if not set. |
+| `keep_last` | `int` | `false` | Optional (default: `0`). Number of archives to retain in this target.<br>- set to `1+` to retain a certain number of archives<br>- `0` will result in no action done |
+| `access_key` | `str` | `false` | Inline access key credential. |
+| `secret_key` | `str` | `false` | Inline secret key credential. |
+| `access_key_env` | `str` | `false` | Name of an environment variable to read for the access key. Use with `secret_key_env` to keep credentials out of the config file, or to give two targets of the same type distinct credentials. |
+| `secret_key_env` | `str` | `false` | Name of an environment variable to read for the secret key. Must be paired with `access_key_env`. |
+| `name` | `str` | `false` | Optional human-readable label for this target (intended for logs and notifications). If two entries share the same `type` and `bucket` (e.g. same bucket reached via different credentials), each **must** set a distinct `name` — the exporter rejects the config if two entries would produce the same derived `type/bucket` label and no `name` is set to disambiguate. |
+
+#### Credential resolution (per entry, first match wins)
+
+Each entry resolves credentials through an ordered chain; the first source that supplies a
+full key pair wins.
+
+1. **Per-entry named env vars** — `access_key_env` + `secret_key_env` give the *names* of the
+   env vars to read. The only way to give two same-type targets *distinct* credentials kept
+   out of the config file (the standard env vars in tier 2 are global, so they cannot).
+   ```yaml
+   - type: minio
+     host: minio2.local:9000
+     bucket: backups2
+     access_key_env: MINIO2_ACCESS_KEY   # the value is the env var NAME, not the secret
+     secret_key_env: MINIO2_SECRET_KEY
+   ```
+   ```bash
+   export MINIO2_ACCESS_KEY=AKIA... MINIO2_SECRET_KEY=wJalr...
+   ```
+2. **Standard env vars** — the fixed, SDK-recognized names, picked up automatically. These are
+   global: every entry of that type shares them.
+   - minio: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`
+   - s3: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (optional)
+
+   They override inline keys (tier 3), consistent with the BookStack token and 12-factor
+   precedence.
+   ```yaml
+   - type: minio
+     host: minio.local:9000
+     bucket: backups        # no creds in the YAML
+   ```
+   ```bash
+   export MINIO_ACCESS_KEY=AKIA... MINIO_SECRET_KEY=wJalr...
+   ```
+3. **Inline keys** — `access_key` + `secret_key` in the entry itself.
+   ```yaml
+   - type: s3
+     bucket: aws-backups
+     region: us-east-1
+     access_key: AKIA...
+     secret_key: wJalr...
+   ```
+4. **IAM role** (`type: s3` only) — no secrets anywhere; the instance/pod role supplies
+   short-lived credentials at runtime. Auto-detected by minio-py's `IamAwsProvider`: EC2
+   (IMDS), ECS (container credentials), and EKS (IRSA web-identity / Pod Identity) — the
+   cloud-native k8s/EC2 path.
+   ```yaml
+   - type: s3
+     bucket: role-backups
+     region: us-east-1      # no creds in the YAML, no env vars
+   ```
+
+Setting only one half of an *in-config* credential pair (`access_key` without `secret_key`,
+or `*_env` without its partner) is a config error. A partially-set *standard env var* pair
+(e.g. `MINIO_ACCESS_KEY` set but `MINIO_SECRET_KEY` unset) is **ignored, not an error** —
+resolution falls through to the next source.
+
+#### Multi-target upload behavior
+
+Every configured `object_storage` target is attempted, even if an earlier one fails. The run
+outcome is one of:
+
+| Outcome | When | Exit code | Notification |
+|---|---|---|---|
+| Success | all targets uploaded | `0` | "Success" (`on_success`) |
+| Partial | some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
+| Failure | the export itself failed, **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
+
+A *partial* run means at least one durable copy of the backup survived (a remote target, or the
+local `.tgz` when `keep_last >= 0`). It is reported via the `on_failure` notification so it is
+not silently treated as a clean success. When `keep_last < 0` (local archive deleted) AND every
+upload fails, the run is a hard failure — the local archive is preserved so the run can be retried.
+
+A target that uploads successfully but whose retention cleanup (pruning old objects per `keep_last`)
+fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced
+(exit 3 / `on_failure` / `degraded` health) so unbounded object growth is noticed.
+
+In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
+run (distinct from `success` and `failed`).
+
+## Migrating from v2
+
+v3.0.0 removes the single `minio:` block. Move your settings into an `object_storage:`
+list entry with `type: minio`:
+
+```yaml
+# v2 (removed)
+minio:
+  host: minio.local:9000
+  bucket: backups
+  region: us-east-1
+  path: exports
+  keep_last: 5
+
+# v3
+object_storage:
+  - type: minio
+    host: minio.local:9000
+    bucket: backups
+    region: us-east-1          # now optional for minio
+    path: exports
+    keep_last: 5
+    secure: false              # NEW: set false for non-TLS local minio
+```
+
+`MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` env vars work unchanged for a single MinIO entry.
+Note `secure` now defaults to `true`; set `secure: false` for plain-HTTP local MinIO.
 
 ## Notifications
 It is possible to send notifications when an export run succeeds or fails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise). Apprise is a general purpose notification service and has a variety of integrations and includes generic HTTP POST.
@@ -848,6 +980,7 @@ Below are versions that have major changes to the way configuration or exporter 
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 | `1.6.X` | `vX.X.X` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key still works but will be removed in a future release. |
+| `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry with `type: minio`. See [Migrating from v2](#migrating-from-v2) for the exact mapping. |
 
 ## Running Tests
 
