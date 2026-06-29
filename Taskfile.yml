@@ -38,6 +38,14 @@ tasks:
     desc: Run pytest with HTML coverage report
     cmd: uv run pytest --cov-report=html
 
+  test:unit:
+    desc: Run unit tests only (skip integration)
+    cmd: uv run pytest tests/unit
+
+  test:integration:
+    desc: Run integration tests only
+    cmd: uv run pytest -m integration
+
   run:local:
     desc: Smoke-test the installed entrypoint against .local/config.yml (live BookStack)
     interactive: true
