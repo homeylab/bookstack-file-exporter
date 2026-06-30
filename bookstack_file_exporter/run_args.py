@@ -69,8 +69,8 @@ def resolve_log_format(args: argparse.Namespace) -> str:
     env_val = env_val.lower()
     if env_val in LOG_FORMAT:
         return env_val
-    log.warning("Invalid %s '%s'; supported: text (default), json. Using text.",
-                _LOG_FORMAT_ENV, env_val)
+    log.warning("Invalid %s '%s'; supported: %s. Using text.",
+                _LOG_FORMAT_ENV, env_val, ", ".join(LOG_FORMAT))
     return "text"
 
 
