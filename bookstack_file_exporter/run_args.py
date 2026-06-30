@@ -4,21 +4,10 @@ import os
 
 log = logging.getLogger(__name__)
 
-LOG_LEVEL = {
-    'debug': logging.DEBUG,
-    'info': logging.INFO,
-    'warning': logging.WARNING,
-    'error': logging.ERROR
-}
-
+LOG_LEVEL = ("debug", "info", "warning", "error")
 LOG_FORMAT = ("text", "json")
 _LOG_FORMAT_ENV = "LOG_FORMAT"
 _LOG_LEVEL_ENV = "LOG_LEVEL"
-
-
-def get_log_level(log_level:str) -> int:
-    """return log level int"""
-    return LOG_LEVEL[log_level]
 
 def get_args(argv=None) -> argparse.Namespace:
     """return user cmd line options (argv=None -> sys.argv)"""
@@ -41,7 +30,7 @@ def get_args(argv=None) -> argparse.Namespace:
                     default=None,
                     help=('Set verbosity level for logging. CLI overrides the'
                           ' LOG_LEVEL env var; default info.'),
-                    choices=LOG_LEVEL.keys())
+                    choices=LOG_LEVEL)
     parser.add_argument('--run-once',
                     action='store_true',
                     default=False,
