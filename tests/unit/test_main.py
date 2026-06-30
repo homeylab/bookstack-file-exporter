@@ -1,5 +1,6 @@
 """Tests for __main__.main() return type and sys.exit wiring."""
 # pylint: disable=missing-class-docstring,missing-function-docstring
+import logging
 import sys
 from unittest.mock import patch
 
@@ -27,6 +28,24 @@ class TestMainReturnType:
              patch("bookstack_file_exporter.__main__.logging.basicConfig"):
             result = main(_ARGV)
         assert result == sentinel
+
+
+class TestLogLevelWiring:
+    def test_log_level_env_drives_basicconfig_level(self, monkeypatch):
+        """With no -v flag, LOG_LEVEL env must set the configured logging level."""
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        with patch.object(run, "entrypoint", return_value=0), \
+             patch("bookstack_file_exporter.__main__.logging.basicConfig") as mock_bc:
+            main(("--log-format", "text"))
+        assert mock_bc.call_args.kwargs["level"] == logging.DEBUG
+
+    def test_cli_flag_overrides_log_level_env(self, monkeypatch):
+        """-v on the CLI must win over LOG_LEVEL env."""
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        with patch.object(run, "entrypoint", return_value=0), \
+             patch("bookstack_file_exporter.__main__.logging.basicConfig") as mock_bc:
+            main(("-v", "error", "--log-format", "text"))
+        assert mock_bc.call_args.kwargs["level"] == logging.ERROR
 
 
 class TestSysExitWiring:
