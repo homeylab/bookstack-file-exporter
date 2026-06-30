@@ -2,11 +2,16 @@
 
 [← Back to README](../README.md#documentation)
 
-## Notifications
+- [General](#general)
+- [Format](#format)
+- [apprise](#apprise)
+
+## General
 It is possible to send notifications when an export run succeeds or fails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise). Apprise is a general purpose notification service and has a variety of integrations and includes generic HTTP POST.
 
 Notifications are optional and the `notification` section can be omitted/removed/commented out entirely to keep a smaller configuration if not required.
 
+## Format
 The title for notifications is configurable but if not specified, a default will be used. Example:
 ```
 ##### Failure Message #####
@@ -31,7 +36,7 @@ Pruned 2 old local archive(s)
 ```
 The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each remote destination, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
 
-### apprise
+## apprise
 The apprise configuration is a part of the configuration yaml file under the notifications section and can be modified under `notifications.apprise`.
 
 | Item | Type | Description |

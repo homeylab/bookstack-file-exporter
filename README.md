@@ -5,13 +5,12 @@
 > For docs matching your installed version, use the branch/tag dropdown to switch to your release tag. See [Releases](https://github.com/homeylab/bookstack-file-exporter/releases) for the list of published versions.
 
 Table of Contents
-- [bookstack-file-exporter](#bookstack-file-exporter)
-  - [Background](#background)
-    - [Features](#features)
-    - [Use Case](#use-case)
-  - [Documentation](#documentation)
-  - [Potential Breaking Upgrades](#potential-breaking-upgrades)
-  - [Future Items](#future-items)
+- [Background](#background)
+  - [Features](#features)
+  - [Use Case](#use-case)
+- [Documentation](#documentation)
+- [Potential Breaking Upgrades](#potential-breaking-upgrades)
+- [Future Items](#future-items)
 
 ## Background
 _If you encounter any issues, want to request an additional feature, or provide assistance, feel free to open a Github issue._
@@ -27,8 +26,9 @@ What it does:
 - Export Bookstack pages and their content to a `.tgz` archive
 - Additional content for pages like their images, attachments, and metadata and can be exported
 - The exporter can also [Modify Links](docs/backup-behavior.md#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
+- Fine grained filtering and selectable export levels.
 - YAML configuration file for repeatable and easy runs
-- Can be run via [Python](docs/installation.md#run-via-pip) or [Docker](docs/installation.md#run-via-docker)
+- Can be run via [Python](docs/getting-started.md#run-via-pip) or [Docker](docs/getting-started.md#run-via-docker)
 - Can push archives to remote object storage like [MinIO](https://min.io/) or [AWS S3](https://aws.amazon.com/s3/)
 - Basic housekeeping option (`keep_last`) to keep a tidy archive destination
 - Can run in application mode (always running) using `run_interval` (interval-based) or `run_schedule` (cron-based) properties. Used for scheduling backups.
@@ -60,7 +60,7 @@ The main use case is to backup all docs in a relational directory-tree format to
 
 Detailed docs live under [`docs/`](docs/):
 
-- [Installation & Running](docs/installation.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication
+- [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication
 - [Configuration](docs/configuration.md) — full `config.yml` reference, all options, environment variables, export level, parallel export
 - [Filters](docs/filters.md) — include/exclude shelves, books, chapters, pages by name
 - [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images, attachments, modify-links

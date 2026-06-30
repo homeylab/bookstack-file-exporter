@@ -2,10 +2,17 @@
 
 [← Back to README](../README.md#documentation)
 
-## Object Storage
+- [Object Storage Upload](#object-storage-upload)
+  - [Entry fields](#entry-fields)
+  - [Credential resolution (per entry, first match wins)](#credential-resolution-per-entry-first-match-wins)
+- [Multi-target upload behavior](#multi-target-upload-behavior)
+- [Migrating from v2](#migrating-from-v2)
+
 Optionally, one or more upload targets can be specified to push generated archives to remote object storage. Optionally, look at `examples/config.yml` in the github repo for a commented-out example.
 
-### Object Storage Upload (MinIO / S3)
+## Object Storage Upload
+
+Currently, s3 compatible object storage providers are supported. Feel free to create a github issue to request something else.
 
 Configure one or more upload targets under `object_storage:`. Each entry has a `type`
 (`minio` or `s3`). Any S3-compatible store — Wasabi, Cloudflare R2, Backblaze B2, Ceph, DigitalOcean Spaces — also works under `type: s3` (or `type: minio`) by setting an explicit `host`. These use the generic S3 API and the credential resolution below — there is no per-provider code, so most S3-compatible stores work as-is. If one fails under `type: s3` (addressing-style, signature, or checksum quirks), [open an issue](https://github.com/homeylab/bookstack-file-exporter/issues) with the provider name and the error.
@@ -46,7 +53,7 @@ object_storage:
     keep_last: 10
 ```
 
-#### Entry fields
+### Entry fields
 
 | Item | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
@@ -63,7 +70,7 @@ object_storage:
 | `secret_key_env` | `str` | `false` | Name of an environment variable to read for the secret key. Must be paired with `access_key_env`. |
 | `name` | `str` | `false` | Optional human-readable label for this target (intended for logs and notifications). If two entries share the same `type` and `bucket` (e.g. same bucket reached via different credentials), each **must** set a distinct `name` — the exporter rejects the config if two entries would produce the same derived `type/bucket` label and no `name` is set to disambiguate. |
 
-#### Credential resolution (per entry, first match wins)
+### Credential resolution (per entry, first match wins)
 
 Each entry resolves credentials through an ordered chain; the first source that supplies a
 full key pair wins.
@@ -119,7 +126,7 @@ or `*_env` without its partner) is a config error. A partially-set *standard env
 (e.g. `MINIO_ACCESS_KEY` set but `MINIO_SECRET_KEY` unset) is **ignored, not an error** —
 resolution falls through to the next source.
 
-#### Multi-target upload behavior
+## Multi-target upload behavior
 
 Every configured `object_storage` target is attempted, even if an earlier one fails. The run
 outcome is one of:

@@ -3,18 +3,23 @@
 [← Back to README](../README.md#documentation)
 
 > [!NOTE]
-> Credentials: BookStack API token setup (role permissions + generating `tokenId`/`tokenSecret`) lives in [Authentication & Permissions](installation.md#authentication-and-permissions). Object-storage credentials are documented in [Remote Storage](remote-storage.md#object-storage-upload-minio--s3).
+> Credentials: BookStack API token setup (role permissions + generating `tokenId`/`tokenSecret`) lives in [Authentication & Permissions](getting-started.md#authentication-and-permissions). Object-storage credentials are documented in [Remote Storage](remote-storage.md#object-storage-upload).
 
-## Configuration
-_Ensure [Authentication](installation.md#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple example to run quickly, refer to the one in the [Using This Application](installation.md#using-this-application) section.
+- [Full Example](#full-example)
+- [Options and Descriptions](#options-and-descriptions)
+- [Valid Environment Variables](#valid-environment-variables)
+- [Export Level](#export-level)
+- [Parallel Export](#parallel-export)
 
-A full example is also shown below. Optionally, look at `examples/` folder of the github repo for more examples with long descriptions.
+_Ensure [Authentication](getting-started.md#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple config example to run quickly, refer to the one in the [Using This Application](getting-started.md#using-this-application) section.
 
-For object storage configuration, find more information in the [Object Storage Upload](remote-storage.md#object-storage-upload-minio--s3) section.
+A full example is also shown below. _Optionally, look at `examples/` folder of the github repo for more examples with long descriptions_.
+
+For object storage configuration, find more information in the [Object Storage Upload](remote-storage.md#object-storage-upload) section.
 
 **Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.**
 
-### Full Example
+## Full Example
 Below is an example configuration that shows example values for all possible options.
 
 ```yaml
@@ -73,13 +78,13 @@ filters:
     exclude: ["secret", "scratch"]
 ```
 
-### Options and Descriptions
+## Options and Descriptions
 More descriptions can be found for each section below:
 
 | Configuration Item | Type | Required | Description |
 | ------------------ | ---- | -------- | ----------- |
 |  `host` | `str` | `true` | If `http/https` not specified in the url, defaults to `https`. Use `http_config.verify_ssl` to disable certificate checking. |
-| `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](installation.md#authentication-and-permissions) for more details. |
+| `credentials` | `object` | `false` | Optional section where Bookstack tokenId and tokenSecret can be specified. Env variable for credentials may be supplied instead. See [Authentication](getting-started.md#authentication-and-permissions) for more details. |
 | `credentials.token_id` | `str`| `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenId. |
 | `credentials.token_secret` | `str` | `false` if specified through env var instead, otherwise `true` | A valid Bookstack tokenSecret. |
 | `formats` | `list<str>` | `true` | Which export formats to use for BookStack content. Valid options are: `["markdown", "html", "pdf", "plaintext", "zip"]`|
@@ -101,23 +106,23 @@ More descriptions can be found for each section below:
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
 | `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. |
 | `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
-| `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](installation.md#health-endpoint). |
+| `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](getting-started.md#health-endpoint). |
 | `health_host` | `str` | `false` | Optional (default: `0.0.0.0`). Bind address for the `health_port` server. Set to `127.0.0.1` or a specific NIC to restrict exposure on a multi-homed host. Only used when `health_port` is set. |
-| `object_storage` | `list` | `false` | Optional list of object storage upload targets. See [Object Storage Upload](remote-storage.md#object-storage-upload-minio--s3) for details. |
+| `object_storage` | `list` | `false` | Optional list of object storage upload targets. See [Object Storage Upload](remote-storage.md#object-storage-upload) for details. |
 | `notifications` | `object` | `false` | Optional [notification](notifications.md#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](filters.md#filters) for details. |
 | `filters.exclude_unassigned_books` | `bool` | `false` | Optional (default: `false`). When `true`, drop all books that are not on any shelf, independent of the `books` patterns. See [Filters](filters.md#filters) for details. |
 
-### Valid Environment Variables
+## Valid Environment Variables
 General
 - `LOG_LEVEL`: default: `info`. Provide a valid log level: info, debug, warning, error.
-- `LOG_FORMAT`: default: `text`. Set to `json` for JSON Lines output. See [Log Format](installation.md#log-format).
+- `LOG_FORMAT`: default: `text`. Set to `json` for JSON Lines output.
 
-[Bookstack Credentials](installation.md#authentication-and-permissions)
+[Bookstack Credentials](getting-started.md#authentication-and-permissions)
 - `BOOKSTACK_TOKEN_ID`
 - `BOOKSTACK_TOKEN_SECRET`
 
-[Object Storage Credentials](remote-storage.md#object-storage-upload-minio--s3)
+[Object Storage Credentials](remote-storage.md#object-storage-upload)
 - `MINIO_ACCESS_KEY` — default MinIO access key; shared by all `minio` targets (v2-compatible). For distinct per-target creds, use `access_key_env`/`secret_key_env`.
 - `MINIO_SECRET_KEY` — default MinIO secret key (shared, as above)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` — AWS default chain for S3 targets
