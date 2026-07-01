@@ -3,47 +3,35 @@
 import pytest
 from pydantic import ValidationError
 
-from bookstack_file_exporter.config_helper import models
+from bookstack_file_exporter.config_helper.models import BaseStorageConfig, UserInput
 
 
 def _entry(**overrides):
-    base = {"type": "minio", "bucket": "b", "host": "minio.local"}
+    base = {"name": "primary", "bucket": "b", "endpoint": "minio.local"}
     base.update(overrides)
     return base
 
 
-def test_minio_entry_defaults():
-    cfg = models.BaseStorageConfig(**_entry())
-    assert cfg.type == "minio"
+def test_entry_defaults():
+    cfg = BaseStorageConfig(**_entry())
     assert cfg.bucket == "b"
     assert cfg.secure is True          # TLS default preserves today's behavior
-    assert cfg.region is None          # region optional for minio
+    assert cfg.region is None          # region optional
     assert cfg.keep_last == 0
-
-
-def test_s3_entry_minimal():
-    cfg = models.BaseStorageConfig(type="s3", bucket="aws-b", region="us-east-1")
-    assert cfg.type == "s3"
-    assert cfg.host == ""              # host optional for s3 (defaulted later from region)
-
-
-def test_invalid_type_rejected():
-    with pytest.raises(ValidationError):
-        models.BaseStorageConfig(type="gcs", bucket="b")
 
 
 def test_inline_cred_half_pair_rejected():
     with pytest.raises(ValidationError, match="access_key and secret_key"):
-        models.BaseStorageConfig(**_entry(access_key="AKIA"))  # secret missing
+        BaseStorageConfig(**_entry(access_key="AKIA"))  # secret missing
 
 
 def test_env_name_half_pair_rejected():
     with pytest.raises(ValidationError, match="access_key_env and secret_key_env"):
-        models.BaseStorageConfig(**_entry(access_key_env="A_ENV"))  # secret env missing
+        BaseStorageConfig(**_entry(access_key_env="A_ENV"))  # secret env missing
 
 
 def test_full_inline_pair_ok():
-    cfg = models.BaseStorageConfig(**_entry(access_key="AKIA", secret_key="wJal"))
+    cfg = BaseStorageConfig(**_entry(access_key="AKIA", secret_key="wJal"))
     assert cfg.access_key == "AKIA"
     assert cfg.secret_key == "wJal"
 
@@ -53,44 +41,55 @@ def test_userinput_parses_object_storage_list():
         "host": "https://wiki.example.com",
         "formats": ["markdown"],
         "object_storage": [
-            {"type": "minio", "bucket": "b1", "host": "minio.local"},
-            {"type": "s3", "bucket": "b2", "region": "us-east-1"},
+            {"name": "one", "bucket": "b1", "endpoint": "minio.local"},
+            {"name": "two", "bucket": "b2", "region": "us-east-1"},
         ],
     }
-    ui = models.UserInput(**raw)
+    ui = UserInput(**raw)
     assert ui.object_storage is not None
     # pylint: disable-next=not-an-iterable
-    assert [e.type for e in ui.object_storage] == ["minio", "s3"]
+    assert [e.name for e in ui.object_storage] == ["one", "two"]
 
 
 def test_userinput_object_storage_defaults_none():
-    ui = models.UserInput(host="https://x", formats=["markdown"])
+    ui = UserInput(host="https://x", formats=["markdown"])
     assert ui.object_storage is None
 
 
-# --- name field and label property ---
+# --- name (required) and label property ---
 
-def test_name_defaults_none():
-    cfg = models.BaseStorageConfig(**_entry())
-    assert cfg.name is None
-
-
-def test_name_parses_when_given():
-    cfg = models.BaseStorageConfig(**_entry(name="primary"))
-    assert cfg.name == "primary"
+def test_name_required():
+    with pytest.raises(ValidationError):
+        BaseStorageConfig(bucket="b", endpoint="h", access_key="a", secret_key="s")
 
 
-def test_label_falls_back_to_type_bucket():
-    cfg = models.BaseStorageConfig(**_entry(type="minio", bucket="b"))
-    assert cfg.label == "minio/b"
+def test_label_is_name():
+    cfg = BaseStorageConfig(name="minio-main", bucket="b", endpoint="h",
+                            access_key="a", secret_key="s")
+    assert cfg.label == "minio-main"
 
 
-def test_label_uses_name_when_set():
-    cfg = models.BaseStorageConfig(**_entry(name="primary"))
-    assert cfg.label == "primary"
+def test_endpoint_and_prefix_fields():
+    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="minio.local:9000",
+                            prefix="daily", access_key="a", secret_key="s")
+    assert cfg.endpoint == "minio.local:9000"
+    assert cfg.prefix == "daily"
 
 
-# --- UserInput label-uniqueness validator ---
+def test_ambient_auth_defaults_false_and_settable():
+    assert BaseStorageConfig(name="t", bucket="b", ambient_auth=True,
+                             region="us-east-1").ambient_auth is True
+    assert BaseStorageConfig(name="t", bucket="b", endpoint="h",
+                             access_key="a", secret_key="s").ambient_auth is False
+
+
+def test_force_path_style_default_none():
+    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="h",
+                            access_key="a", secret_key="s")
+    assert cfg.force_path_style is None
+
+
+# --- UserInput name-uniqueness validator ---
 
 def _user_input(*entries):
     return {
@@ -100,34 +99,17 @@ def _user_input(*entries):
     }
 
 
-def test_duplicate_derived_label_raises():
-    # Two entries with same type/bucket produce the same derived label → must fail
-    e1 = _entry(type="minio", bucket="b")
-    e2 = _entry(type="minio", bucket="b")
+def test_duplicate_name_raises():
+    e1 = _entry(name="same", bucket="b1")
+    e2 = _entry(name="same", bucket="b2")
     with pytest.raises(ValidationError, match="name"):
-        models.UserInput(**_user_input(e1, e2))
+        UserInput(**_user_input(e1, e2))
 
 
-def test_duplicate_derived_label_with_distinct_names_ok():
-    e1 = _entry(type="minio", bucket="b", name="primary")
-    e2 = _entry(type="minio", bucket="b", name="secondary")
-    ui = models.UserInput(**_user_input(e1, e2))
-    assert ui.object_storage is not None
-    # pylint: disable-next=not-an-iterable
-    assert [e.name for e in ui.object_storage] == ["primary", "secondary"]
-
-
-def test_duplicate_explicit_name_raises():
-    e1 = _entry(name="same")
-    e2 = _entry(bucket="other", name="same")
-    with pytest.raises(ValidationError, match="name"):
-        models.UserInput(**_user_input(e1, e2))
-
-
-def test_distinct_buckets_no_name_ok():
-    e1 = _entry(type="minio", bucket="b1")
-    e2 = _entry(type="minio", bucket="b2")
-    ui = models.UserInput(**_user_input(e1, e2))
+def test_distinct_names_ok():
+    e1 = _entry(name="primary", bucket="b1")
+    e2 = _entry(name="secondary", bucket="b2")
+    ui = UserInput(**_user_input(e1, e2))
     assert ui.object_storage is not None
     # pylint: disable-next=not-an-iterable
     assert len(ui.object_storage) == 2

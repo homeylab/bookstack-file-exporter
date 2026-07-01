@@ -10,31 +10,32 @@ log = logging.getLogger(__name__)
 
 # pylint: disable=too-few-public-methods
 class BaseStorageConfig(BaseModel):
-    """YAML schema for one object_storage entry (minio or s3).
+    """YAML schema for one object_storage entry (flat S3-compatible config).
 
-    Permissive model: per-type required-ness (minio->host, s3->region) is checked at
-    runtime in remote.py is_valid(); only the always-true cred-pair invariant is enforced
-    here. Separate per-type models are deferred until fields genuinely diverge (YAGNI).
+    No 'type' field: behavior is driven by fields. 'endpoint' presence selects
+    custom-store vs AWS and infers path-style; 'ambient_auth' opts into the boto3
+    SDK credential chain (env / IRSA / IMDS / assume-role); 'region' defaults to
+    us-east-1 when an endpoint is set.
     """
-    type: Literal["minio", "s3"]
-    host: str | None = ""
+    name: str
+    endpoint: str | None = None
     bucket: str
+    prefix: str | None = ""
     region: str | None = None
-    path: str | None = ""
     secure: bool = True
+    force_path_style: bool | None = None   # None => inferred from endpoint presence
+    ambient_auth: bool = False
     keep_last: int | None = 0
     access_key: str | None = ""
     secret_key: str | None = ""
     access_key_env: str | None = None
     secret_key_env: str | None = None
-    name: str | None = None
 
     @property
     def label(self) -> str:
-        """Target identity, intended for logs/notifications (consumed today only by the
-        uniqueness check below; wired into output in a later task). Excludes creds (secrets)
-        and host/region by design, so a bare type/bucket collision forces a distinct name."""
-        return self.name or f"{self.type}/{self.bucket}"
+        """Required, user-chosen target identity for logs/notifications and the
+        uniqueness check — the sole guaranteed-unique key across entries."""
+        return self.name
 
     @model_validator(mode="after")
     def _check_cred_pairs(self):
@@ -202,8 +203,7 @@ class UserInput(BaseModel):
             lbl = entry.label
             if lbl in seen:
                 raise ValueError(
-                    f"Duplicate object_storage label {lbl!r}. "
-                    "Two entries share the same type/bucket; set a distinct 'name' on each.")
+                    f"Duplicate object_storage name {lbl!r}; each entry needs a distinct 'name'.")
             seen.add(lbl)
         return self
 
