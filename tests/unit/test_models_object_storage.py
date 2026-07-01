@@ -13,7 +13,7 @@ def _entry(**overrides):
 
 
 def test_entry_defaults():
-    cfg = BaseStorageConfig(**_entry())
+    cfg = BaseStorageConfig(**_entry(access_key="a", secret_key="s"))
     assert cfg.bucket == "b"
     assert cfg.secure is True          # TLS default preserves today's behavior
     assert cfg.region is None          # region optional
@@ -41,8 +41,10 @@ def test_userinput_parses_object_storage_list():
         "host": "https://wiki.example.com",
         "formats": ["markdown"],
         "object_storage": [
-            {"name": "one", "bucket": "b1", "endpoint": "minio.local"},
-            {"name": "two", "bucket": "b2", "region": "us-east-1"},
+            {"name": "one", "bucket": "b1", "endpoint": "minio.local",
+             "access_key": "a", "secret_key": "s"},
+            {"name": "two", "bucket": "b2", "region": "us-east-1",
+             "access_key": "a", "secret_key": "s"},
         ],
     }
     ui = UserInput(**raw)
@@ -100,16 +102,73 @@ def _user_input(*entries):
 
 
 def test_duplicate_name_raises():
-    e1 = _entry(name="same", bucket="b1")
-    e2 = _entry(name="same", bucket="b2")
-    with pytest.raises(ValidationError, match="name"):
+    e1 = _entry(name="same", bucket="b1", access_key="a", secret_key="s")
+    e2 = _entry(name="same", bucket="b2", access_key="a", secret_key="s")
+    with pytest.raises(ValidationError, match="Duplicate object_storage name"):
         UserInput(**_user_input(e1, e2))
 
 
 def test_distinct_names_ok():
-    e1 = _entry(name="primary", bucket="b1")
-    e2 = _entry(name="secondary", bucket="b2")
+    e1 = _entry(name="primary", bucket="b1", access_key="a", secret_key="s")
+    e2 = _entry(name="secondary", bucket="b2", access_key="a", secret_key="s")
     ui = UserInput(**_user_input(e1, e2))
     assert ui.object_storage is not None
     # pylint: disable-next=not-an-iterable
     assert len(ui.object_storage) == 2
+
+
+# --- Task 2b: fail-closed creds + region + reject-legacy-type validators ---
+
+def test_no_creds_and_no_ambient_is_error():
+    with pytest.raises(ValidationError):
+        BaseStorageConfig(name="t", bucket="b", endpoint="h")  # fail-closed
+
+
+def test_ambient_auth_allows_no_creds():
+    cfg = BaseStorageConfig(name="t", bucket="b", region="us-east-1", ambient_auth=True)
+    assert cfg.ambient_auth is True
+
+
+def test_explicit_env_names_satisfy_creds():
+    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="h",
+                            access_key_env="AK", secret_key_env="SK")
+    assert cfg.access_key_env == "AK"
+
+
+def test_aws_target_requires_region_without_ambient():
+    with pytest.raises(ValidationError):
+        # no endpoint (AWS), inline creds, but no region and no ambient
+        BaseStorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
+
+
+def test_aws_target_region_optional_under_ambient():
+    cfg = BaseStorageConfig(name="t", bucket="b", ambient_auth=True)  # botocore resolves region
+    assert cfg.region is None
+
+
+def test_legacy_type_key_rejected_with_hint():
+    with pytest.raises(ValidationError) as exc:
+        BaseStorageConfig(name="t", type="minio", bucket="b", endpoint="h",
+                          access_key="a", secret_key="s")
+    assert "type" in str(exc.value).lower()
+
+
+def test_renamed_host_key_rejected():
+    with pytest.raises(ValidationError) as exc:
+        BaseStorageConfig(name="t", host="minio.local", bucket="b",
+                          access_key="a", secret_key="s")
+    assert "endpoint" in str(exc.value).lower()
+
+
+def test_renamed_path_key_rejected():
+    with pytest.raises(ValidationError) as exc:
+        BaseStorageConfig(name="t", path="daily", bucket="b", endpoint="h",
+                          access_key="a", secret_key="s")
+    assert "prefix" in str(exc.value).lower()
+
+
+def test_endpoint_with_scheme_rejected():
+    with pytest.raises(ValidationError) as exc:
+        BaseStorageConfig(name="t", endpoint="https://minio.local", bucket="b",
+                          access_key="a", secret_key="s")
+    assert "scheme" in str(exc.value).lower()

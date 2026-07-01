@@ -37,6 +37,27 @@ class BaseStorageConfig(BaseModel):
         uniqueness check — the sole guaranteed-unique key across entries."""
         return self.name
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_or_renamed_keys(cls, raw):
+        """Reject removed/renamed keys loudly. pydantic's default extra='ignore' would
+        SILENTLY drop them — for a backup tool that means a stale MinIO config with a
+        leftover 'host:' would parse as endpoint=None and quietly become an AWS target.
+        Same fail-loud principle as UserInput._reject_removed_keys. 'type' is reserved for
+        a future provider family; 'host'/'path' were renamed to 'endpoint'/'prefix'."""
+        if not isinstance(raw, dict):
+            return raw
+        hints = {
+            "type": ("'type' is no longer used; behavior is driven by 'endpoint' (custom "
+                     "store vs AWS) and 'ambient_auth'."),
+            "host": "'host' was renamed to 'endpoint'.",
+            "path": "'path' was renamed to 'prefix'.",
+        }
+        for key, hint in hints.items():
+            if key in raw:
+                raise ValueError(f"object_storage: {hint} Update your config (see v3 migration).")
+        return raw
+
     @model_validator(mode="after")
     def _check_cred_pairs(self):
         """A half cred pair is always a mistake, regardless of the fallback chain."""
@@ -46,6 +67,39 @@ class BaseStorageConfig(BaseModel):
         if bool(self.access_key_env) != bool(self.secret_key_env):
             raise ValueError(
                 "access_key_env and secret_key_env must be set together (or both omitted)")
+        return self
+
+    @model_validator(mode="after")
+    def _check_endpoint_no_scheme(self):
+        """'endpoint' is host[:port], not a URL — the scheme is derived from 'secure'. A
+        pasted 'https://minio.local' would otherwise become 'http://https://minio.local'."""
+        if self.endpoint and "://" in self.endpoint:
+            raise ValueError(
+                f"endpoint {self.endpoint!r} must be host[:port] without a scheme; "
+                "use 'secure: true|false' to control TLS.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_credentials_present(self):
+        """Fail-closed: an entry MUST carry explicit creds (env NAMES or inline) OR opt
+        into the ambient chain via ambient_auth. Never silently fall through to ambient."""
+        has_env = bool(self.access_key_env and self.secret_key_env)
+        has_inline = bool(self.access_key and self.secret_key)
+        if not (has_env or has_inline or self.ambient_auth):
+            raise ValueError(
+                f"object_storage target {self.name!r} has no credentials: set access_key_env"
+                "+secret_key_env, or access_key+secret_key, or ambient_auth: true (env / IAM "
+                "role / IRSA).")
+        return self
+
+    @model_validator(mode="after")
+    def _check_region_for_aws(self):
+        """A no-endpoint target is AWS S3, which needs a region for signing/endpoint. Require
+        it unless ambient_auth is on (botocore can resolve region from env/profile)."""
+        if not self.endpoint and not self.region and not self.ambient_auth:
+            raise ValueError(
+                f"object_storage target {self.name!r}: 'region' is required for AWS S3 "
+                "targets (no 'endpoint') unless ambient_auth resolves it.")
         return self
 
 # pylint: disable=too-few-public-methods
