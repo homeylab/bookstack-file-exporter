@@ -162,8 +162,8 @@ class Archiver:
         Returns one UploadOutcome per target (dest on success, error on upload
         failure, or dest+warning when the upload landed but retention cleanup failed). Never
         raises on a per-target upload error — aggregate status is decided by
-        resolve_remote_status. All targets share one S3CompatibleArchiver
-        (boto3); uploads run serially per target.
+        resolve_remote_status. Each target gets its own S3CompatibleArchiver
+        instance (boto3), keeping credentials isolated; uploads run serially.
         """
         outcomes: list[UploadOutcome] = []
         for entry in self.config.object_storage_config or []:

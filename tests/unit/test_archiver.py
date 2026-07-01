@@ -449,9 +449,8 @@ def test_create_export_dir_permission_error_logs_warning(
 # archive_remote — attempt-all, returns list[UploadOutcome]
 # ---------------------------------------------------------------------------
 
-def _provider_entry(storage_type="minio", label="minio/b"):
+def _provider_entry(label="target-b"):
     obj = MagicMock()
-    obj.type = storage_type
     obj.config.label = label
     return obj
 
@@ -466,7 +465,7 @@ def test_archive_remote_empty_list_no_outcomes(archiver_instance, mock_config):
 
 def test_archive_remote_all_success(archiver_instance, mock_config):
     mock_config.object_storage_config = [
-        _provider_entry("minio", "minio/b"), _provider_entry("s3", "s3/aws")]
+        _provider_entry("minio/b"), _provider_entry("s3/aws")]
     fake_instance = MagicMock()
     fake_instance.upload_backup.side_effect = ["minio-b/a.tgz", "s3-aws/a.tgz"]
     archiver_instance._s3_archiver_cls = MagicMock(return_value=fake_instance)
@@ -482,7 +481,7 @@ def test_archive_remote_all_success(archiver_instance, mock_config):
 def test_archive_remote_one_fails_others_still_attempted(archiver_instance, mock_config):
     """A failing target does not abort the loop; its outcome records the error."""
     mock_config.object_storage_config = [
-        _provider_entry("minio", "minio/b"), _provider_entry("s3", "s3/dr")]
+        _provider_entry("minio/b"), _provider_entry("s3/dr")]
     good = MagicMock()
     good.upload_backup.return_value = "minio-b/a.tgz"
     bad = MagicMock()
@@ -500,7 +499,7 @@ def test_archive_remote_one_fails_others_still_attempted(archiver_instance, mock
 
 def test_archive_remote_construction_failure_recorded(archiver_instance, mock_config):
     """A failure constructing the archiver (e.g. bucket validation) is also caught."""
-    mock_config.object_storage_config = [_provider_entry("s3", "s3/dr")]
+    mock_config.object_storage_config = [_provider_entry("s3/dr")]
     archiver_instance._s3_archiver_cls = MagicMock(side_effect=ValueError("no such bucket"))
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
@@ -553,7 +552,7 @@ def test_resolve_status_empty_is_success(archiver_instance):
 
 def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instance, mock_config):
     """Upload succeeds but remote retention cleanup raises -> dest kept, warning set."""
-    mock_config.object_storage_config = [_provider_entry("s3", "s3/aws")]
+    mock_config.object_storage_config = [_provider_entry("s3/aws")]
     inst = MagicMock()
     inst.upload_backup.return_value = "s3-aws/a.tgz"
     inst.clean_up.side_effect = RuntimeError("delete denied")
