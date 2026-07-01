@@ -4,14 +4,10 @@
 # if http/https not specified, defaults to https
 # if you put http here, it will try verify=false, not to check certs
 host: "https://bookstack.mydomain.org"
-# You could optionally set the bookstack token_id and token_secret here instead of env
-# If using env vars instead you can leave values empty or omit this section
+# optional - set here, or via env BOOKSTACK_TOKEN_ID / BOOKSTACK_TOKEN_SECRET (env wins)
+# leave empty or omit this section if using env vars
 credentials:
-  # set here or as env variable, BOOKSTACK_TOKEN_ID
-  # env var takes precedence over below
   token_id: ""
-  # set here or as env variable, BOOKSTACK_TOKEN_SECRET
-  # env var takes precedence over below
   token_secret: ""
 # supported formats from bookstack below
 # specify one or more
@@ -58,11 +54,8 @@ assets:
   # like: last update, owner, revision count, etc.
   # omit this or set to false if not needed
   export_meta: false
-# optional - can override default http_config
-# if not required, you can omit/comment out section
+# optional - override default http_config; omit/comment out to use defaults
 # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
-# default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry
-# - this should allow for per minute rate limits to be refreshed
 http_config:
   # whether or not to verify ssl certificates if using https
   verify_ssl: false
@@ -80,33 +73,32 @@ http_config:
     test: "test"
     test2: "test2"
     User-Agent: "test-agent"
-## optional - upload the exported archive to a MinIO/S3 object storage bucket
-# omit/comment out if you only want local backups
+## optional - upload the archive to one or more MinIO/S3 buckets (replaces v2 `minio:`)
+# omit for local-only backups; see docs/remote-storage.md for full options + migration
 # tip: pair with keep_last: -1 below to delete local copies after a successful upload
-# minio:
-#   # host/ip + optional port, example: "minio.yourdomain.com:8443"
-#   host: "minio.yourdomain.com"
-#   # set here or as env var MINIO_ACCESS_KEY (env takes precedence)
-#   access_key: ""
-#   # set here or as env var MINIO_SECRET_KEY (env takes precedence)
-#   secret_key: ""
-#   # required by minio; if unsure try "us-east-1"
-#   region: "us-east-1"
-#   bucket: "bookstack-bkps"
-#   # optional upload path; uses root bucket path if unset
-#   # archive appears at: <bucket>:<path>/bookstack_export_<timestamp>.tgz
-#   path: "bookstack/file_backups/"
-#   # optional - retain N archives in the bucket (0/omit = no action)
-#   keep_last: 5
+# object_storage:
+#   - type: "minio"                # "minio" or "s3"
+#     host: "minio.yourdomain.com" # host[:port], minio only
+#     bucket: "bookstack-bkps"
+#     region: "us-east-1"          # optional for minio, required for s3
+#     path: "bookstack/file_backups/"
+#     secure: true                 # false for plain-HTTP local minio
+#     keep_last: 5                 # retain N archives (0/omit = no action)
+#     # creds: set here or via env MINIO_ACCESS_KEY / MINIO_SECRET_KEY (env wins)
+#     access_key: ""
+#     secret_key: ""
+#   - type: "s3"                   # region required, host omitted
+#     bucket: "bookstack-bkps-s3"
+#     region: "us-east-1"
+#     # per-target env var NAMES for creds; omit all creds to auto-detect IAM role
+#     access_key_env: "S3_ACCESS_KEY"
+#     secret_key_env: "S3_SECRET_KEY"
 # directory to export to
 # relative or full path
 output_path: "bkps/"
-## optional - if specified exporter can delete older archives
-# valid values are:
-# set to -1 if you want to delete all archives after each run
-# - this is useful if you only want to upload to object storage
-# set to 1+ if you want to retain a certain number of archives
-# set to 0 or comment out section if you want no action done
+## optional - prune older local archives
+# -1: delete all after each run (useful when only uploading to object storage)
+# 1+: retain that many; 0/omit: no action
 keep_last: 5
 ## optional - if specified exporter will run in a loop
 # it will run and then pause for {run_interval} seconds before running again
