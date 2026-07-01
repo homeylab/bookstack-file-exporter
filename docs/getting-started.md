@@ -117,7 +117,7 @@ Command line options:
 | ------ | ------- | -------- | ----------- |
 |`-c`, `--config-file`|—|True|Relative or Absolute path to a valid configuration file. This configuration file is checked against a schema for validation.|
 |`-o`, `--output-dir` |—|False|Optional output directory for exports. Takes precedence over `output_path` in the config file if both are set.|
-|`-v`, `--log-level` |—|False, default: info|Provide a valid log level: info, debug, warning, error.|
+|`-v`, `--log-level` |`LOG_LEVEL`|False, default: info|Provide a valid log level: info, debug, warning, error. CLI overrides the `LOG_LEVEL` env var.|
 |`--log-format` |`LOG_FORMAT`|False, default: text|Log output format. `text` (default) or `json` for JSON Lines. CLI overrides the `LOG_FORMAT` env var.|
 |`--run-once` |—|False|Force a single run and exit, ignoring `run_interval` and `run_schedule` in the config. Useful for a manual or CI-triggered run against a config that is otherwise set up for application (scheduled) mode.|
 

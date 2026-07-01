@@ -6,7 +6,7 @@ from unittest.mock import patch
 from bookstack_file_exporter import run
 from bookstack_file_exporter.__main__ import main
 
-# Real argv so main() runs the real get_args -> get_log_level -> resolve_log_format
+# Real argv so main() runs the real get_args -> resolve_log_level -> resolve_log_format
 # -> build_handler chain. Only the genuine boundaries are patched per test:
 # run.entrypoint (network + disk) and logging.basicConfig (global root logger).
 _ARGV = ("--log-format", "text")
@@ -27,6 +27,28 @@ class TestMainReturnType:
              patch("bookstack_file_exporter.__main__.logging.basicConfig"):
             result = main(_ARGV)
         assert result == sentinel
+
+
+class TestLogLevelWiring:
+    def test_log_level_env_drives_basicconfig_level(self, monkeypatch):
+        """With no -v flag, LOG_LEVEL env must set the configured logging level.
+
+        __main__ passes the resolved level name uppercased; logging.basicConfig
+        accepts a level-name string and maps it to the int level.
+        """
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        with patch.object(run, "entrypoint", return_value=0), \
+             patch("bookstack_file_exporter.__main__.logging.basicConfig") as mock_bc:
+            main(("--log-format", "text"))
+        assert mock_bc.call_args.kwargs["level"] == "DEBUG"
+
+    def test_cli_flag_overrides_log_level_env(self, monkeypatch):
+        """-v on the CLI must win over LOG_LEVEL env."""
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        with patch.object(run, "entrypoint", return_value=0), \
+             patch("bookstack_file_exporter.__main__.logging.basicConfig") as mock_bc:
+            main(("-v", "error", "--log-format", "text"))
+        assert mock_bc.call_args.kwargs["level"] == "ERROR"
 
 
 class TestSysExitWiring:

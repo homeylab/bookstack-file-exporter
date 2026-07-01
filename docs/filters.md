@@ -2,6 +2,7 @@
 
 [← Back to README](../README.md#documentation)
 
+- [General](#general)
 - [Schema](#schema)
 - [Pattern matching](#pattern-matching)
 - [What the pattern matches](#what-the-pattern-matches)
@@ -12,11 +13,10 @@
 - [Validation](#validation)
   - [Known limitations](#known-limitations)
 
-
+## General
 The `filters` configuration option lets you include or exclude BookStack resources (shelves, books, chapters, pages) by name during export. Filtering runs during the tree build, before the exporter issues any detail API call for a node — excluded books, chapters, and pages — and all descendants of any excluded node — are never fetched.
 
 ## Schema
-
 All keys are optional. Omit a type entirely (or leave its lists empty/`[]`) to apply no filter for that type.
 
 ```yaml
@@ -99,15 +99,6 @@ filters:
 
 All patterns are compiled with `re.compile` at config load time. An invalid regex or an empty string `""` pattern is rejected with a clear error message before any API call is made.
 
-- [Schema](#schema)
-- [Pattern matching](#pattern-matching)
-- [What the pattern matches](#what-the-pattern-matches)
-- [Precedence](#precedence)
-- [Cascade](#cascade)
-- [Interaction with export\_level](#interaction-with-export_level)
-- [Excluding books with no shelf](#excluding-books-with-no-shelf)
-- [Validation](#validation)
-  - [Known limitations](#known-limitations)
 ### Known limitations
 
 - **Same-name resources cannot be individually disambiguated.** If two books share the same display name, a filter pattern will match both. Use cascade (exclude the parent shelf/book) to scope the filter more precisely, or rename one of the resources.

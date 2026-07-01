@@ -5,12 +5,14 @@
 > [!NOTE]
 > Credentials: BookStack API token setup (role permissions + generating `tokenId`/`tokenSecret`) lives in [Authentication & Permissions](getting-started.md#authentication-and-permissions). Object-storage credentials are documented in [Remote Storage](remote-storage.md#object-storage-upload).
 
+- [General](#general)
 - [Full Example](#full-example)
 - [Options and Descriptions](#options-and-descriptions)
 - [Valid Environment Variables](#valid-environment-variables)
 - [Export Level](#export-level)
 - [Parallel Export](#parallel-export)
 
+## General
 _Ensure [Authentication](getting-started.md#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple config example to run quickly, refer to the one in the [Using This Application](getting-started.md#using-this-application) section.
 
 A full example is also shown below. _Optionally, look at `examples/` folder of the github repo for more examples with long descriptions_.

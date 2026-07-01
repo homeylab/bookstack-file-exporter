@@ -8,11 +8,10 @@
 - [Multi-target upload behavior](#multi-target-upload-behavior)
 - [Migrating from v2](#migrating-from-v2)
 
-Optionally, one or more upload targets can be specified to push generated archives to remote object storage. Optionally, look at `examples/config.yml` in the github repo for a commented-out example.
-
 ## Object Storage Upload
+_Currently, s3 compatible object storage providers are supported. Feel free to create a github issue to request something else_.
 
-Currently, s3 compatible object storage providers are supported. Feel free to create a github issue to request something else.
+One or more upload targets can be specified to push generated archives to remote object storage. Optionally, look at `examples/config.yml` in the github repo for a commented-out example.
 
 Configure one or more upload targets under `object_storage:`. Each entry has a `type`
 (`minio` or `s3`). Any S3-compatible store — Wasabi, Cloudflare R2, Backblaze B2, Ceph, DigitalOcean Spaces — also works under `type: s3` (or `type: minio`) by setting an explicit `host`. These use the generic S3 API and the credential resolution below — there is no per-provider code, so most S3-compatible stores work as-is. If one fails under `type: s3` (addressing-style, signature, or checksum quirks), [open an issue](https://github.com/homeylab/bookstack-file-exporter/issues) with the provider name and the error.

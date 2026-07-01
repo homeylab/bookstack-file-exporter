@@ -57,7 +57,6 @@ The main use case is to backup all docs in a relational directory-tree format to
 5. Provide an easy way to do automated file backups locally, in docker, or [kubernetes](https://github.com/homeylab/helm-charts/tree/main/charts/bookstack#file-exporter-backup-your-pages) for Bookstack page contents.
 
 ## Documentation
-
 Detailed docs live under [`docs/`](docs/):
 
 - [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication

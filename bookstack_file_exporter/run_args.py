@@ -4,20 +4,10 @@ import os
 
 log = logging.getLogger(__name__)
 
-LOG_LEVEL = {
-    'debug': logging.DEBUG,
-    'info': logging.INFO,
-    'warning': logging.WARNING,
-    'error': logging.ERROR
-}
-
+LOG_LEVEL = ("debug", "info", "warning", "error")
 LOG_FORMAT = ("text", "json")
 _LOG_FORMAT_ENV = "LOG_FORMAT"
-
-
-def get_log_level(log_level:str) -> int:
-    """return log level int"""
-    return LOG_LEVEL[log_level]
+_LOG_LEVEL_ENV = "LOG_LEVEL"
 
 def get_args(argv=None) -> argparse.Namespace:
     """return user cmd line options (argv=None -> sys.argv)"""
@@ -37,9 +27,10 @@ def get_args(argv=None) -> argparse.Namespace:
     parser.add_argument('-v',
                     '--log-level',
                     type=str.lower,
-                    default='info',
-                    help='Set verbosity level for logging.',
-                    choices=LOG_LEVEL.keys())
+                    default=None,
+                    help=('Set verbosity level for logging. CLI overrides the'
+                          ' LOG_LEVEL env var; default info.'),
+                    choices=LOG_LEVEL)
     parser.add_argument('--run-once',
                     action='store_true',
                     default=False,
@@ -67,6 +58,24 @@ def resolve_log_format(args: argparse.Namespace) -> str:
     env_val = env_val.lower()
     if env_val in LOG_FORMAT:
         return env_val
-    log.warning("Invalid %s '%s'; supported: text (default), json. Using text.",
-                _LOG_FORMAT_ENV, env_val)
+    log.warning("Invalid %s '%s'; supported: %s. Using text.",
+                _LOG_FORMAT_ENV, env_val, ", ".join(LOG_FORMAT))
     return "text"
+
+
+def resolve_log_level(args: argparse.Namespace) -> str:
+    """Resolve log level: CLI flag, else LOG_LEVEL env, else info.
+
+    An invalid env value falls back to info (does not crash a container).
+    """
+    if args.log_level is not None:
+        return args.log_level  # argparse `choices` already validated this
+    env_val = os.environ.get(_LOG_LEVEL_ENV)
+    if env_val is None:
+        return "info"
+    env_val = env_val.lower()
+    if env_val in LOG_LEVEL:
+        return env_val
+    log.warning("Invalid %s '%s'; supported: %s. Using info.",
+                _LOG_LEVEL_ENV, env_val, ", ".join(LOG_LEVEL))
+    return "info"
