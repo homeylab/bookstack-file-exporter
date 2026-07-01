@@ -57,55 +57,6 @@ _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
 
-def _resolve_credentials(entry: models.S3StorageConfig) -> tuple[str | None, str | None]:
-    """Resolve static creds. Precedence: env-name pair (if configured, they are REQUIRED --
-    a referenced-but-unset/empty var RAISES, it does NOT fall through to inline) -> inline
-    pair -> (None, None). (None, None) means "no explicit creds"; only valid when
-    entry.ambient_auth is True (the model validator guarantees this), signalling the boto3
-    ambient chain."""
-    if entry.access_key_env and entry.secret_key_env:
-        access = os.environ.get(entry.access_key_env)
-        secret = os.environ.get(entry.secret_key_env)
-        if not access or not secret:
-            raise ValueError(
-                f"credential env vars {entry.access_key_env}/{entry.secret_key_env} "
-                "are referenced but not set or empty")
-        return access, secret
-    if entry.access_key and entry.secret_key:
-        return entry.access_key, entry.secret_key
-    return None, None
-
-
-def _resolve_endpoint_url(entry: models.S3StorageConfig) -> str | None:
-    """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
-    no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
-    if entry.endpoint:
-        scheme = "https" if entry.secure else "http"
-        return f"{scheme}://{entry.endpoint}"
-    return None
-
-
-def _resolve_region(entry: models.S3StorageConfig) -> str | None:
-    """region_name for boto3. Explicit region wins. Else default us-east-1 when an endpoint
-    is set (skips boto3's GetBucketLocation discovery — fragile on compat stores — and
-    satisfies SigV4; cosmetic for MinIO/R2/B2). No endpoint + no region -> None (AWS under
-    ambient_auth; botocore resolves region from env/profile)."""
-    if entry.region:
-        return entry.region
-    if entry.endpoint:
-        return "us-east-1"
-    return None
-
-
-def _resolve_addressing(entry: models.S3StorageConfig) -> str:
-    """botocore addressing_style. Explicit force_path_style wins ('path'/'auto'). Else infer:
-    an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; boto3 'auto' would
-    try virtual-hosted and break MinIO without wildcard DNS); AWS -> 'auto' (virtual)."""
-    if entry.force_path_style is not None:
-        return "path" if entry.force_path_style else "auto"
-    return "path" if entry.endpoint else "auto"
-
-
 # pylint: disable=too-many-instance-attributes
 ## Normalize config from cli or from config file
 class ConfigNode:
@@ -147,21 +98,7 @@ class ConfigNode:
         return token_id, token_secret
 
     def _generate_remote_config(self) -> list[S3ProviderConfig]:
-        configs: list[S3ProviderConfig] = []
-        for entry in self.user_inputs.object_storage or []:
-            access, secret = _resolve_credentials(entry)
-            configs.append(S3ProviderConfig(
-                name=entry.name,
-                bucket=entry.bucket,
-                prefix=entry.prefix,
-                keep_last=entry.keep_last,
-                endpoint_url=_resolve_endpoint_url(entry),
-                region=_resolve_region(entry),
-                addressing_style=_resolve_addressing(entry),
-                access_key=access,
-                secret_key=secret,
-            ))
-        return configs
+        return [S3ProviderConfig(entry) for entry in self.user_inputs.object_storage or []]
 
     def _generate_headers(self) -> dict[str, str]:
         headers = {}

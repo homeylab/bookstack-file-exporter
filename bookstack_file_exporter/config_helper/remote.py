@@ -1,32 +1,75 @@
+import os
+
+from bookstack_file_exporter.config_helper.models import S3StorageConfig
+
+
 ## convenience class — one resolved, boto3-ready object storage target
 # pylint: disable=too-few-public-methods,too-many-instance-attributes
 class S3ProviderConfig:
-    """Resolved, boto3-ready configuration for a single object storage target.
+    """Resolved, boto3-ready view of one S3StorageConfig entry.
 
-    Self-contained: carries both the resolved boto3 connection params AND the target's
-    identity/retention fields, so the archiver consumes one flat object and never reaches
-    back into the raw pydantic config.
+    Owns the raw->resolved logic (endpoint scheme, region default, addressing inference,
+    credential env lookup), so config_helper just constructs one per entry and the archiver
+    consumes flat values. Constructing this reads os.environ for '*_env' credential names and
+    may raise ValueError if a referenced var is unset/empty (fail-closed; the pydantic model
+    already guarantees some credential source is configured). For a future non-S3 provider,
+    a sibling class (e.g. AzureProviderConfig) would own its own resolution — dispatch by
+    constructing the right class, no type switch."""
+    def __init__(self, entry: S3StorageConfig):
+        self.name = entry.name
+        self.bucket = entry.bucket
+        self.prefix = entry.prefix
+        self.keep_last = entry.keep_last
+        self.endpoint_url = self._resolve_endpoint_url(entry)
+        self.region = self._resolve_region(entry)
+        self.addressing_style = self._resolve_addressing(entry)
+        self.access_key, self.secret_key = self._resolve_credentials(entry)
 
-    Args:
-        name <str> = unique target identity (used in logs/notifications).
-        bucket <str> = destination bucket.
-        prefix <str|None> = object-key prefix (raw; the archiver normalizes trailing slashes).
-        keep_last <int|None> = retention count (0/None => keep all; negative => no prune).
-        endpoint_url <str|None> = full URL (scheme://host[:port]); None => AWS default endpoint.
-        region <str|None> = region_name for boto3 (None => let botocore resolve, ambient only).
-        addressing_style <str> = 'path' or 'auto', passed to botocore Config.
-        access_key/secret_key <str|None> = explicit static creds; None => botocore ambient chain.
-    """
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
-    def __init__(self, name: str, bucket: str, prefix: str | None, keep_last: int | None,
-                 endpoint_url: str | None, region: str | None, addressing_style: str,
-                 access_key: str | None, secret_key: str | None):
-        self.name = name
-        self.bucket = bucket
-        self.prefix = prefix
-        self.keep_last = keep_last
-        self.endpoint_url = endpoint_url
-        self.region = region
-        self.addressing_style = addressing_style
-        self.access_key = access_key
-        self.secret_key = secret_key
+    @staticmethod
+    def _resolve_credentials(entry: S3StorageConfig) -> tuple[str | None, str | None]:
+        """Static creds, first match wins: per-entry env NAMES -> inline -> (None, None).
+        Once BOTH env names are set they are mandatory — a referenced-but-empty var raises,
+        no fallthrough to inline. (None, None) means no explicit creds; only valid when
+        entry.ambient_auth is True (the model validator guarantees this), signalling the
+        boto3 ambient chain."""
+        if entry.access_key_env and entry.secret_key_env:
+            access = os.environ.get(entry.access_key_env)
+            secret = os.environ.get(entry.secret_key_env)
+            if not access or not secret:
+                raise ValueError(
+                    f"credential env vars {entry.access_key_env}/{entry.secret_key_env} "
+                    "are referenced but not set or empty")
+            return access, secret
+        if entry.access_key and entry.secret_key:
+            return entry.access_key, entry.secret_key
+        return None, None
+
+    @staticmethod
+    def _resolve_endpoint_url(entry: S3StorageConfig) -> str | None:
+        """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
+        no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
+        if entry.endpoint:
+            scheme = "https" if entry.secure else "http"
+            return f"{scheme}://{entry.endpoint}"
+        return None
+
+    @staticmethod
+    def _resolve_region(entry: S3StorageConfig) -> str | None:
+        """region_name for boto3. Explicit region wins. Else default us-east-1 when an endpoint
+        is set (skips boto3's GetBucketLocation discovery — fragile on compat stores — and
+        satisfies SigV4; cosmetic for MinIO/R2/B2). No endpoint + no region -> None (AWS under
+        ambient_auth; botocore resolves region from env/profile)."""
+        if entry.region:
+            return entry.region
+        if entry.endpoint:
+            return "us-east-1"
+        return None
+
+    @staticmethod
+    def _resolve_addressing(entry: S3StorageConfig) -> str:
+        """botocore addressing_style. Explicit force_path_style wins ('path'/'auto'). Else infer:
+        an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; boto3 'auto' would
+        try virtual-hosted and break MinIO without wildcard DNS); AWS -> 'auto' (virtual)."""
+        if entry.force_path_style is not None:
+            return "path" if entry.force_path_style else "auto"
+        return "path" if entry.endpoint else "auto"

@@ -5,14 +5,14 @@ import pytest
 from moto import mock_aws
 
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.config_helper.models import S3StorageConfig
 from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 
 def _provider(bucket="test-bucket", prefix=None, keep_last=0):
-    return S3ProviderConfig(name="t", bucket=bucket, prefix=prefix or "",
-                                 keep_last=keep_last, endpoint_url=None, region="us-east-1",
-                                 addressing_style="auto", access_key="testing",
-                                 secret_key="testing")
+    return S3ProviderConfig(S3StorageConfig(name="t", bucket=bucket, prefix=prefix or "",
+                                            endpoint=None, region="us-east-1",
+                                            ambient_auth=True, keep_last=keep_last))
 
 
 @pytest.fixture
@@ -90,9 +90,9 @@ def test_validate_bucket_403_warns_and_proceeds(monkeypatch, caplog):
 
 def test_ambient_none_keys_uses_env_chain(aws, tmp_path):
     # provider with access_key=None -> Session(None,None) -> botocore ambient chain (AWS_* env from `aws` fixture)
-    prov = S3ProviderConfig(name="amb", bucket="test-bucket", prefix="", keep_last=0,
-                                 endpoint_url=None, region="us-east-1", addressing_style="auto",
-                                 access_key=None, secret_key=None)
+    prov = S3ProviderConfig(S3StorageConfig(name="amb", bucket="test-bucket", prefix="",
+                                            endpoint=None, region="us-east-1",
+                                            ambient_auth=True, keep_last=0))
     f = tmp_path / "export.tgz"; f.write_bytes(b"data")
     assert S3CompatibleArchiver(prov).upload_backup(str(f)) == "test-bucket/export.tgz"
 
