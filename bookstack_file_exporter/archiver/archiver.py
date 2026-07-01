@@ -171,7 +171,7 @@ class Archiver:
         return outcomes
 
     def _upload(self, provider_config: StorageProviderConfig) -> UploadOutcome:
-        label = provider_config.config.label
+        label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)
             dest = archiver.upload_backup(self._archiver.archive_file)

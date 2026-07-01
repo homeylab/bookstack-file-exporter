@@ -451,7 +451,7 @@ def test_create_export_dir_permission_error_logs_warning(
 
 def _provider_entry(label="target-b"):
     obj = MagicMock()
-    obj.config.label = label
+    obj.name = label
     return obj
 
 

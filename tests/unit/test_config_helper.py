@@ -222,7 +222,8 @@ def test_generate_remote_config_builds_resolved_list():
                                  access_key="a", secret_key="s"),
     ]
     result = _config_with_object_storage(entries)._generate_remote_config()
-    assert [c.config.name for c in result] == ["one", "two"]
+    assert [c.name for c in result] == ["one", "two"]
+    assert [c.bucket for c in result] == ["b1", "b2"]
     # custom store: scheme from secure (default True) + path addressing + region default
     assert result[0].endpoint_url == "https://minio.local:9000"
     assert result[0].region == "us-east-1"

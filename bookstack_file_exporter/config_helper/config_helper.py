@@ -151,12 +151,15 @@ class ConfigNode:
         for entry in self.user_inputs.object_storage or []:
             access, secret = _resolve_credentials(entry)
             configs.append(StorageProviderConfig(
+                name=entry.name,
+                bucket=entry.bucket,
+                prefix=entry.prefix,
+                keep_last=entry.keep_last,
                 endpoint_url=_resolve_endpoint_url(entry),
                 region=_resolve_region(entry),
                 addressing_style=_resolve_addressing(entry),
                 access_key=access,
                 secret_key=secret,
-                config=entry,
             ))
         return configs
 

@@ -25,7 +25,6 @@ class S3CompatibleArchiver:
     (env / shared config / IRSA / IMDS / assume-role) — used only when ambient_auth is set.
     """
     def __init__(self, provider_config: StorageProviderConfig):
-        cfg = provider_config.config
         session = boto3.session.Session(
             aws_access_key_id=provider_config.access_key,
             aws_secret_access_key=provider_config.secret_key,
@@ -36,9 +35,9 @@ class S3CompatibleArchiver:
             endpoint_url=provider_config.endpoint_url,
             config=Config(s3={"addressing_style": provider_config.addressing_style}),
         )
-        self.bucket = cfg.bucket
-        self.prefix = self._generate_prefix(cfg.prefix)
-        self.keep_last = cfg.keep_last
+        self.bucket = provider_config.bucket
+        self.prefix = self._generate_prefix(provider_config.prefix)
+        self.keep_last = provider_config.keep_last
         self._validate_bucket()
 
     def _validate_bucket(self):
