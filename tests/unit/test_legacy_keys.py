@@ -17,7 +17,8 @@ from bookstack_file_exporter.config_helper.config_helper import build_user_input
 # warnings now originate from the models module, not config_helper
 _LOGGER = "bookstack_file_exporter.config_helper.models"
 
-_VALID_OBJ = {"type": "minio", "bucket": "b", "host": "minio.local"}
+_VALID_OBJ = {"name": "minio-main", "bucket": "b", "endpoint": "minio.local",
+              "access_key": "a", "secret_key": "s"}
 
 
 def _raw(**overrides):
@@ -49,7 +50,8 @@ def test_modify_markdown_warns(caplog):
 
 
 def test_clean_config_no_warning_no_error(caplog):
-    raw = _raw(object_storage=[{"type": "s3", "bucket": "b", "region": "us-east-1"}])
+    raw = _raw(object_storage=[{"name": "s3-main", "bucket": "b", "region": "us-east-1",
+                                 "access_key": "a", "secret_key": "s"}])
     with caplog.at_level(logging.WARNING, logger=_LOGGER):
         build_user_input(raw)
     assert not [r for r in caplog.records if r.name == _LOGGER]

@@ -1,63 +1,24 @@
-import logging
-
-# pylint: disable=import-error
-from minio.credentials import Provider
-
 from bookstack_file_exporter.config_helper.models import BaseStorageConfig
 
-log = logging.getLogger(__name__)
 
-
-def aws_endpoint_from_region(region: str) -> str:
-    """Default AWS S3 endpoint host for a region (used when no host is given)."""
-    return f"s3.{region}.amazonaws.com"
-
-
-## convenience class — holds one resolved object storage target (minio or s3)
+## convenience class — one resolved, boto3-ready object storage target
 # pylint: disable=too-few-public-methods
 class StorageProviderConfig:
-    """Resolved configuration for a single object storage target.
-
-    Carries a minio-py credential Provider (not raw key strings) plus the resolved
-    endpoint host and TLS flag, so the archiver can construct a Minio() client directly.
+    """Resolved, boto3-ready configuration for a single object storage target.
 
     Args:
-        storage_type <str> = 'minio' | 's3'; drives validation + dispatch
-        endpoint <str> = host:port the client connects to (resolved; for s3 may be
-            defaulted from region)
-        secure <bool> = TLS on/off
-        credentials <Provider> = minio-py credential provider
-        config <BaseStorageConfig> = the raw parsed entry (bucket/path/region/keep_last)
+        endpoint_url <str|None> = full URL (scheme://host[:port]); None => AWS default endpoint.
+        region <str|None> = region_name for boto3 (None => let botocore resolve, ambient only).
+        addressing_style <str> = 'path' or 'auto', passed to botocore Config.
+        access_key/secret_key <str|None> = explicit static creds; None => botocore ambient chain.
+        config <BaseStorageConfig> = the raw parsed entry (bucket/prefix/keep_last/name).
     """
-
     # pylint: disable=too-many-arguments,too-many-positional-arguments
-    def __init__(self, storage_type: str, endpoint: str, secure: bool,
-                 credentials: Provider, config: BaseStorageConfig):
-        self.type = storage_type
-        self.endpoint = endpoint
-        self.secure = secure
-        self.credentials = credentials
+    def __init__(self, endpoint_url: str | None, region: str | None, addressing_style: str,
+                 access_key: str | None, secret_key: str | None, config: BaseStorageConfig):
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.addressing_style = addressing_style
+        self.access_key = access_key
+        self.secret_key = secret_key
         self.config = config
-        self._valid_checker = {
-            "minio": self._is_minio_valid,
-            "s3": self._is_s3_valid,
-        }
-
-    def is_valid(self) -> bool:
-        """check if this target's config is valid, dispatched on its own type"""
-        return self._valid_checker[self.type]()
-
-    def _is_minio_valid(self) -> bool:
-        """minio requires an explicit host; creds may resolve at call time."""
-        if not self.config.host:
-            log.error("host is missing from minio configuration and is required")
-            return False
-        return True
-
-    def _is_s3_valid(self) -> bool:
-        """s3 requires a region (host defaults from it); creds may come from the AWS
-        chain (incl. IAM role) at runtime, so they are NOT statically required here."""
-        if not self.config.region:
-            log.error("region is missing from s3 configuration and is required")
-            return False
-        return True

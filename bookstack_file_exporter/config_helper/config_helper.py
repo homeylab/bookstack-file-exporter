@@ -3,17 +3,10 @@ import argparse
 import logging
 # pylint: disable=import-error
 import yaml
-from minio.credentials import (
-    Provider, StaticProvider, ChainedProvider,
-    EnvAWSProvider, IamAwsProvider, EnvMinioProvider,
-)
 
 from bookstack_file_exporter.common.util import check_var
 from bookstack_file_exporter.config_helper import models
-from bookstack_file_exporter.config_helper.remote import (
-    StorageProviderConfig,
-    aws_endpoint_from_region,
-)
+from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
 
@@ -64,28 +57,12 @@ _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
 
-def _s3_provider_chain(entry: models.BaseStorageConfig) -> list[Provider]:
-    """Provider list for an s3 entry: env > [inline] > IAM role (EC2/ECS/EKS). No ~/.aws
-    file tier. Returned as a list so the composition is testable without reaching into
-    minio-py's private ChainedProvider internals."""
-    chain: list[Provider] = [EnvAWSProvider()]
-    if entry.access_key and entry.secret_key:
-        chain.append(StaticProvider(entry.access_key, entry.secret_key))
-    chain.append(IamAwsProvider())
-    return chain
-
-
-def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
-    """Resolve one entry's credentials to a minio-py Provider (first match wins):
-
-    1. per-entry env NAMES (access_key_env/secret_key_env) -> StaticProvider. Only scheme
-       that supports two same-type targets with distinct out-of-file creds.
-    2. standard env vars (MINIO_ACCESS_KEY/MINIO_SECRET_KEY for minio; AWS_ACCESS_KEY_ID/
-       AWS_SECRET_ACCESS_KEY for s3) — checked before inline config-file keys.
-    3. inline access_key/secret_key (config-file fallback).
-    4. type s3 only — IAM role auto-detected by IamAwsProvider (EC2 IMDS / ECS / EKS
-       IRSA / Pod Identity); no secrets in config/env/files.
-    """
+def _resolve_credentials(entry: models.BaseStorageConfig) -> tuple[str | None, str | None]:
+    """Resolve static creds. Precedence: env-name pair (if configured, they are REQUIRED --
+    a referenced-but-unset/empty var RAISES, it does NOT fall through to inline) -> inline
+    pair -> (None, None). (None, None) means "no explicit creds"; only valid when
+    entry.ambient_auth is True (the model validator guarantees this), signalling the boto3
+    ambient chain."""
     if entry.access_key_env and entry.secret_key_env:
         access = os.environ.get(entry.access_key_env)
         secret = os.environ.get(entry.secret_key_env)
@@ -93,28 +70,40 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> Provider:
             raise ValueError(
                 f"credential env vars {entry.access_key_env}/{entry.secret_key_env} "
                 "are referenced but not set or empty")
-        return StaticProvider(access, secret)
-
-    # inline keys, when present, sit BELOW the standard env vars (env > config file)
-    inline = (StaticProvider(entry.access_key, entry.secret_key)
-              if entry.access_key and entry.secret_key else None)
-
-    if entry.type == "s3":
-        return ChainedProvider(_s3_provider_chain(entry))
-
-    # minio: env > inline (no file tier; minio has no IMDS equivalent)
-    if inline:
-        return ChainedProvider([EnvMinioProvider(), inline])
-    return EnvMinioProvider()
+        return access, secret
+    if entry.access_key and entry.secret_key:
+        return entry.access_key, entry.secret_key
+    return None, None
 
 
-def _resolve_endpoint(entry: models.BaseStorageConfig) -> str:
-    """Connection host for an entry: explicit host wins; else s3 defaults from region."""
-    if entry.host:
-        return entry.host
-    if entry.type == "s3" and entry.region:
-        return aws_endpoint_from_region(entry.region)
-    return ""
+def _resolve_endpoint_url(entry: models.BaseStorageConfig) -> str | None:
+    """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
+    no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
+    if entry.endpoint:
+        scheme = "https" if entry.secure else "http"
+        return f"{scheme}://{entry.endpoint}"
+    return None
+
+
+def _resolve_region(entry: models.BaseStorageConfig) -> str | None:
+    """region_name for boto3. Explicit region wins. Else default us-east-1 when an endpoint
+    is set (skips boto3's GetBucketLocation discovery — fragile on compat stores — and
+    satisfies SigV4; cosmetic for MinIO/R2/B2). No endpoint + no region -> None (AWS under
+    ambient_auth; botocore resolves region from env/profile)."""
+    if entry.region:
+        return entry.region
+    if entry.endpoint:
+        return "us-east-1"
+    return None
+
+
+def _resolve_addressing(entry: models.BaseStorageConfig) -> str:
+    """botocore addressing_style. Explicit force_path_style wins ('path'/'auto'). Else infer:
+    an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; boto3 'auto' would
+    try virtual-hosted and break MinIO without wildcard DNS); AWS -> 'auto' (virtual)."""
+    if entry.force_path_style is not None:
+        return "path" if entry.force_path_style else "auto"
+    return "path" if entry.endpoint else "auto"
 
 
 # pylint: disable=too-many-instance-attributes
@@ -160,16 +149,15 @@ class ConfigNode:
     def _generate_remote_config(self) -> list[StorageProviderConfig]:
         configs: list[StorageProviderConfig] = []
         for entry in self.user_inputs.object_storage or []:
-            provider_config = StorageProviderConfig(
-                storage_type=entry.type,
-                endpoint=_resolve_endpoint(entry),
-                secure=entry.secure,
-                credentials=_resolve_credentials(entry),
+            access, secret = _resolve_credentials(entry)
+            configs.append(StorageProviderConfig(
+                endpoint_url=_resolve_endpoint_url(entry),
+                region=_resolve_region(entry),
+                addressing_style=_resolve_addressing(entry),
+                access_key=access,
+                secret_key=secret,
                 config=entry,
-            )
-            if not provider_config.is_valid():
-                raise ValueError(f"provided {entry.type} configuration is invalid")
-            configs.append(provider_config)
+            ))
         return configs
 
     def _generate_headers(self) -> dict[str, str]:

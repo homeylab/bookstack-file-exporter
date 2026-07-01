@@ -208,23 +208,34 @@ def test_generate_remote_config_empty_when_unset():
 
 
 def test_generate_remote_config_builds_resolved_list():
-    """Each entry becomes a StorageProviderConfig with resolved type + endpoint, in order.
+    """Each entry becomes a boto3-ready StorageProviderConfig with resolved endpoint_url /
+    region / addressing_style, in order.
 
-    Exercises the full orchestration seam: list iteration, _resolve_endpoint (minio host
-    vs s3 default-from-region), _resolve_credentials, and is_valid acceptance.
+    Exercises the full orchestration seam: list iteration, _resolve_endpoint_url (custom
+    store scheme://endpoint vs AWS None), _resolve_region (endpoint default vs explicit),
+    _resolve_addressing (path vs auto), and _resolve_credentials.
     """
     entries = [
-        models.BaseStorageConfig(type="minio", bucket="b1", host="minio.local:9000"),
-        models.BaseStorageConfig(type="s3", bucket="b2", region="eu-west-1"),
+        models.BaseStorageConfig(name="one", bucket="b1", endpoint="minio.local:9000",
+                                 access_key="a", secret_key="s"),
+        models.BaseStorageConfig(name="two", bucket="b2", region="eu-west-1",
+                                 access_key="a", secret_key="s"),
     ]
     result = _config_with_object_storage(entries)._generate_remote_config()
-    assert [c.type for c in result] == ["minio", "s3"]
-    assert result[0].endpoint == "minio.local:9000"           # explicit host
-    assert result[1].endpoint == "s3.eu-west-1.amazonaws.com"  # s3 default-from-region
+    assert [c.config.name for c in result] == ["one", "two"]
+    # custom store: scheme from secure (default True) + path addressing + region default
+    assert result[0].endpoint_url == "https://minio.local:9000"
+    assert result[0].region == "us-east-1"
+    assert result[0].addressing_style == "path"
+    assert result[0].access_key == "a" and result[0].secret_key == "s"
+    # AWS S3: no endpoint -> None endpoint_url, explicit region, virtual addressing
+    assert result[1].endpoint_url is None
+    assert result[1].region == "eu-west-1"
+    assert result[1].addressing_style == "auto"
 
 
 def test_generate_remote_config_raises_on_invalid_entry():
-    """An entry failing per-type validation (s3 without region) raises at config load."""
-    entries = [models.BaseStorageConfig(type="s3", bucket="b", region=None)]
-    with pytest.raises(ValueError, match="provided s3 configuration is invalid"):
-        _config_with_object_storage(entries)._generate_remote_config()
+    """An AWS S3 entry (no endpoint) without a region now raises at construction time
+    (fail-closed schema validation), not inside _generate_remote_config."""
+    with pytest.raises(ValidationError, match="region"):
+        models.BaseStorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
