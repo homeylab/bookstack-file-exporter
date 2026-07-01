@@ -188,14 +188,13 @@ object_storage:
   - name: aws-dr
     bucket: bookstack-dr
     region: us-east-1
-    ambient_auth: true        # replaces the old implicit "no creds -> try IAM role" behavior
+    ambient_auth: true        # opt into boto3's ambient chain (env / IRSA / Pod Identity / IMDS)
 ```
 
-Key renames/removals, all enforced by validation (not silently ignored):
-- `type` is gone. Behavior is now driven by `endpoint` (custom store vs AWS) and `ambient_auth`.
+Key renames, all enforced by validation (not silently ignored):
 - `host` → `endpoint`.
 - `path` → `prefix`.
-- A leftover `type:`, `host:`, or `path:` key in an `object_storage` entry now **errors** with a
+- A leftover `host:` or `path:` key in an `object_storage` entry now **errors** with a
   rename hint, rather than being silently dropped.
 - There is no more implicit, globally-shared credential env var (the old `MINIO_ACCESS_KEY` /
   `MINIO_SECRET_KEY` / `AWS_ACCESS_KEY_ID` auto-pickup). For MinIO's legacy

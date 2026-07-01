@@ -40,16 +40,15 @@ class BaseStorageConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_or_renamed_keys(cls, raw):
-        """Reject removed/renamed keys loudly. pydantic's default extra='ignore' would
-        SILENTLY drop them — for a backup tool that means a stale MinIO config with a
-        leftover 'host:' would parse as endpoint=None and quietly become an AWS target.
-        Same fail-loud principle as UserInput._reject_removed_keys. 'type' is reserved for
-        a future provider family; 'host'/'path' were renamed to 'endpoint'/'prefix'."""
+        """Reject renamed keys loudly. pydantic's default extra='ignore' would SILENTLY
+        drop them — for a backup tool that means a v2.3.0 config moved into an
+        object_storage list but keeping a leftover 'host:'/'path:' would parse as
+        endpoint=None and quietly become an AWS target. Same fail-loud principle as
+        UserInput._reject_removed_keys. 'host'/'path' were the v2.3.0 field names, renamed
+        to 'endpoint'/'prefix'."""
         if not isinstance(raw, dict):
             return raw
         hints = {
-            "type": ("'type' is no longer used; behavior is driven by 'endpoint' (custom "
-                     "store vs AWS) and 'ambient_auth'."),
             "host": "'host' was renamed to 'endpoint'.",
             "path": "'path' was renamed to 'prefix'.",
         }

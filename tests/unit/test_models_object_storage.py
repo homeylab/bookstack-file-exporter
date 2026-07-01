@@ -146,13 +146,6 @@ def test_aws_target_region_optional_under_ambient():
     assert cfg.region is None
 
 
-def test_legacy_type_key_rejected_with_hint():
-    with pytest.raises(ValidationError) as exc:
-        BaseStorageConfig(name="t", type="minio", bucket="b", endpoint="h",
-                          access_key="a", secret_key="s")
-    assert "type" in str(exc.value).lower()
-
-
 def test_renamed_host_key_rejected():
     with pytest.raises(ValidationError) as exc:
         BaseStorageConfig(name="t", host="minio.local", bucket="b",
