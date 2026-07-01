@@ -6,9 +6,14 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
+from bookstack_file_exporter.common import util as common_util
 from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
 
 log = logging.getLogger(__name__)
+
+# only objects containing this substring are eligible for retention clean up;
+# guards against deleting user-managed objects that happen to share a prefix/bucket
+_MANAGED_FILTER = "bookstack_export_"
 
 class S3CompatibleArchiver:
     """Uploads, retention, and bucket validation for any S3-compatible target (AWS S3,
@@ -60,6 +65,44 @@ class S3CompatibleArchiver:
         log.info("Uploaded object: %s to bucket: %s", object_path, self.bucket)
         return f"{self.bucket}/{object_path}"
 
-    def clean_up(self, file_extension: str):  # pylint: disable=unused-argument
-        """retention — implemented in the next step (Task 6)"""
-        return
+    def clean_up(self, file_extension: str):
+        """delete objects based on 'keep_last' number"""
+        if not self.keep_last:  # captures keep_last == 0
+            return
+        to_delete = self._get_stale_objects(file_extension)
+        if to_delete:
+            self._delete_objects(to_delete)
+
+    def _scan_objects(self, file_extension: str) -> list[dict]:
+        prefix = f"{self.prefix}/" if self.prefix else ""
+        objects: list[dict] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            objects.extend(page.get("Contents", []))
+        return [obj for obj in objects
+                if obj["Key"].endswith(file_extension) and _MANAGED_FILTER in obj["Key"]]
+
+    def _get_stale_objects(self, file_extension: str) -> list[dict]:
+        objects = self._scan_objects(file_extension)
+        if not objects:
+            log.debug("No objects found to clean up")
+            return []
+        if self.keep_last < 0:
+            log.warning(
+                "'keep_last' for bucket %s is negative (%s); skipping retention "
+                "— no objects deleted", self.bucket, self.keep_last)
+            return []
+        if len(objects) > self.keep_last:
+            log.debug("Number of objects is greater than 'keep_last'; running clean up")
+            return self._filter_objects(objects)
+        return []
+
+    def _filter_objects(self, objects: list[dict]) -> list[dict]:
+        objects_to_clean = common_util.oldest_beyond_keep(
+            objects, key=lambda d: d["LastModified"], keep_last=self.keep_last)
+        log.debug("%d objects will be cleaned up", len(objects_to_clean))
+        return objects_to_clean
+
+    def _delete_objects(self, objects: list[dict]):
+        for item in objects:
+            self._client.delete_object(Bucket=self.bucket, Key=item["Key"])

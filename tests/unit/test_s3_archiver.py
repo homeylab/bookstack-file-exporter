@@ -68,3 +68,54 @@ def test_ambient_none_keys_uses_env_chain(aws, tmp_path):
                                  access_key=None, secret_key=None, config=cfg)
     f = tmp_path / "export.tgz"; f.write_bytes(b"data")
     assert S3CompatibleArchiver(prov).upload_backup(str(f)) == "test-bucket/export.tgz"
+
+
+def _seed(client, bucket, keys):
+    for k in keys:
+        client.put_object(Bucket=bucket, Key=k, Body=b"x")
+
+
+def test_clean_up_deletes_oldest_beyond_keep_last(aws):
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", [f"uploads/bookstack_export_{i}.tgz" for i in range(5)])
+    S3CompatibleArchiver(_provider(prefix="uploads", keep_last=2)).clean_up(".tgz")
+    remaining = client.list_objects_v2(Bucket="test-bucket").get("Contents", [])
+    assert len(remaining) == 2
+
+
+def test_clean_up_keep_last_zero_deletes_nothing(aws):
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", ["uploads/bookstack_export_1.tgz", "uploads/unrelated.tgz"])
+    S3CompatibleArchiver(_provider(prefix="uploads", keep_last=0)).clean_up(".tgz")
+    assert len(client.list_objects_v2(Bucket="test-bucket").get("Contents", [])) == 2
+
+
+def test_scan_paginates_beyond_1000(aws):
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", [f"bookstack_export_{i:04d}.tgz" for i in range(1001)])
+    assert len(S3CompatibleArchiver(_provider(prefix=None, keep_last=1))._scan_objects(".tgz")) == 1001
+
+
+def test_filter_objects_keeps_newest_by_lastmodified(aws):
+    from datetime import datetime, timezone
+    arch = S3CompatibleArchiver(_provider(keep_last=2))
+    # input deliberately NOT in chronological order to prove it sorts by LastModified
+    objs = [
+        {"Key": "new2", "LastModified": datetime(2024, 1, 5, tzinfo=timezone.utc)},
+        {"Key": "old0", "LastModified": datetime(2024, 1, 1, tzinfo=timezone.utc)},
+        {"Key": "new1", "LastModified": datetime(2024, 1, 4, tzinfo=timezone.utc)},
+        {"Key": "old1", "LastModified": datetime(2024, 1, 2, tzinfo=timezone.utc)},
+        {"Key": "old2", "LastModified": datetime(2024, 1, 3, tzinfo=timezone.utc)},
+    ]
+    deleted = {o["Key"] for o in arch._filter_objects(objs)}
+    assert deleted == {"old0", "old1", "old2"}  # 3 oldest deleted, 2 newest kept
+
+
+def test_clean_up_preserves_unmanaged_objects(aws):
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket",
+          [f"uploads/bookstack_export_{i}.tgz" for i in range(3)] + ["uploads/unrelated.tgz"])
+    S3CompatibleArchiver(_provider(prefix="uploads", keep_last=1)).clean_up(".tgz")
+    keys = {o["Key"] for o in client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert "uploads/unrelated.tgz" in keys          # non-managed object never a deletion candidate
+    assert len([k for k in keys if "bookstack_export_" in k]) == 1  # 3 managed -> keep_last=1
