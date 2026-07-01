@@ -22,6 +22,14 @@ tasks:
     desc: Install all dep groups via uv
     cmd: uv sync --all-groups
 
+  upgrade:
+    desc: Upgrade all deps to latest allowed by pyproject + refresh uv.lock, then install
+    cmd: uv lock --upgrade && uv sync --all-groups
+
+  upgrade:pkg:
+    desc: 'Upgrade a single dep + refresh uv.lock, then install: task upgrade:pkg -- boto3'
+    cmd: uv lock --upgrade-package {{.CLI_ARGS}} && uv sync --all-groups
+
   build:
     desc: Build sdist + wheel via uv
     cmd: uv build
