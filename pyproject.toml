@@ -21,6 +21,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "requests>=2.34.2",
     "minio>=7.2.20",
+    "boto3>=1.40.0",
     "apprise>=1.10.0",
     "markdown-it-py>=4.2.0",
     "croniter>=6.2.0",
@@ -38,6 +39,8 @@ dev = [
     "pytest-cov>=7.1.0",
     "responses>=0.26.1",
     "pylint>=4.0.5",
+    "boto3-stubs[s3]>=1.40.0",
+    "moto[s3]>=5.0.0",
 ]
 
 [tool.setuptools.packages.find]
