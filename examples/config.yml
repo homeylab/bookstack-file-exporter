@@ -73,24 +73,25 @@ http_config:
     test: "test"
     test2: "test2"
     User-Agent: "test-agent"
-## optional - upload the archive to one or more MinIO/S3 buckets (replaces v2 `minio:`)
+## optional - upload the archive to one or more S3-compatible buckets (replaces v2 `minio:`)
 # omit for local-only backups; see docs/remote-storage.md for full options + migration
 # tip: pair with keep_last: -1 below to delete local copies after a successful upload
 # object_storage:
-#   - type: "minio"                # "minio" or "s3"
-#     host: "minio.yourdomain.com" # host[:port], minio only
+#   - name: "minio-main"          # required, unique per entry
+#     endpoint: "minio.yourdomain.com"  # host[:port], no scheme; omit entirely for AWS S3
 #     bucket: "bookstack-bkps"
-#     region: "us-east-1"          # optional for minio, required for s3
-#     path: "bookstack/file_backups/"
+#     region: "us-east-1"          # optional; defaults to us-east-1 when endpoint is set
+#     prefix: "bookstack/file_backups/"
 #     secure: true                 # false for plain-HTTP local minio
 #     keep_last: 5                 # retain N archives (0/omit = no action)
-#     # creds: set here or via env MINIO_ACCESS_KEY / MINIO_SECRET_KEY (env wins)
-#     access_key: ""
-#     secret_key: ""
-#   - type: "s3"                   # region required, host omitted
+#     # creds: per-target env var NAMES (preferred), or inline access_key/secret_key
+#     access_key_env: "MINIO_ACCESS_KEY"
+#     secret_key_env: "MINIO_SECRET_KEY"
+#   - name: "aws-s3"               # region required, endpoint omitted => AWS S3
 #     bucket: "bookstack-bkps-s3"
 #     region: "us-east-1"
-#     # per-target env var NAMES for creds; omit all creds to auto-detect IAM role
+#     # per-target env var NAMES for creds; or set ambient_auth: true to use an
+#     # instance/task role or IRSA/Pod Identity instead of static creds
 #     access_key_env: "S3_ACCESS_KEY"
 #     secret_key_env: "S3_SECRET_KEY"
 # directory to export to

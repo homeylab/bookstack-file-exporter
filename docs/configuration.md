@@ -44,13 +44,15 @@ http_config:
   additional_headers:
     User-Agent: "test-agent"
 object_storage:
-  - type: minio
-    host: "minio.yourdomain.com"
+  - name: "minio-main"
+    endpoint: "minio.yourdomain.com"
     region: "us-east-1"
     bucket: "mybucket"
-    path: "bookstack/file_backups"
+    prefix: "bookstack/file_backups"
     secure: false
     keep_last: 5
+    access_key_env: "MINIO_ACCESS_KEY"
+    secret_key_env: "MINIO_SECRET_KEY"
 output_path: "bkps/"
 assets:
   export_images: true
@@ -125,9 +127,14 @@ General
 - `BOOKSTACK_TOKEN_SECRET`
 
 [Object Storage Credentials](remote-storage.md#object-storage-upload)
-- `MINIO_ACCESS_KEY` — default MinIO access key; shared by all `minio` targets (v2-compatible). For distinct per-target creds, use `access_key_env`/`secret_key_env`.
-- `MINIO_SECRET_KEY` — default MinIO secret key (shared, as above)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` — AWS default chain for S3 targets
+
+There is no built-in, globally-shared object storage credential env var. Each `object_storage`
+entry must set `access_key_env`/`secret_key_env` (naming its own env vars), inline
+`access_key`/`secret_key`, or `ambient_auth: true`. When `ambient_auth: true` is set, boto3's
+own ambient chain is used at run time and recognizes:
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (optional)
+- a shared AWS config/credentials profile, an EC2/ECS instance/task role (IMDS), or an EKS
+  IRSA/Pod Identity web-identity role — no env vars needed for these
 
 ## Export Level
 
