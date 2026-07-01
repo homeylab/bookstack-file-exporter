@@ -136,6 +136,18 @@ belongs to. An entry with **no** env-name pair, no inline pair, and `ambient_aut
 (the default) fails config validation immediately — object storage credentials must be
 explicit or explicitly delegated to the ambient chain, never assumed.
 
+## Bucket validation
+
+At startup each target's bucket is checked with a `HeadBucket` call:
+
+- A **missing bucket** (HTTP `404`) is a hard failure — the run stops before the export, so a
+  typo or an uncreated bucket is caught early rather than after a full export.
+- An **ambiguous** result (e.g. `403` from a write-only key that can `PutObject` but lacks
+  `ListBucket`, or a provider that restricts `HeadBucket`) is logged as a **warning** and the
+  upload is attempted anyway — a least-privilege credential is not falsely rejected, and the
+  upload itself surfaces any real problem.
+- An **unreachable or misconfigured endpoint** is a hard failure.
+
 ## Multi-target upload behavior
 
 Every configured `object_storage` target is attempted, even if an earlier one fails. The run

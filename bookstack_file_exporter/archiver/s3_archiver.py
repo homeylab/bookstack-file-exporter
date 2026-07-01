@@ -42,11 +42,29 @@ class S3CompatibleArchiver:
         self._validate_bucket()
 
     def _validate_bucket(self):
+        """Startup bucket check via HeadBucket.
+
+        Fail loud on a definitively-missing bucket (404) — the common config mistake, caught
+        before a full export runs. Warn-and-proceed on an ambiguous ClientError (e.g. 403 from
+        a write-only key that can PutObject but lacks ListBucket, or a provider that restricts
+        HeadBucket): the credential may still upload fine, so don't falsely reject it — the
+        upload surfaces any real problem. A BotoCoreError (EndpointConnectionError /
+        ParamValidationError) is a hard failure: the endpoint itself is unreachable or
+        misconfigured, not just the bucket."""
         try:
             self._client.head_bucket(Bucket=self.bucket)
-        except (ClientError, BotoCoreError) as err:
+        except ClientError as err:
+            code = err.response.get("Error", {}).get("Code", "")
+            status = err.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchBucket") or status == 404:
+                raise ValueError(f"Bucket does not exist: {self.bucket}") from err
+            log.warning(
+                "Could not verify bucket %s (%s); permissions or provider limitation — "
+                "upload will be attempted anyway", self.bucket, code or status)
+        except BotoCoreError as err:
             raise ValueError(
-                f"Given bucket does not exist or is not accessible: {self.bucket}") from err
+                f"Object storage endpoint unreachable or misconfigured for bucket "
+                f"{self.bucket}: {err}") from err
 
     def _generate_prefix(self, prefix_name: str | None) -> str:
         return prefix_name.rstrip('/') if prefix_name else ""

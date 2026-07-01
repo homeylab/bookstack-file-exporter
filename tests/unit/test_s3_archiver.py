@@ -61,6 +61,36 @@ def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch):
         S3CompatibleArchiver(_provider())
 
 
+def test_validate_bucket_404_raises(monkeypatch):
+    # definitively-missing bucket: hard fail before an export runs
+    from unittest.mock import MagicMock
+    from botocore.exceptions import ClientError
+    err = ClientError(
+        {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadBucket")
+    fake = MagicMock()
+    fake.head_bucket.side_effect = err
+    monkeypatch.setattr("boto3.session.Session.client", lambda self, *a, **k: fake)
+    with pytest.raises(ValueError):
+        S3CompatibleArchiver(_provider())
+
+
+def test_validate_bucket_403_warns_and_proceeds(monkeypatch, caplog):
+    # write-only key (PutObject but no ListBucket) => HeadBucket 403; must NOT block
+    # construction, since the upload itself may still succeed. Warn instead.
+    import logging
+    from unittest.mock import MagicMock
+    from botocore.exceptions import ClientError
+    err = ClientError(
+        {"Error": {"Code": "403"}, "ResponseMetadata": {"HTTPStatusCode": 403}}, "HeadBucket")
+    fake = MagicMock()
+    fake.head_bucket.side_effect = err
+    monkeypatch.setattr("boto3.session.Session.client", lambda self, *a, **k: fake)
+    with caplog.at_level(logging.WARNING):
+        arch = S3CompatibleArchiver(_provider())  # must not raise
+    assert arch.bucket == "test-bucket"
+    assert "Could not verify bucket" in caplog.text
+
+
 def test_ambient_none_keys_uses_env_chain(aws, tmp_path):
     # provider with access_key=None -> Session(None,None) -> botocore ambient chain (AWS_* env from `aws` fixture)
     cfg = BaseStorageConfig(name="amb", bucket="test-bucket", region="us-east-1", ambient_auth=True)
