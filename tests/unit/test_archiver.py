@@ -639,7 +639,7 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 
 
 # ---------------------------------------------------------------------------
-# S3CompatibleArchiver._generate_path — trailing-slash normalisation
+# S3CompatibleArchiver._generate_prefix — trailing-slash normalisation
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("input_path,expected", [
@@ -651,8 +651,8 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
     ("",           ""),
 ])
 def test_generate_path_strips_all_trailing_slashes(input_path, expected):
-    """_generate_path must strip ALL trailing slashes, not just one."""
-    result = S3CompatibleArchiver._generate_path(None, input_path)
+    """_generate_prefix must strip ALL trailing slashes, not just one."""
+    result = S3CompatibleArchiver._generate_prefix(None, input_path)
     assert result == expected
 
 
