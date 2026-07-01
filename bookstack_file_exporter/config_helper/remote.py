@@ -1,6 +1,6 @@
 ## convenience class — one resolved, boto3-ready object storage target
 # pylint: disable=too-few-public-methods,too-many-instance-attributes
-class StorageProviderConfig:
+class S3ProviderConfig:
     """Resolved, boto3-ready configuration for a single object storage target.
 
     Self-contained: carries both the resolved boto3 connection params AND the target's

@@ -1,9 +1,9 @@
 # pylint: disable=missing-function-docstring
-"""Unit tests for BaseStorageConfig and UserInput.object_storage parsing."""
+"""Unit tests for S3StorageConfig and UserInput.object_storage parsing."""
 import pytest
 from pydantic import ValidationError
 
-from bookstack_file_exporter.config_helper.models import BaseStorageConfig, UserInput
+from bookstack_file_exporter.config_helper.models import S3StorageConfig, UserInput
 
 
 def _entry(**overrides):
@@ -13,7 +13,7 @@ def _entry(**overrides):
 
 
 def test_entry_defaults():
-    cfg = BaseStorageConfig(**_entry(access_key="a", secret_key="s"))
+    cfg = S3StorageConfig(**_entry(access_key="a", secret_key="s"))
     assert cfg.bucket == "b"
     assert cfg.secure is True          # TLS default preserves today's behavior
     assert cfg.region is None          # region optional
@@ -22,16 +22,16 @@ def test_entry_defaults():
 
 def test_inline_cred_half_pair_rejected():
     with pytest.raises(ValidationError, match="access_key and secret_key"):
-        BaseStorageConfig(**_entry(access_key="AKIA"))  # secret missing
+        S3StorageConfig(**_entry(access_key="AKIA"))  # secret missing
 
 
 def test_env_name_half_pair_rejected():
     with pytest.raises(ValidationError, match="access_key_env and secret_key_env"):
-        BaseStorageConfig(**_entry(access_key_env="A_ENV"))  # secret env missing
+        S3StorageConfig(**_entry(access_key_env="A_ENV"))  # secret env missing
 
 
 def test_full_inline_pair_ok():
-    cfg = BaseStorageConfig(**_entry(access_key="AKIA", secret_key="wJal"))
+    cfg = S3StorageConfig(**_entry(access_key="AKIA", secret_key="wJal"))
     assert cfg.access_key == "AKIA"
     assert cfg.secret_key == "wJal"
 
@@ -62,31 +62,31 @@ def test_userinput_object_storage_defaults_none():
 
 def test_name_required():
     with pytest.raises(ValidationError):
-        BaseStorageConfig(bucket="b", endpoint="h", access_key="a", secret_key="s")
+        S3StorageConfig(bucket="b", endpoint="h", access_key="a", secret_key="s")
 
 
 def test_label_is_name():
-    cfg = BaseStorageConfig(name="minio-main", bucket="b", endpoint="h",
+    cfg = S3StorageConfig(name="minio-main", bucket="b", endpoint="h",
                             access_key="a", secret_key="s")
     assert cfg.label == "minio-main"
 
 
 def test_endpoint_and_prefix_fields():
-    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="minio.local:9000",
+    cfg = S3StorageConfig(name="t", bucket="b", endpoint="minio.local:9000",
                             prefix="daily", access_key="a", secret_key="s")
     assert cfg.endpoint == "minio.local:9000"
     assert cfg.prefix == "daily"
 
 
 def test_ambient_auth_defaults_false_and_settable():
-    assert BaseStorageConfig(name="t", bucket="b", ambient_auth=True,
+    assert S3StorageConfig(name="t", bucket="b", ambient_auth=True,
                              region="us-east-1").ambient_auth is True
-    assert BaseStorageConfig(name="t", bucket="b", endpoint="h",
+    assert S3StorageConfig(name="t", bucket="b", endpoint="h",
                              access_key="a", secret_key="s").ambient_auth is False
 
 
 def test_force_path_style_default_none():
-    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="h",
+    cfg = S3StorageConfig(name="t", bucket="b", endpoint="h",
                             access_key="a", secret_key="s")
     assert cfg.force_path_style is None
 
@@ -121,16 +121,16 @@ def test_distinct_names_ok():
 
 def test_no_creds_and_no_ambient_is_error():
     with pytest.raises(ValidationError):
-        BaseStorageConfig(name="t", bucket="b", endpoint="h")  # fail-closed
+        S3StorageConfig(name="t", bucket="b", endpoint="h")  # fail-closed
 
 
 def test_ambient_auth_allows_no_creds():
-    cfg = BaseStorageConfig(name="t", bucket="b", region="us-east-1", ambient_auth=True)
+    cfg = S3StorageConfig(name="t", bucket="b", region="us-east-1", ambient_auth=True)
     assert cfg.ambient_auth is True
 
 
 def test_explicit_env_names_satisfy_creds():
-    cfg = BaseStorageConfig(name="t", bucket="b", endpoint="h",
+    cfg = S3StorageConfig(name="t", bucket="b", endpoint="h",
                             access_key_env="AK", secret_key_env="SK")
     assert cfg.access_key_env == "AK"
 
@@ -138,30 +138,30 @@ def test_explicit_env_names_satisfy_creds():
 def test_aws_target_requires_region_without_ambient():
     with pytest.raises(ValidationError):
         # no endpoint (AWS), inline creds, but no region and no ambient
-        BaseStorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
+        S3StorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
 
 
 def test_aws_target_region_optional_under_ambient():
-    cfg = BaseStorageConfig(name="t", bucket="b", ambient_auth=True)  # botocore resolves region
+    cfg = S3StorageConfig(name="t", bucket="b", ambient_auth=True)  # botocore resolves region
     assert cfg.region is None
 
 
 def test_renamed_host_key_rejected():
     with pytest.raises(ValidationError) as exc:
-        BaseStorageConfig(name="t", host="minio.local", bucket="b",
+        S3StorageConfig(name="t", host="minio.local", bucket="b",
                           access_key="a", secret_key="s")
     assert "endpoint" in str(exc.value).lower()
 
 
 def test_renamed_path_key_rejected():
     with pytest.raises(ValidationError) as exc:
-        BaseStorageConfig(name="t", path="daily", bucket="b", endpoint="h",
+        S3StorageConfig(name="t", path="daily", bucket="b", endpoint="h",
                           access_key="a", secret_key="s")
     assert "prefix" in str(exc.value).lower()
 
 
 def test_endpoint_with_scheme_rejected():
     with pytest.raises(ValidationError) as exc:
-        BaseStorageConfig(name="t", endpoint="https://minio.local", bucket="b",
+        S3StorageConfig(name="t", endpoint="https://minio.local", bucket="b",
                           access_key="a", secret_key="s")
     assert "scheme" in str(exc.value).lower()

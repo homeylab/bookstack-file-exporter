@@ -7,7 +7,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
 from bookstack_file_exporter.common import util as common_util
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 log = logging.getLogger(__name__)
 
@@ -19,12 +19,12 @@ class S3CompatibleArchiver:
     """Uploads, retention, and bucket validation for any S3-compatible target (AWS S3,
     MinIO, Cloudflare R2, Backblaze B2, Wasabi, DO Spaces) via a boto3 S3 client.
 
-    A boto3 Session is built per target from the resolved StorageProviderConfig, so each
+    A boto3 Session is built per target from the resolved S3ProviderConfig, so each
     target has independent credentials (no shared/process-global client state). When
     access_key/secret_key are None the Session falls back to botocore's ambient chain
     (env / shared config / IRSA / IMDS / assume-role) — used only when ambient_auth is set.
     """
-    def __init__(self, provider_config: StorageProviderConfig):
+    def __init__(self, provider_config: S3ProviderConfig):
         session = boto3.session.Session(
             aws_access_key_id=provider_config.access_key,
             aws_secret_access_key=provider_config.secret_key,

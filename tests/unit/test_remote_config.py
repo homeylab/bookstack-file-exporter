@@ -1,9 +1,9 @@
 # pylint: disable=missing-function-docstring,missing-class-docstring
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 
 def test_holds_boto3_ready_values():
-    p = StorageProviderConfig(name="minio-main", bucket="b", prefix="daily", keep_last=5,
+    p = S3ProviderConfig(name="minio-main", bucket="b", prefix="daily", keep_last=5,
                               endpoint_url="http://minio.local:9000", region="us-east-1",
                               addressing_style="path", access_key="a", secret_key="s")
     assert p.name == "minio-main"
@@ -15,7 +15,7 @@ def test_holds_boto3_ready_values():
 
 
 def test_ambient_holder_has_none_keys():
-    p = StorageProviderConfig(name="aws", bucket="b", prefix="", keep_last=0,
+    p = S3ProviderConfig(name="aws", bucket="b", prefix="", keep_last=0,
                               endpoint_url=None, region="us-east-1", addressing_style="auto",
                               access_key=None, secret_key=None)
     assert p.access_key is None and p.endpoint_url is None

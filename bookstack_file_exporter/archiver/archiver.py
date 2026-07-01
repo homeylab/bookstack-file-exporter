@@ -11,7 +11,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     PageArchiver,
 )
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
@@ -170,7 +170,7 @@ class Archiver:
             outcomes.append(self._upload(entry))
         return outcomes
 
-    def _upload(self, provider_config: StorageProviderConfig) -> UploadOutcome:
+    def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
         label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)

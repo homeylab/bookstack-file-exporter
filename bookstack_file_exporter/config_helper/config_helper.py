@@ -6,7 +6,7 @@ import yaml
 
 from bookstack_file_exporter.common.util import check_var
 from bookstack_file_exporter.config_helper import models
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'
 
 
-def _resolve_credentials(entry: models.BaseStorageConfig) -> tuple[str | None, str | None]:
+def _resolve_credentials(entry: models.S3StorageConfig) -> tuple[str | None, str | None]:
     """Resolve static creds. Precedence: env-name pair (if configured, they are REQUIRED --
     a referenced-but-unset/empty var RAISES, it does NOT fall through to inline) -> inline
     pair -> (None, None). (None, None) means "no explicit creds"; only valid when
@@ -76,7 +76,7 @@ def _resolve_credentials(entry: models.BaseStorageConfig) -> tuple[str | None, s
     return None, None
 
 
-def _resolve_endpoint_url(entry: models.BaseStorageConfig) -> str | None:
+def _resolve_endpoint_url(entry: models.S3StorageConfig) -> str | None:
     """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
     no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
     if entry.endpoint:
@@ -85,7 +85,7 @@ def _resolve_endpoint_url(entry: models.BaseStorageConfig) -> str | None:
     return None
 
 
-def _resolve_region(entry: models.BaseStorageConfig) -> str | None:
+def _resolve_region(entry: models.S3StorageConfig) -> str | None:
     """region_name for boto3. Explicit region wins. Else default us-east-1 when an endpoint
     is set (skips boto3's GetBucketLocation discovery — fragile on compat stores — and
     satisfies SigV4; cosmetic for MinIO/R2/B2). No endpoint + no region -> None (AWS under
@@ -97,7 +97,7 @@ def _resolve_region(entry: models.BaseStorageConfig) -> str | None:
     return None
 
 
-def _resolve_addressing(entry: models.BaseStorageConfig) -> str:
+def _resolve_addressing(entry: models.S3StorageConfig) -> str:
     """botocore addressing_style. Explicit force_path_style wins ('path'/'auto'). Else infer:
     an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; boto3 'auto' would
     try virtual-hosted and break MinIO without wildcard DNS); AWS -> 'auto' (virtual)."""
@@ -146,11 +146,11 @@ class ConfigNode:
         token_secret = check_var(_BOOKSTACK_TOKEN_SECRET_FIELD, token_secret)
         return token_id, token_secret
 
-    def _generate_remote_config(self) -> list[StorageProviderConfig]:
-        configs: list[StorageProviderConfig] = []
+    def _generate_remote_config(self) -> list[S3ProviderConfig]:
+        configs: list[S3ProviderConfig] = []
         for entry in self.user_inputs.object_storage or []:
             access, secret = _resolve_credentials(entry)
-            configs.append(StorageProviderConfig(
+            configs.append(S3ProviderConfig(
                 name=entry.name,
                 bucket=entry.bucket,
                 prefix=entry.prefix,
@@ -221,6 +221,6 @@ class ConfigNode:
         return self._base_dir_name
 
     @property
-    def object_storage_config(self) -> list[StorageProviderConfig]:
+    def object_storage_config(self) -> list[S3ProviderConfig]:
         """return list of resolved remote storage targets"""
         return self._object_storage_config

@@ -208,7 +208,7 @@ def test_generate_remote_config_empty_when_unset():
 
 
 def test_generate_remote_config_builds_resolved_list():
-    """Each entry becomes a boto3-ready StorageProviderConfig with resolved endpoint_url /
+    """Each entry becomes a boto3-ready S3ProviderConfig with resolved endpoint_url /
     region / addressing_style, in order.
 
     Exercises the full orchestration seam: list iteration, _resolve_endpoint_url (custom
@@ -216,9 +216,9 @@ def test_generate_remote_config_builds_resolved_list():
     _resolve_addressing (path vs auto), and _resolve_credentials.
     """
     entries = [
-        models.BaseStorageConfig(name="one", bucket="b1", endpoint="minio.local:9000",
+        models.S3StorageConfig(name="one", bucket="b1", endpoint="minio.local:9000",
                                  access_key="a", secret_key="s"),
-        models.BaseStorageConfig(name="two", bucket="b2", region="eu-west-1",
+        models.S3StorageConfig(name="two", bucket="b2", region="eu-west-1",
                                  access_key="a", secret_key="s"),
     ]
     result = _config_with_object_storage(entries)._generate_remote_config()
@@ -239,4 +239,4 @@ def test_generate_remote_config_raises_on_invalid_entry():
     """An AWS S3 entry (no endpoint) without a region now raises at construction time
     (fail-closed schema validation), not inside _generate_remote_config."""
     with pytest.raises(ValidationError, match="region"):
-        models.BaseStorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
+        models.S3StorageConfig(name="t", bucket="b", access_key="a", secret_key="s")

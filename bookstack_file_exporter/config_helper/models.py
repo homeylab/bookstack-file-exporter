@@ -9,7 +9,7 @@ from croniter import croniter, CroniterError
 log = logging.getLogger(__name__)
 
 # pylint: disable=too-few-public-methods
-class BaseStorageConfig(BaseModel):
+class S3StorageConfig(BaseModel):
     """YAML schema for one object_storage entry (flat S3-compatible config).
 
     No 'type' field: behavior is driven by fields. 'endpoint' presence selects
@@ -72,7 +72,9 @@ class BaseStorageConfig(BaseModel):
     def _check_endpoint_no_scheme(self):
         """'endpoint' is host[:port], not a URL — the scheme is derived from 'secure'. A
         pasted 'https://minio.local' would otherwise become 'http://https://minio.local'."""
-        if self.endpoint and "://" in self.endpoint:
+        # astroid FP: won't narrow the str|None 'endpoint' attr through the guard (E1135);
+        # the truthiness check makes the membership test safe.
+        if self.endpoint and "://" in self.endpoint:  # pylint: disable=unsupported-membership-test
             raise ValueError(
                 f"endpoint {self.endpoint!r} must be host[:port] without a scheme; "
                 "use 'secure: true|false' to control TLS.")
@@ -214,7 +216,7 @@ class UserInput(BaseModel):
     # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
-    object_storage: list[BaseStorageConfig] | None = None
+    object_storage: list[S3StorageConfig] | None = None
     keep_last: int | None = 0
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
