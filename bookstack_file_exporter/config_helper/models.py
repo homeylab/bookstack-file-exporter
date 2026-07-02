@@ -21,7 +21,11 @@ class StrictModel(BaseModel):
     drops a typo'd key and leaves its field at default — for a backup tool that can
     mean no retention ('keeplast'), ignored http settings ('timout'), or a target
     silently rerouted to AWS ('endpont'). The removed/renamed-key before-validators
-    still run first, so 'minio:'/'host:'/'path:' keep their targeted migration hints."""
+    still run first, so 'minio:'/'host:'/'path:' keep their targeted migration hints.
+
+    Dev note: those before-validators are migration UX only, not a safety layer —
+    extra='forbid' alone still rejects the legacy keys, just with a generic
+    unknown-key error. They can be deleted once v2-era configs have aged out."""
     model_config = ConfigDict(extra="forbid")
 
     @staticmethod

@@ -16,6 +16,10 @@ log = logging.getLogger(__name__)
 # the marker somewhere in their name (every tool-created archive starts with it)
 _MANAGED_FILTER = "bookstack_export_"
 
+# S3 DeleteObjects accepts at most 1000 keys per request (documented API limit,
+# enforced server-side; boto3/botocore expose no constant for it)
+_MAX_DELETE_KEYS = 1000
+
 class S3CompatibleArchiver:
     """Uploads, retention, and bucket validation for any S3-compatible target (AWS S3,
     MinIO, Cloudflare R2, Backblaze B2, Wasabi, DO Spaces) via a boto3 S3 client.
@@ -126,9 +130,8 @@ class S3CompatibleArchiver:
         return objects_to_clean
 
     def _delete_objects(self, objects: list[dict]):
-        # DeleteObjects accepts at most 1000 keys per request
-        for i in range(0, len(objects), 1000):
-            chunk = objects[i:i + 1000]
+        for i in range(0, len(objects), _MAX_DELETE_KEYS):
+            chunk = objects[i:i + _MAX_DELETE_KEYS]
             resp = self._client.delete_objects(
                 Bucket=self.bucket,
                 Delete={"Objects": [{"Key": obj["Key"]} for obj in chunk],
