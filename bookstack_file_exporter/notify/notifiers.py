@@ -112,9 +112,15 @@ class AppRiseNotify:
                     failed.append(f"- {outcome.label}: {outcome.error}")
                 elif outcome.warning:
                     warnings.append(f"- {outcome.label}: {outcome.warning}")
-            pruned_count = len(removed_abs - {local_abs})
-            if pruned_count > 0:
-                lines.extend(["", f"Pruned {pruned_count} old local archive(s)"])
+            # Pruned: group covers local retention plus per-target remote retention,
+            # local bullet first, zero-count targets omitted.
+            pruned_local = len(removed_abs - {local_abs})
+            pruned = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
+            pruned.extend(f"- {o.label}: {o.pruned} archive(s)"
+                          for o in result.uploads if o.pruned > 0)
+            if pruned:
+                lines.extend(["", "Pruned:"])
+                lines.extend(pruned)
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {result.cleanup_error}")
         if failed:
@@ -164,11 +170,13 @@ class AppRiseNotify:
                     failed.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.error)}")
                 elif outcome.warning:
                     warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
-            pruned_count = len(removed_abs - {local_abs})
-            if pruned_count > 0:
-                # blank line first: a plain line straight after the upload bullets
-                # would be lazily absorbed into the last bullet in MARKDOWN->HTML
-                lines.extend(["", f"Pruned {pruned_count} old local archive(s)"])
+            pruned_local = len(removed_abs - {local_abs})
+            pruned = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
+            pruned.extend(f"- {_md_code(o.label)}: {o.pruned} archive(s)"
+                          for o in result.uploads if o.pruned > 0)
+            if pruned:
+                lines.extend(["", "**Pruned:**", ""])
+                lines.extend(pruned)
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {_md_code(result.cleanup_error)}")
         # Blank line before AND after each group header: without the leading one,

@@ -589,6 +589,22 @@ def test_resolve_status_empty_is_success(archiver_instance):
     assert archiver_instance.resolve_remote_status([]) is ExportStatus.SUCCESS
 
 
+def test_archive_remote_records_pruned_count(archiver_instance, mock_config):
+    """Remote retention deletions are carried on the outcome for notifications."""
+    mock_config.object_storage_config = [_provider_entry("s3/aws")]
+    inst = MagicMock()
+    inst.upload_backup.return_value = "s3-aws/a.tgz"
+    inst.clean_up.return_value = 3
+    archiver_instance._s3_archiver_cls = MagicMock(return_value=inst)
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert outcomes[0].dest == "s3-aws/a.tgz"
+    assert outcomes[0].pruned == 3
+
+
 def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instance, mock_config):
     """Upload succeeds but remote retention cleanup raises -> dest kept, warning set."""
     mock_config.object_storage_config = [_provider_entry("s3/aws")]

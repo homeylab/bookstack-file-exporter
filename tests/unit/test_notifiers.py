@@ -79,7 +79,7 @@ class TestGetMessageTextSuccessBranch:
         body = notifier._get_message_text(None, result=result)
         # local is in removed (suffix present) + 2 old archives pruned
         assert "(removed locally after upload)" in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "\n\nPruned:\n- local: 2 archive(s)" in body
 
     def test_old_files_only_no_local_in_removed(self):
         notifier = _make_notifier()
@@ -88,7 +88,7 @@ class TestGetMessageTextSuccessBranch:
         result = NotifyResult(local=local, uploads=[], removed=removed)
         body = notifier._get_message_text(None, result=result)
         assert "(removed locally after upload)" not in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "Pruned:\n- local: 2 archive(s)" in body
 
     def test_cleanup_error_shows_warning_line(self):
         notifier = _make_notifier()
@@ -135,7 +135,7 @@ class TestGetMessageTextSuccessBranch:
         body = notifier._get_message_text(None, result=result)
         # current archive (mixed form) → suffix, NOT counted among pruned old archives
         assert "(removed locally after upload)" in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "Pruned:\n- local: 2 archive(s)" in body
 
     def test_failure_branch_unchanged_no_archive_lines(self):
         notifier = _make_notifier()
@@ -216,6 +216,31 @@ def test_body_groups_failures_and_warnings_as_bullet_lists():
     assert body.count("Warnings:") == 1
 
 
+def test_body_pruned_group_lists_local_and_remote_targets():
+    """Local prune count and per-target remote retention counts share one
+    Pruned: group, local bullet first, zero-count targets omitted."""
+    inst = _notifier()
+    result = NotifyResult(
+        local="/a/b.tgz",
+        uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", pruned=2),
+                 UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=0)],
+        removed=["/a/old.tgz"])
+    body = inst._get_message_text(None, result)
+    assert "\n\nPruned:\n- local: 1 archive(s)\n- minio/b: 2 archive(s)" in body
+    assert "s3/aws: 0" not in body
+
+
+def test_body_pruned_group_remote_only():
+    inst = _notifier()
+    result = NotifyResult(
+        local="/a/b.tgz",
+        uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=4)],
+        removed=[])
+    body = inst._get_message_text(None, result)
+    assert "\n\nPruned:\n- s3/aws: 4 archive(s)" in body
+    assert "- local:" not in body
+
+
 def test_body_separates_groups_with_blank_line():
     """A blank line precedes each group header so sections don't run together."""
     inst = _notifier()
@@ -276,6 +301,15 @@ class TestMarkdownBody:
         assert "`Forbidden <edge>`" in body          # wrapped
         assert ": Forbidden <edge>" not in body      # never raw
 
+    def test_markdown_pruned_group_wraps_target_labels(self):
+        notifier = _make_notifier(body_format="markdown")
+        result = NotifyResult(
+            local="/a/b.tgz",
+            uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=2)],
+            removed=["/a/old.tgz"])
+        body = notifier._get_message_text(None, result=result)
+        assert "\n\n**Pruned:**\n\n- local: 1 archive(s)\n- `s3/aws`: 2 archive(s)" in body
+
     def test_markdown_unrecoverable_error_bolded_and_code_wrapped(self):
         notifier = _make_notifier(body_format="markdown")
         body = notifier._get_message_text(RuntimeError("boom <tag> & `tick`"))
@@ -292,7 +326,7 @@ class TestMarkdownBody:
         assert "Archive: `/data/export.tgz` (removed locally after upload)" in body
         # blank line after the upload bullets: a plain line straight after a list
         # would be lazily absorbed into the last bullet in MARKDOWN->HTML
-        assert "- `s3/main`: `b/a.tgz`\n\nPruned 1 old local archive(s)" in body
+        assert "- `s3/main`: `b/a.tgz`\n\n**Pruned:**\n\n- local: 1 archive(s)" in body
         assert "**Warnings:**\n\n- `s3/main`: `retention failed <x>`" in body
 
     def test_text_mode_output_unchanged(self):

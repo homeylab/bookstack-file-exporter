@@ -86,13 +86,14 @@ class S3CompatibleArchiver:
         log.info("Uploaded object: %s to bucket: %s", object_path, self.bucket)
         return f"{self.bucket}/{object_path}"
 
-    def clean_up(self, file_extension: str):
-        """delete objects based on 'keep_last' number"""
+    def clean_up(self, file_extension: str) -> int:
+        """delete objects based on 'keep_last' number; return number deleted"""
         if not self.keep_last:  # captures keep_last == 0
-            return
+            return 0
         to_delete = self._get_stale_objects(file_extension)
         if to_delete:
             self._delete_objects(to_delete)
+        return len(to_delete)
 
     def _scan_objects(self, file_extension: str) -> list[dict]:
         """List managed objects directly under the prefix (top-level only).
