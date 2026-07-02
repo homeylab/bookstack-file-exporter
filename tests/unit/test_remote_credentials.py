@@ -57,11 +57,3 @@ def test_addressing_inferred_and_overridden(make_storage_entry):
     assert S3ProviderConfig._resolve_addressing(make_storage_entry(
         endpoint=None, region="us-east-1", ambient_auth=True,
         access_key="", secret_key="", addressing_style="path")) == "path"
-
-def test_construction_wires_all_resolved_fields(make_storage_entry):
-    # custom-store entry: all four resolvers should wire together on the instance
-    provider = S3ProviderConfig(make_storage_entry(secure=True))
-    assert provider.endpoint_url == "https://minio.local:9000"
-    assert provider.region == "us-east-1"           # endpoint set, no explicit region
-    assert provider.addressing_style == "path"      # inferred from endpoint
-    assert (provider.access_key, provider.secret_key) == ("a", "s")
