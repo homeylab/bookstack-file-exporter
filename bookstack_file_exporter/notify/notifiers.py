@@ -20,15 +20,17 @@ def _md_code(text: str) -> str:
     return f"`{text}`"
 
 def _pruned_bullets(result: NotifyResult, local_abs: str, removed_abs: set[str],
-                    fmt_label) -> list[str]:
+                    wrap_labels: bool = False) -> list[str]:
     """Bullets for the Pruned: group, shared by both renderers: local retention
     count first, then one bullet per remote target that deleted objects
-    (zero-count targets omitted). fmt_label wraps untrusted target labels
-    (identity for text, _md_code for markdown)."""
+    (zero-count targets omitted). wrap_labels=True runs the untrusted target
+    labels through _md_code (markdown mode)."""
     pruned_local = len(removed_abs - {local_abs})
     bullets = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
-    bullets.extend(f"- {fmt_label(o.label)}: {o.pruned} archive(s)"
-                   for o in result.uploads if o.pruned > 0)
+    for outcome in result.uploads:
+        if outcome.pruned > 0:
+            label = _md_code(outcome.label) if wrap_labels else outcome.label
+            bullets.append(f"- {label}: {outcome.pruned} archive(s)")
     return bullets
 
 # pylint: disable=too-few-public-methods
@@ -124,7 +126,7 @@ class AppRiseNotify:
                     failed.append(f"- {outcome.label}: {outcome.error}")
                 elif outcome.warning:
                     warnings.append(f"- {outcome.label}: {outcome.warning}")
-            pruned = _pruned_bullets(result, local_abs, removed_abs, lambda l: l)
+            pruned = _pruned_bullets(result, local_abs, removed_abs)
             if pruned:
                 lines.extend(["", "Pruned:"])
                 lines.extend(pruned)
@@ -177,7 +179,7 @@ class AppRiseNotify:
                     failed.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.error)}")
                 elif outcome.warning:
                     warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
-            pruned = _pruned_bullets(result, local_abs, removed_abs, _md_code)
+            pruned = _pruned_bullets(result, local_abs, removed_abs, wrap_labels=True)
             if pruned:
                 lines.extend(["", "**Pruned:**", ""])
                 lines.extend(pruned)
