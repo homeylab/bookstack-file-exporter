@@ -11,8 +11,9 @@ from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 log = logging.getLogger(__name__)
 
-# only objects containing this substring are eligible for retention clean up;
-# guards against deleting user-managed objects that happen to share a prefix/bucket
+# only objects whose name (after the configured prefix) STARTS with this marker are
+# eligible for retention clean up; anchored to guard user objects that merely contain
+# the marker somewhere in their name (every tool-created archive starts with it)
 _MANAGED_FILTER = "bookstack_export_"
 
 class S3CompatibleArchiver:
@@ -100,7 +101,7 @@ class S3CompatibleArchiver:
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
             matched.extend(obj for obj in page.get("Contents", [])
                            if obj["Key"].endswith(file_extension)
-                           and _MANAGED_FILTER in obj["Key"])
+                           and obj["Key"].removeprefix(prefix).startswith(_MANAGED_FILTER))
         return matched
 
     def _get_stale_objects(self, file_extension: str) -> list[dict]:

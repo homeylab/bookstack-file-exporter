@@ -195,3 +195,14 @@ def test_delete_objects_raises_on_partial_errors(aws, provider):
         with pytest.raises(ValueError) as exc:
             arch._delete_objects([{"Key": "uploads/bad.tgz"}])
     assert "uploads/bad.tgz" in str(exc.value)
+
+
+def test_scan_ignores_lookalike_user_objects(aws, provider):
+    # substring 'bookstack_export_' in a USER-named object must not make it a retention
+    # candidate; only basenames that START with the managed marker are ours to delete
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", ["uploads/bookstack_export_1.tgz",
+                                  "uploads/my_bookstack_export_copy.tgz"])
+    arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
+    keys = [o["Key"] for o in arch._scan_objects(".tgz")]
+    assert keys == ["uploads/bookstack_export_1.tgz"]
