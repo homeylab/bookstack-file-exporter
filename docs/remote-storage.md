@@ -46,12 +46,12 @@ object_storage:
     access_key_env: MINIO2_ACCESS_KEY
     secret_key_env: MINIO2_SECRET_KEY
 
-  # A compat store that prefers virtual-hosted addressing over the path-style
-  # that 'endpoint' infers by default (e.g. DigitalOcean Spaces, Backblaze B2)
+  # A compat store that requires virtual-hosted addressing instead of the
+  # path-style that 'endpoint' infers by default (e.g. DigitalOcean Spaces)
   - name: do-spaces
     endpoint: nyc3.digitaloceanspaces.com
     bucket: my-space
-    force_path_style: false      # opt out of the endpoint-inferred path-style default
+    addressing_style: virtual    # boto3 value passed through: path | virtual | auto
     access_key: DOACCESSKEY
     secret_key: DOSECRETKEY
 
@@ -83,7 +83,7 @@ object_storage:
 | `region` | `str` | conditionally | `None` | Explicit value always wins. If omitted and `endpoint` is set, defaults to `us-east-1`. If omitted and no `endpoint` (AWS), required unless `ambient_auth: true` (botocore can then resolve it from env/profile). |
 | `secure` | `bool` | `false` | `true` | TLS toggle; selects the `https://`/`http://` scheme used when building the endpoint URL. Set `false` for plain-HTTP local MinIO. |
 | `prefix` | `str` | `false` | `""` | Optional object key prefix. Empty means bucket root. |
-| `force_path_style` | `bool` | `false` | `None` (inferred) | `true` forces path-style addressing; `false` forces virtual-hosted (`auto`). Left unset, path-style is inferred when `endpoint` is set and virtual-hosted otherwise. Set `false` on cloud compat stores that prefer virtual-hosted addressing (e.g. DigitalOcean Spaces, Backblaze B2). |
+| `addressing_style` | `str` | `false` | `None` (inferred) | Passed straight to boto3: `path`, `virtual`, or `auto`. Left unset, `path` is inferred when `endpoint` is set (MinIO/Ceph work out of the box) and `auto` (virtual-hosted) for AWS. Use `virtual` for compat stores that require virtual-hosted addressing (e.g. DigitalOcean Spaces, Backblaze B2) — note boto3 treats `auto` the same as `path` when a custom `endpoint` is set, so `virtual` is the only way to get virtual-hosted there. |
 | `ambient_auth` | `bool` | `false` | `false` | Opt in to the boto3 SDK's own ambient credential chain: environment variables, shared config/profile, **IRSA or Pod Identity (EKS/Kubernetes)**, IMDS instance profile (EC2), or assume-role. Required whenever no `access_key(_env)` pair is configured on the entry — there is no silent fallback to ambient credentials. |
 | `keep_last` | `int` | `false` | `0` | Retention pruning of this target's uploaded objects. `0` = keep all (no pruning). `1+` = retain that many most-recently-modified archives, deleting older ones. A negative value is a no-op — logged as a warning, nothing is deleted. Only objects directly under `prefix` are scanned — archives you move into nested "subfolders" are never deletion candidates. |
 | `access_key` / `secret_key` | `str` | `false` | `""` | Inline static credentials. Must be set together — one without the other is a config error. |

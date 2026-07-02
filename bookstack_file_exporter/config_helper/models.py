@@ -23,7 +23,7 @@ class S3StorageConfig(BaseModel):
     prefix: str | None = ""
     region: str | None = None
     secure: bool = True
-    force_path_style: bool | None = None   # None => inferred from endpoint presence
+    addressing_style: Literal["path", "virtual", "auto"] | None = None  # None => inferred
     ambient_auth: bool = False
     keep_last: int | None = 0
     access_key: str | None = ""

@@ -67,9 +67,11 @@ class S3ProviderConfig:
 
     @staticmethod
     def _resolve_addressing(entry: S3StorageConfig) -> str:
-        """botocore addressing_style. Explicit force_path_style wins ('path'/'auto'). Else infer:
-        an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; boto3 'auto' would
-        try virtual-hosted and break MinIO without wildcard DNS); AWS -> 'auto' (virtual)."""
-        if entry.force_path_style is not None:
-            return "path" if entry.force_path_style else "auto"
+        """botocore addressing_style, passed through verbatim when set. Unset => infer:
+        an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; note
+        botocore treats 'auto' the same as 'path' whenever endpoint_url is set, so
+        'virtual' is the only value that gets virtual-hosted on a custom store);
+        no endpoint (AWS) -> 'auto' (virtual-hosted)."""
+        if entry.addressing_style:
+            return entry.addressing_style
         return "path" if entry.endpoint else "auto"

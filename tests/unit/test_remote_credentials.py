@@ -46,13 +46,14 @@ def test_region_none_for_aws_ambient():
     assert S3ProviderConfig._resolve_region(e) is None
 
 def test_addressing_inferred_and_overridden():
-    assert S3ProviderConfig._resolve_addressing(_entry()) == "path"                     # endpoint set
-    assert S3ProviderConfig._resolve_addressing(_entry(force_path_style=False)) == "auto"
+    assert S3ProviderConfig._resolve_addressing(_entry()) == "path"          # endpoint set
+    assert S3ProviderConfig._resolve_addressing(
+        _entry(addressing_style="virtual")) == "virtual"                     # pass-through
     e = S3StorageConfig(name="t", bucket="b", region="us-east-1", ambient_auth=True)
-    assert S3ProviderConfig._resolve_addressing(e) == "auto"                            # no endpoint
+    assert S3ProviderConfig._resolve_addressing(e) == "auto"                 # no endpoint
     assert S3ProviderConfig._resolve_addressing(S3StorageConfig(
         name="t", bucket="b", region="us-east-1", ambient_auth=True,
-        force_path_style=True)) == "path"
+        addressing_style="path")) == "path"
 
 def test_construction_wires_all_resolved_fields():
     # custom-store entry: all four resolvers should wire together on the instance

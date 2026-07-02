@@ -85,10 +85,13 @@ def test_ambient_auth_defaults_false_and_settable():
                              access_key="a", secret_key="s").ambient_auth is False
 
 
-def test_force_path_style_default_none():
+def test_addressing_style_default_none_and_validated():
     cfg = S3StorageConfig(name="t", bucket="b", endpoint="h",
                             access_key="a", secret_key="s")
-    assert cfg.force_path_style is None
+    assert cfg.addressing_style is None
+    with pytest.raises(ValidationError):
+        S3StorageConfig(name="t", bucket="b", endpoint="h", access_key="a",
+                          secret_key="s", addressing_style="pathy")
 
 
 # --- UserInput name-uniqueness validator ---
