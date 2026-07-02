@@ -240,12 +240,12 @@ class Archiver:
 
     @property
     def failed_nodes(self) -> list[str]:
-        """Node exports skipped after fetch failures ('name (format)' entries)."""
+        """Node exports skipped after fetch failures (archive-relative paths)."""
         return self._archiver.failed_node_exports
 
     @property
     def failed_assets(self) -> list[str]:
-        """Asset downloads skipped after fetch failures (asset names)."""
+        """Asset downloads skipped after fetch failures (archive-relative paths)."""
         return self._archiver.failed_asset_downloads
 
     def _get_stale_archives(self) -> list[str]:

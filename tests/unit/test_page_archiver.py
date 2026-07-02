@@ -811,7 +811,7 @@ class TestFailureLedger:
 
         # PageArchiver._node_output_path is node.file_path; markdown ext is .md
         assert archiver.failed_node_exports == [f"{forbidden.file_path}.md"]
-        assert archiver.failed_asset_downloads == []  # pylint: disable=use-implicit-booleaness-not-comparison
+        assert not archiver.failed_asset_downloads
 
     def test_failed_asset_download_recorded_as_relative_path(self, tmp_path, build_node):
         """An asset whose download raises is recorded via get_relative_path
@@ -851,7 +851,7 @@ class TestFailureLedger:
             archiver.archive({40: page})
 
         assert archiver.failed_asset_downloads == ["images/gallery/broken.png"]
-        assert archiver.failed_node_exports == []  # pylint: disable=use-implicit-booleaness-not-comparison
+        assert not archiver.failed_node_exports
 
     def test_parallel_worker_exception_records_node(self, tmp_path, build_node):
         """A non-HTTP worker crash names the lost node in the ledger."""
