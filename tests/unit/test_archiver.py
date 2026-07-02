@@ -463,11 +463,18 @@ def test_archive_remote_empty_list_no_outcomes(archiver_instance, mock_config):
 
 
 def test_archive_remote_all_success(archiver_instance, mock_config):
+    """All targets upload; outcome order matches config order regardless of which
+    upload finishes first (results are keyed by target, not by call order)."""
     mock_config.object_storage_config = [
         _provider_entry("minio/b"), _provider_entry("s3/aws")]
-    fake_instance = MagicMock()
-    fake_instance.upload_backup.side_effect = ["minio-b/a.tgz", "s3-aws/a.tgz"]
-    archiver_instance._s3_archiver_cls = MagicMock(return_value=fake_instance)
+    dests = {"minio/b": "minio-b/a.tgz", "s3/aws": "s3-aws/a.tgz"}
+
+    def make_instance(provider_config):
+        inst = MagicMock()
+        inst.upload_backup.return_value = dests[provider_config.name]
+        return inst
+
+    archiver_instance._s3_archiver_cls = MagicMock(side_effect=make_instance)
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
 
@@ -478,14 +485,19 @@ def test_archive_remote_all_success(archiver_instance, mock_config):
 
 
 def test_archive_remote_one_fails_others_still_attempted(archiver_instance, mock_config):
-    """A failing target does not abort the loop; its outcome records the error."""
+    """A failing target does not abort the batch; its outcome records the error."""
     mock_config.object_storage_config = [
         _provider_entry("minio/b"), _provider_entry("s3/dr")]
-    good = MagicMock()
-    good.upload_backup.return_value = "minio-b/a.tgz"
-    bad = MagicMock()
-    bad.upload_backup.side_effect = RuntimeError("connection refused")
-    archiver_instance._s3_archiver_cls = MagicMock(side_effect=[good, bad])
+
+    def make_instance(provider_config):
+        inst = MagicMock()
+        if provider_config.name == "s3/dr":
+            inst.upload_backup.side_effect = RuntimeError("connection refused")
+        else:
+            inst.upload_backup.return_value = "minio-b/a.tgz"
+        return inst
+
+    archiver_instance._s3_archiver_cls = MagicMock(side_effect=make_instance)
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
 
