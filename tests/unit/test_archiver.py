@@ -638,24 +638,6 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 
 
 # ---------------------------------------------------------------------------
-# S3CompatibleArchiver._generate_prefix — trailing-slash normalisation
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("input_path,expected", [
-    ("backups/",   "backups"),
-    ("backups//",  "backups"),   # double-slash: old code leaves one slash, new code strips all
-    ("backups",    "backups"),
-    ("a/b/c/",     "a/b/c"),
-    (None,         ""),
-    ("",           ""),
-])
-def test_generate_path_strips_all_trailing_slashes(input_path, expected):
-    """_generate_prefix must strip ALL trailing slashes, not just one."""
-    result = S3CompatibleArchiver._generate_prefix(None, input_path)
-    assert result == expected
-
-
-# ---------------------------------------------------------------------------
 # books-level archiver wires modify_links (Task 6)
 # ---------------------------------------------------------------------------
 

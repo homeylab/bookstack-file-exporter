@@ -36,7 +36,7 @@ class S3CompatibleArchiver:
             config=Config(s3={"addressing_style": provider_config.addressing_style}),
         )
         self.bucket = provider_config.bucket
-        self.prefix = self._generate_prefix(provider_config.prefix)
+        self.prefix = provider_config.prefix
         self.keep_last = provider_config.keep_last
         self._validate_bucket()
 
@@ -64,9 +64,6 @@ class S3CompatibleArchiver:
             raise ValueError(
                 f"Object storage endpoint unreachable or misconfigured for bucket "
                 f"{self.bucket}: {err}") from err
-
-    def _generate_prefix(self, prefix_name: str | None) -> str:
-        return prefix_name.rstrip('/') if prefix_name else ""
 
     def upload_backup(self, local_file_path: str) -> str:
         """upload archive file to object storage bucket; return 'bucket/object_path' dest string.

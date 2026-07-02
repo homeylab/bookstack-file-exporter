@@ -18,7 +18,9 @@ class S3ProviderConfig:
     def __init__(self, entry: S3StorageConfig):
         self.name = entry.name
         self.bucket = entry.bucket
-        self.prefix = entry.prefix
+        # normalized: no leading/trailing '/'. A leading '/' would become a literal
+        # empty top-level "folder" in object keys; consumers join with '/' themselves.
+        self.prefix = (entry.prefix or "").strip("/")
         self.keep_last = entry.keep_last
         self.endpoint_url = self._resolve_endpoint_url(entry)
         self.region = self._resolve_region(entry)

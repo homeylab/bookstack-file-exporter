@@ -25,3 +25,15 @@ def test_ambient_holder_has_none_keys():
     assert p.region == "us-east-1"
     assert p.addressing_style == "auto"             # no endpoint => virtual-hosted
     assert p.access_key is None and p.secret_key is None
+
+
+def test_prefix_normalized_at_resolution():
+    entry = S3StorageConfig(name="t", bucket="b", prefix="/daily/exports///",
+                            endpoint="minio.local:9000", access_key="a", secret_key="s")
+    assert S3ProviderConfig(entry).prefix == "daily/exports"
+
+
+def test_none_prefix_resolves_empty():
+    entry = S3StorageConfig(name="t", bucket="b", prefix=None,
+                            endpoint="minio.local:9000", access_key="a", secret_key="s")
+    assert S3ProviderConfig(entry).prefix == ""
