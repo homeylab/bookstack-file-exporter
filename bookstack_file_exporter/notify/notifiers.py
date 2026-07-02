@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from apprise import Apprise, AppriseAsset, AppriseConfig
+from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyFormat
 
 from bookstack_file_exporter.config_helper import notifications
 from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
@@ -181,14 +181,19 @@ class AppRiseNotify:
         """send notification with exception message"""
         custom_body = self._get_message_text(excep, result)
         title_ = self._get_title(excep, result)
+        body_format_ = (NotifyFormat.MARKDOWN
+                         if self.config.body_format == "markdown"
+                         else NotifyFormat.TEXT)
         if self.config.custom_attachment:
             self._client.notify(
                 title=title_,
                 body=custom_body,
-                attach=self.config.custom_attachment
+                attach=self.config.custom_attachment,
+                body_format=body_format_
             )
         else:
             self._client.notify(
                 title=title_,
-                body=custom_body
+                body=custom_body,
+                body_format=body_format_
             )

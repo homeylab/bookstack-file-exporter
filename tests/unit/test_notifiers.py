@@ -4,6 +4,8 @@
 import os
 from unittest.mock import MagicMock
 
+from apprise import NotifyFormat
+
 from bookstack_file_exporter.notify import notifiers
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 from bookstack_file_exporter.notify.notifiers import AppRiseNotify
@@ -258,3 +260,24 @@ class TestMarkdownBody:
         body = notifier._get_message_text(None, result=self._partial_result())
         assert "Failed:\n- s3/dr: Forbidden <edge>" in body
         assert "**" not in body and "`" not in body
+
+
+class TestNotifyBodyFormat:
+    def test_notify_declares_text_body_format_by_default(self):
+        notifier = _make_notifier()
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.TEXT
+
+    def test_notify_declares_markdown_body_format_when_opted_in(self):
+        notifier = _make_notifier(body_format="markdown")
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.MARKDOWN
+
+    def test_notify_declares_body_format_with_attachment(self):
+        notifier = _make_notifier(body_format="markdown")
+        notifier.config.custom_attachment = "/tmp/export.tgz"
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.MARKDOWN
