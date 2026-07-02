@@ -143,3 +143,7 @@ notifications:
     custom_attachment_path: ""
     on_success: false
     on_failure: true
+    # optional - "text" (default) or "markdown"; markdown adds bold headers, bullet
+    # lists, and code-quoted values for markdown/HTML-capable targets (e.g. Slack,
+    # Telegram, email) but shows literal markup on plain-text targets
+    body_format: "text"

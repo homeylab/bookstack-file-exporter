@@ -31,10 +31,31 @@ Bookstack File Exporter completed successfully.
 
 Completed At: 2025-09-06 01:05:27
 Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
-Uploaded to: my-bucket/bookstack, my-bucket-s3/bookstack
-Pruned 2 old local archive(s)
+
+Uploaded to:
+- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_010527.tgz
+- aws-s3: my-bucket-s3/bookstack/bookstack_export_2025-09-06_010527.tgz
+
+Pruned:
+- local: 2 archive(s)
+- aws-s3: 1 archive(s)
 ```
-The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each remote destination, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
+The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each successful target as a `- name: destination` bullet, and the `Pruned:` group shows how many old archives `keep_last` retention removed — `local` for the export directory plus one bullet per remote target that deleted objects (zero-count targets are omitted).
+
+### Body Format
+By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Uploaded to:`/`Pruned:`/`Failed:`/`Warnings:` group headers become bold, each group renders as a real bullet list, and values like paths, destinations, and error messages are quoted in code spans.
+```yaml
+notifications:
+  apprise:
+    service_urls:
+      - "slack://TokenA/TokenB/TokenC/"
+    body_format: markdown
+```
+Whether `markdown` is an improvement depends on your notification targets:
+- Markdown-native targets (e.g. Slack) and HTML-native targets (e.g. Telegram, email) render the bold headers, bullet lists, and code-quoted error messages properly.
+- Plain-text targets (e.g. generic `json://` webhooks, ntfy, SMS) will show the literal `**` and backtick characters — apprise passes a Markdown body through to text targets unchanged, it does not strip the markup. This is why `markdown` is opt-in; choose based on your target mix.
+
+`body_format` is the input-side knob: it tells apprise what format the body is written in, and apprise then converts it to each service URL's native format. To override the target-side format for a specific URL, use apprise's per-URL `?format=` parameter (e.g. `json://host/notify?format=markdown`) — see the [apprise wiki](https://github.com/caronc/apprise/wiki) for details.
 
 ## apprise
 The apprise configuration is a part of the configuration yaml file under the notifications section and can be modified under `notifications.apprise`.
@@ -49,6 +70,7 @@ The apprise configuration is a part of the configuration yaml file under the not
 | `apprise.custom_attachment_path` | `str` | To include a custom attachment to the apprise notification, specify the path to a file | 
 | `apprise.on_success` | `bool` | Default: `false`, set to `true` if notifications should be sent on successful export runs |
 | `apprise.on_failure` | `bool` | Default: `true`, send notifications if run fails |
+| `apprise.body_format` | `str` | Default: `text`, set to `markdown` to render the notification body as Markdown. See [Body Format](#body-format) for the trade-offs |
 
 `apprise.service_urls` can contain sensitive information and can be specified as an environment variable instead as a string list, example: `export APPRISE_URLS='["json://localhost:8080/notify"]'`.
 

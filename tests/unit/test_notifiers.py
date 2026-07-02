@@ -4,12 +4,14 @@
 import os
 from unittest.mock import MagicMock
 
+from apprise import NotifyFormat
+
 from bookstack_file_exporter.notify import notifiers
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 from bookstack_file_exporter.notify.notifiers import AppRiseNotify
 
 
-def _make_notifier():
+def _make_notifier(body_format="text"):
     """Build AppRiseNotify bypassing Apprise client init."""
     instance = AppRiseNotify.__new__(AppRiseNotify)
     config = MagicMock()
@@ -19,6 +21,7 @@ def _make_notifier():
     config.config_path = None
     config.service_urls = []
     config.custom_attachment = None
+    config.body_format = body_format
     instance.config = config
     instance._client = MagicMock()
     return instance
@@ -65,7 +68,8 @@ class TestGetMessageTextSuccessBranch:
             removed=[],
         )
         body = notifier._get_message_text(None, result=result)
-        assert "Uploaded to: bucket1/backups/export.tgz, bucket2/export.tgz" in body
+        assert ("\n\nUploaded to:\n- t1: bucket1/backups/export.tgz\n"
+                "- t2: bucket2/export.tgz" in body)
 
     def test_removed_has_old_files_shows_pruned_count(self):
         notifier = _make_notifier()
@@ -75,7 +79,7 @@ class TestGetMessageTextSuccessBranch:
         body = notifier._get_message_text(None, result=result)
         # local is in removed (suffix present) + 2 old archives pruned
         assert "(removed locally after upload)" in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "\n\nPruned:\n- local: 2 archive(s)" in body
 
     def test_old_files_only_no_local_in_removed(self):
         notifier = _make_notifier()
@@ -84,14 +88,14 @@ class TestGetMessageTextSuccessBranch:
         result = NotifyResult(local=local, uploads=[], removed=removed)
         body = notifier._get_message_text(None, result=result)
         assert "(removed locally after upload)" not in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "Pruned:\n- local: 2 archive(s)" in body
 
     def test_cleanup_error_shows_warning_line(self):
         notifier = _make_notifier()
         result = NotifyResult(status=ExportStatus.PARTIAL, local="/data/export.tgz",
                               uploads=[], removed=[], cleanup_error="permission denied")
         body = notifier._get_message_text(None, result=result)
-        assert "Warning: local cleanup failed - permission denied" in body
+        assert "Warnings:\n- local cleanup failed: permission denied" in body
         assert "completed with errors" in body
 
     def test_no_cleanup_error_no_warning_line(self):
@@ -131,7 +135,7 @@ class TestGetMessageTextSuccessBranch:
         body = notifier._get_message_text(None, result=result)
         # current archive (mixed form) → suffix, NOT counted among pruned old archives
         assert "(removed locally after upload)" in body
-        assert "Pruned 2 old local archive(s)" in body
+        assert "Pruned:\n- local: 2 archive(s)" in body
 
     def test_failure_branch_unchanged_no_archive_lines(self):
         notifier = _make_notifier()
@@ -180,8 +184,8 @@ def test_body_lists_ok_and_failed_targets():
         uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", None),
                  UploadOutcome("s3/dr", None, "connection refused")])
     body = inst._get_message_text(None, result)
-    assert "Uploaded to: minio-b/a.tgz" in body      # ok target -> dest
-    assert "Failed: s3/dr - connection refused" in body  # failed target -> label + error
+    assert "Uploaded to:\n- minio/b: minio-b/a.tgz" in body  # ok target -> labeled bullet
+    assert "Failed:\n- s3/dr: connection refused" in body  # failed target -> bullet under header
 
 
 def test_body_lists_retention_warning():
@@ -190,5 +194,165 @@ def test_body_lists_retention_warning():
         status=ExportStatus.PARTIAL, local="/a/b.tgz",
         uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")])
     body = inst._get_message_text(None, result)
-    assert "Uploaded to: s3-aws/a.tgz" in body
-    assert "Warning: s3/aws - delete denied" in body
+    assert "Uploaded to:\n- s3/aws: s3-aws/a.tgz" in body
+    assert "Warnings:\n- s3/aws: delete denied" in body
+
+
+def test_body_groups_failures_and_warnings_as_bullet_lists():
+    """All failure bullets sit under one Failed: header; per-target retention
+    warnings and the local cleanup error share one Warnings: header."""
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("minio/b", None, "connection refused"),
+                 UploadOutcome("s3/dr", None, "Forbidden"),
+                 UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")],
+        cleanup_error="permission denied")
+    body = inst._get_message_text(None, result)
+    assert "Failed:\n- minio/b: connection refused\n- s3/dr: Forbidden" in body
+    assert ("Warnings:\n- s3/aws: delete denied\n"
+            "- local cleanup failed: permission denied") in body
+    assert body.count("Failed:") == 1
+    assert body.count("Warnings:") == 1
+
+
+def test_body_pruned_group_lists_local_and_remote_targets():
+    """Local prune count and per-target remote retention counts share one
+    Pruned: group, local bullet first, zero-count targets omitted."""
+    inst = _notifier()
+    result = NotifyResult(
+        local="/a/b.tgz",
+        uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", pruned=2),
+                 UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=0)],
+        removed=["/a/old.tgz"])
+    body = inst._get_message_text(None, result)
+    assert "\n\nPruned:\n- local: 1 archive(s)\n- minio/b: 2 archive(s)" in body
+    assert "s3/aws: 0" not in body
+
+
+def test_body_pruned_group_remote_only():
+    inst = _notifier()
+    result = NotifyResult(
+        local="/a/b.tgz",
+        uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=4)],
+        removed=[])
+    body = inst._get_message_text(None, result)
+    assert "\n\nPruned:\n- s3/aws: 4 archive(s)" in body
+    assert "- local:" not in body
+
+
+def test_body_separates_groups_with_blank_line():
+    """A blank line precedes each group header so sections don't run together."""
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("s3/dr", None, "Forbidden")],
+        cleanup_error="permission denied")
+    body = inst._get_message_text(None, result)
+    assert "\n\nFailed:\n- s3/dr: Forbidden" in body
+    assert "\n\nWarnings:\n- local cleanup failed: permission denied" in body
+
+
+class TestMdCode:
+    def test_plain_string_single_backticks(self):
+        assert notifiers._md_code("connection refused") == "`connection refused`"
+
+    def test_string_with_backtick_uses_double_delimiters_and_padding(self):
+        # double-backtick delimiters + space padding per CommonMark so an inner
+        # backtick cannot terminate the span
+        assert notifiers._md_code("a `tick` inside") == "`` a `tick` inside ``"
+
+    def test_angle_brackets_survive_inside_span(self):
+        # the whole point: code spans neutralize raw HTML for MARKDOWN->HTML targets
+        out = notifiers._md_code("Forbidden <edge & chars>")
+        assert out == "`Forbidden <edge & chars>`"
+
+
+class TestMarkdownBody:
+    def _partial_result(self):
+        return NotifyResult(
+            status=ExportStatus.PARTIAL, local="/data/export.tgz",
+            uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", None),
+                     UploadOutcome("s3/dr", None, "Forbidden <edge>")],
+            removed=[], cleanup_error="permission denied")
+
+    def test_markdown_body_structure(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "**Bookstack File Exporter completed with errors.**" in body
+        assert "Archive: `/data/export.tgz`" in body
+        assert "**Uploaded to:**\n\n- `minio/b`: `minio-b/a.tgz`" in body
+        # blank line between header and bullets => real <ul> after conversion
+        assert "**Failed:**\n\n- `s3/dr`: `Forbidden <edge>`" in body
+        assert "**Warnings:**\n\n- local cleanup failed: `permission denied`" in body
+
+    def test_markdown_group_headers_separated_from_preceding_lines(self):
+        """A blank line must precede each group header too: CommonMark lazy
+        continuation otherwise absorbs **Warnings:** into the last Failed bullet
+        (one merged <ul> after apprise's MARKDOWN->HTML conversion)."""
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "\n\n**Failed:**\n\n" in body
+        assert "\n\n**Warnings:**\n\n" in body
+
+    def test_markdown_error_strings_are_code_wrapped(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "`Forbidden <edge>`" in body          # wrapped
+        assert ": Forbidden <edge>" not in body      # never raw
+
+    def test_markdown_pruned_group_wraps_target_labels(self):
+        notifier = _make_notifier(body_format="markdown")
+        result = NotifyResult(
+            local="/a/b.tgz",
+            uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", pruned=2)],
+            removed=["/a/old.tgz"])
+        body = notifier._get_message_text(None, result=result)
+        assert "\n\n**Pruned:**\n\n- local: 1 archive(s)\n- `s3/aws`: 2 archive(s)" in body
+
+    def test_markdown_unrecoverable_error_bolded_and_code_wrapped(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(RuntimeError("boom <tag> & `tick`"))
+        assert "**Bookstack File Exporter encountered an unrecoverable error.**" in body
+        assert "Error message: `` boom <tag> & `tick` ``" in body
+
+    def test_markdown_warning_pruned_and_removed_suffix(self):
+        result = NotifyResult(
+            status=ExportStatus.PARTIAL, local="/data/export.tgz",
+            uploads=[UploadOutcome("s3/main", "b/a.tgz", warning="retention failed <x>")],
+            removed=["/data/export.tgz", "/data/old.tgz"])
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=result)
+        assert "Archive: `/data/export.tgz` (removed locally after upload)" in body
+        # blank line after the upload bullets: a plain line straight after a list
+        # would be lazily absorbed into the last bullet in MARKDOWN->HTML
+        assert "- `s3/main`: `b/a.tgz`\n\n**Pruned:**\n\n- local: 1 archive(s)" in body
+        assert "**Warnings:**\n\n- `s3/main`: `retention failed <x>`" in body
+
+    def test_text_mode_output_unchanged(self):
+        """Default mode must render the exact current text body."""
+        notifier = _make_notifier()  # body_format defaults to text
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "Failed:\n- s3/dr: Forbidden <edge>" in body
+        assert "**" not in body and "`" not in body
+
+
+class TestNotifyBodyFormat:
+    def test_notify_declares_text_body_format_by_default(self):
+        notifier = _make_notifier()
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.TEXT
+
+    def test_notify_declares_markdown_body_format_when_opted_in(self):
+        notifier = _make_notifier(body_format="markdown")
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.MARKDOWN
+
+    def test_notify_declares_body_format_with_attachment(self):
+        notifier = _make_notifier(body_format="markdown")
+        notifier.config.custom_attachment = "/tmp/export.tgz"
+        notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
+        kwargs = notifier._client.notify.call_args.kwargs
+        assert kwargs["body_format"] == NotifyFormat.MARKDOWN

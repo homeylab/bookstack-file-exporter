@@ -16,6 +16,7 @@ class UploadOutcome:
     dest: str | None = None     # "bucket/object" on success
     error: str | None = None    # str(exception) on upload failure
     warning: str | None = None  # str(exception) when upload OK but retention cleanup failed
+    pruned: int = 0             # objects deleted by remote retention (0 when cleanup failed)
 
 
 @dataclass

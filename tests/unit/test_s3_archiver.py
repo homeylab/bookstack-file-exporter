@@ -112,16 +112,18 @@ def _seed(client, bucket, keys):
 def test_clean_up_deletes_oldest_beyond_keep_last(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", [f"uploads/bookstack_export_{i}.tgz" for i in range(5)])
-    S3CompatibleArchiver(provider(prefix="uploads", keep_last=2)).clean_up(".tgz")
+    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=2)).clean_up(".tgz")
     remaining = client.list_objects_v2(Bucket="test-bucket").get("Contents", [])
     assert len(remaining) == 2
+    assert deleted == 3
 
 
 def test_clean_up_keep_last_zero_deletes_nothing(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", ["uploads/bookstack_export_1.tgz", "uploads/unrelated.tgz"])
-    S3CompatibleArchiver(provider(prefix="uploads", keep_last=0)).clean_up(".tgz")
+    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=0)).clean_up(".tgz")
     assert len(client.list_objects_v2(Bucket="test-bucket").get("Contents", [])) == 2
+    assert deleted == 0
 
 
 def test_scan_paginates_beyond_1000(aws, provider):

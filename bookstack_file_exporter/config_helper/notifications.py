@@ -28,6 +28,7 @@ class AppRiseNotifyConfig:
         self.custom_attachment = config.custom_attachment_path
         self.on_success = config.on_success
         self.on_failure = config.on_failure
+        self.body_format = config.body_format
 
     def validate(self) -> None:
         """Validate apprise configuration (pure predicate over resolved state)."""
