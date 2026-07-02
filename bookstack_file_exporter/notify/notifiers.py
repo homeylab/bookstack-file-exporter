@@ -7,6 +7,18 @@ from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
 
 _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 
+def _md_code(text: str) -> str:
+    """Wrap untrusted interpolated text in a markdown code span.
+
+    Code spans are the sanitizer for the markdown body: python-markdown escapes
+    <>& inside them, so error strings containing raw HTML cannot be swallowed by
+    HTML-native targets (apprise's MARKDOWN->HTML conversion does NOT escape,
+    verified against apprise 1.10.0). Double-backtick delimiters with space
+    padding tolerate single backticks inside the text (CommonMark)."""
+    if "`" in text:
+        return f"`` {text} ``"
+    return f"`{text}`"
+
 # pylint: disable=too-few-public-methods
 class AppRiseNotify:
     """
@@ -55,6 +67,12 @@ class AppRiseNotify:
 
     def _get_message_text(self, error_msg: None | Exception,
                           result: NotifyResult | None = None) -> str:
+        if self.config.body_format == "markdown":
+            return self._markdown_body(error_msg, result)
+        return self._text_body(error_msg, result)
+
+    def _text_body(self, error_msg: None | Exception,
+                   result: NotifyResult | None = None) -> str:
         timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         if error_msg:
             return "\n".join([
@@ -103,6 +121,59 @@ class AppRiseNotify:
             lines.extend(failed)
         if warnings:
             lines.append("Warnings:")
+            lines.extend(warnings)
+        return "\n".join(lines)
+
+    def _markdown_body(self, error_msg: None | Exception,
+                       result: NotifyResult | None = None) -> str:
+        # Mirrors _text_body's structure exactly (same content, same order) with
+        # markdown emphasis on headline/group headers and every interpolated
+        # untrusted value wrapped in _md_code(). See _md_code for why the wrapping
+        # is mandatory (apprise's MARKDOWN->HTML conversion does not escape HTML).
+        timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        if error_msg:
+            return "\n".join([
+                "",
+                "**Bookstack File Exporter encountered an unrecoverable error.**",
+                "",
+                f"Occurred At: {timestamp}",
+                "",
+                f"Error message: {_md_code(str(error_msg))}",
+            ])
+        partial = result is not None and result.status is ExportStatus.PARTIAL
+        headline = ("**Bookstack File Exporter completed with errors.**"
+                    if partial else
+                    "**Bookstack File Exporter completed successfully.**")
+        lines = ["", headline, "", f"Completed At: {timestamp}"]
+        failed: list[str] = []
+        warnings: list[str] = []
+        if result is not None and result.local is not None:
+            local_abs = os.path.abspath(result.local)
+            removed_abs = {os.path.abspath(p) for p in result.removed}
+            archive_line = f"Archive: {_md_code(result.local)}"
+            if local_abs in removed_abs:
+                archive_line += " (removed locally after upload)"
+            lines.append(archive_line)
+            ok_dests = [_md_code(o.dest) for o in result.uploads if o.dest]
+            if ok_dests:
+                lines.append(f"Uploaded to: {', '.join(ok_dests)}")
+            for outcome in result.uploads:
+                if not outcome.dest:
+                    failed.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.error)}")
+                elif outcome.warning:
+                    warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
+            pruned_count = len(removed_abs - {local_abs})
+            if pruned_count > 0:
+                lines.append(f"Pruned {pruned_count} old local archive(s)")
+        if result is not None and result.cleanup_error:
+            warnings.append(f"- local cleanup failed: {_md_code(result.cleanup_error)}")
+        if failed:
+            lines.append("**Failed:**")
+            lines.append("")
+            lines.extend(failed)
+        if warnings:
+            lines.append("**Warnings:**")
+            lines.append("")
             lines.extend(warnings)
         return "\n".join(lines)
 

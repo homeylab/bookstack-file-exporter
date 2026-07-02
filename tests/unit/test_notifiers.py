@@ -9,7 +9,7 @@ from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, Up
 from bookstack_file_exporter.notify.notifiers import AppRiseNotify
 
 
-def _make_notifier():
+def _make_notifier(body_format="text"):
     """Build AppRiseNotify bypassing Apprise client init."""
     instance = AppRiseNotify.__new__(AppRiseNotify)
     config = MagicMock()
@@ -19,6 +19,7 @@ def _make_notifier():
     config.config_path = None
     config.service_urls = []
     config.custom_attachment = None
+    config.body_format = body_format
     instance.config = config
     instance._client = MagicMock()
     return instance
@@ -210,3 +211,50 @@ def test_body_groups_failures_and_warnings_as_bullet_lists():
             "- local cleanup failed: permission denied") in body
     assert body.count("Failed:") == 1
     assert body.count("Warnings:") == 1
+
+
+class TestMdCode:
+    def test_plain_string_single_backticks(self):
+        assert notifiers._md_code("connection refused") == "`connection refused`"
+
+    def test_string_with_backtick_uses_double_delimiters_and_padding(self):
+        # double-backtick delimiters + space padding per CommonMark so an inner
+        # backtick cannot terminate the span
+        assert notifiers._md_code("a `tick` inside") == "`` a `tick` inside ``"
+
+    def test_angle_brackets_survive_inside_span(self):
+        # the whole point: code spans neutralize raw HTML for MARKDOWN->HTML targets
+        out = notifiers._md_code("Forbidden <edge & chars>")
+        assert out == "`Forbidden <edge & chars>`"
+
+
+class TestMarkdownBody:
+    def _partial_result(self):
+        return NotifyResult(
+            status=ExportStatus.PARTIAL, local="/data/export.tgz",
+            uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", None),
+                     UploadOutcome("s3/dr", None, "Forbidden <edge>")],
+            removed=[], cleanup_error="permission denied")
+
+    def test_markdown_body_structure(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "**Bookstack File Exporter completed with errors.**" in body
+        assert "Archive: `/data/export.tgz`" in body
+        assert "Uploaded to: `minio-b/a.tgz`" in body
+        # blank line between header and bullets => real <ul> after conversion
+        assert "**Failed:**\n\n- `s3/dr`: `Forbidden <edge>`" in body
+        assert "**Warnings:**\n\n- local cleanup failed: `permission denied`" in body
+
+    def test_markdown_error_strings_are_code_wrapped(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "`Forbidden <edge>`" in body          # wrapped
+        assert ": Forbidden <edge>" not in body      # never raw
+
+    def test_text_mode_output_unchanged(self):
+        """Default mode must render the exact current text body."""
+        notifier = _make_notifier()  # body_format defaults to text
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "Failed:\n- s3/dr: Forbidden <edge>" in body
+        assert "**" not in body and "`" not in body
