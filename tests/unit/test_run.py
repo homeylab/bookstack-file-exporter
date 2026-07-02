@@ -773,6 +773,35 @@ class TestExporterReturnValue:
         assert isinstance(result_arg, NotifyResult)
         assert result_arg.local == "/local/export.tgz"
 
+    def test_success_path_notify_failure_does_not_fail_run(self, monkeypatch, caplog):
+        """B2: a notification-send exception on the success path must not turn a
+        successful export into a failed run (mirrors the failure-path wrapper)."""
+        config = _make_exporter_config("pages")
+        config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = []
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
+        mock_archiver.clean_up.return_value = []
+        mock_archiver.archive_file = "/local/export.tgz"
+
+        mock_notif_instance = MagicMock()
+        mock_notif_instance.do_notify.side_effect = RuntimeError("notify boom")
+        monkeypatch.setattr(
+            "bookstack_file_exporter.run.NotifyHandler",
+            MagicMock(return_value=mock_notif_instance),
+        )
+
+        with caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            result = run.run(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.SUCCESS
+        assert any("Failed to send notification" in r.message for r in caplog.records)
+
 
 # ---------------------------------------------------------------------------
 # Health server wiring in _run_scheduled (F4)

@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 
 from apprise import NotifyFormat
 
+from bookstack_file_exporter.config_helper import models as config_models
+from bookstack_file_exporter.config_helper import notifications
 from bookstack_file_exporter.notify import notifiers
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 from bookstack_file_exporter.notify.notifiers import AppRiseNotify
@@ -25,6 +27,42 @@ def _make_notifier(body_format="text"):
     instance.config = config
     instance._client = MagicMock()
     return instance
+
+
+def _apprise_notify_config(**overrides):
+    """Build a real notifications.AppRiseNotifyConfig via the pydantic model,
+    so _create_client() runs against production config wiring."""
+    base = {"service_urls": ["json://localhost"]}
+    base.update(overrides)
+    return notifications.AppRiseNotifyConfig(config_models.AppRiseNotifyConfig(**base))
+
+
+class TestCreateClientAssetWiring:
+    """B1 regression: AppriseAsset fields are constructor-only / read-only
+    properties on apprise>=1.10.0, and Apprise.add() bakes the asset into
+    plugin instances at add-time, so the asset must be built with kwargs and
+    passed to Apprise(asset=...) up front (never assigned after add())."""
+
+    def test_storage_path_and_plugin_paths_none_no_exception(self):
+        config = _apprise_notify_config()
+        notifier = AppRiseNotify(config)
+        assert notifier._client.asset.storage_path is None
+        assert not notifier._client.asset.plugin_paths
+
+    def test_storage_path_propagates_to_client_asset(self, tmp_path):
+        config = _apprise_notify_config(storage_path=str(tmp_path))
+        notifier = AppRiseNotify(config)
+        assert notifier._client.asset.storage_path == str(tmp_path)
+        # plugin-level assert: notify() uses the asset baked into each plugin
+        # at add()-time, not the client-level attribute
+        assert notifier._client[0].asset.storage_path == str(tmp_path)
+
+    def test_plugin_paths_propagates_to_client_asset(self, tmp_path):
+        plugin_dir = str(tmp_path)
+        config = _apprise_notify_config(plugin_paths=[plugin_dir])
+        notifier = AppRiseNotify(config)
+        assert notifier._client.asset.plugin_paths == [plugin_dir]
+        assert notifier._client[0].asset.plugin_paths == [plugin_dir]
 
 
 class TestGetMessageTextSuccessBranch:

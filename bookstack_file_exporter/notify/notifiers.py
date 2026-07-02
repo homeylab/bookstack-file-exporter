@@ -50,14 +50,18 @@ class AppRiseNotify:
         self._client = self._create_client()
 
     def _create_client(self):
-        client = Apprise()
-        asset = AppriseAsset()
-
+        # apprise >=1.10.0: AppriseAsset fields are read-only properties,
+        # settable only via constructor kwargs; and Apprise.add() bakes the
+        # asset into each plugin at add-time, so the asset must be passed at
+        # Apprise(asset=...) construction -- never assigned after add().
+        asset_kwargs = {}
         if self.config.storage_path:
-            asset.storage_path=self.config.storage_path
-
+            asset_kwargs["storage_path"] = self.config.storage_path
         if self.config.plugin_paths:
-            asset.plugin_paths = self.config.plugin_paths
+            asset_kwargs["plugin_paths"] = self.config.plugin_paths
+        asset = AppriseAsset(**asset_kwargs)
+
+        client = Apprise(asset=asset)
 
         if self.config.config_path:
             app_config = AppriseConfig()
@@ -66,7 +70,6 @@ class AppRiseNotify:
         else:
             client.add(self.config.service_urls)
 
-        client.asset=asset
         return client
 
     def _get_title(self, excep: None | Exception,
