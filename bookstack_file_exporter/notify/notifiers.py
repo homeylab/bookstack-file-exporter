@@ -117,10 +117,10 @@ class AppRiseNotify:
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {result.cleanup_error}")
         if failed:
-            lines.append("Failed:")
+            lines.extend(["", "Failed:"])
             lines.extend(failed)
         if warnings:
-            lines.append("Warnings:")
+            lines.extend(["", "Warnings:"])
             lines.extend(warnings)
         return "\n".join(lines)
 

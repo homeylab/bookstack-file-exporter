@@ -215,6 +215,18 @@ def test_body_groups_failures_and_warnings_as_bullet_lists():
     assert body.count("Warnings:") == 1
 
 
+def test_body_separates_groups_with_blank_line():
+    """A blank line precedes each group header so sections don't run together."""
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("s3/dr", None, "Forbidden")],
+        cleanup_error="permission denied")
+    body = inst._get_message_text(None, result)
+    assert "\n\nFailed:\n- s3/dr: Forbidden" in body
+    assert "\n\nWarnings:\n- local cleanup failed: permission denied" in body
+
+
 class TestMdCode:
     def test_plain_string_single_backticks(self):
         assert notifiers._md_code("connection refused") == "`connection refused`"
