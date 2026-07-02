@@ -91,7 +91,7 @@ class TestGetMessageTextSuccessBranch:
         result = NotifyResult(status=ExportStatus.PARTIAL, local="/data/export.tgz",
                               uploads=[], removed=[], cleanup_error="permission denied")
         body = notifier._get_message_text(None, result=result)
-        assert "Warning: local cleanup failed - permission denied" in body
+        assert "Warnings:\n- local cleanup failed: permission denied" in body
         assert "completed with errors" in body
 
     def test_no_cleanup_error_no_warning_line(self):
@@ -181,7 +181,7 @@ def test_body_lists_ok_and_failed_targets():
                  UploadOutcome("s3/dr", None, "connection refused")])
     body = inst._get_message_text(None, result)
     assert "Uploaded to: minio-b/a.tgz" in body      # ok target -> dest
-    assert "Failed: s3/dr - connection refused" in body  # failed target -> label + error
+    assert "Failed:\n- s3/dr: connection refused" in body  # failed target -> bullet under header
 
 
 def test_body_lists_retention_warning():
@@ -191,4 +191,22 @@ def test_body_lists_retention_warning():
         uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")])
     body = inst._get_message_text(None, result)
     assert "Uploaded to: s3-aws/a.tgz" in body
-    assert "Warning: s3/aws - delete denied" in body
+    assert "Warnings:\n- s3/aws: delete denied" in body
+
+
+def test_body_groups_failures_and_warnings_as_bullet_lists():
+    """All failure bullets sit under one Failed: header; per-target retention
+    warnings and the local cleanup error share one Warnings: header."""
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/a/b.tgz",
+        uploads=[UploadOutcome("minio/b", None, "connection refused"),
+                 UploadOutcome("s3/dr", None, "Forbidden"),
+                 UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")],
+        cleanup_error="permission denied")
+    body = inst._get_message_text(None, result)
+    assert "Failed:\n- minio/b: connection refused\n- s3/dr: Forbidden" in body
+    assert ("Warnings:\n- s3/aws: delete denied\n"
+            "- local cleanup failed: permission denied") in body
+    assert body.count("Failed:") == 1
+    assert body.count("Warnings:") == 1

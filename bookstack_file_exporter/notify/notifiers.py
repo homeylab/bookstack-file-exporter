@@ -70,6 +70,12 @@ class AppRiseNotify:
                     if partial else
                     "Bookstack File Exporter completed successfully.")
         lines = ["", headline, "", f"Completed At: {timestamp}"]
+        # Grouped trailers: every failed upload becomes a bullet under one "Failed:"
+        # header; per-target retention warnings and a local cleanup failure share one
+        # "Warnings:" header (one visual language for "non-fatal"). Plain "- " bullets
+        # render sensibly in both text and markdown notification targets.
+        failed: list[str] = []
+        warnings: list[str] = []
         if result is not None and result.local is not None:
             local_abs = os.path.abspath(result.local)
             removed_abs = {os.path.abspath(p) for p in result.removed}
@@ -78,20 +84,26 @@ class AppRiseNotify:
                 archive_line += " (removed locally after upload)"
             lines.append(archive_line)
             # Preserve the concise "Uploaded to:" success line for targets that succeeded;
-            # list any failures explicitly below it (partial runs).
+            # failures are grouped explicitly below it (partial runs).
             ok_dests = [o.dest for o in result.uploads if o.dest]
             if ok_dests:
                 lines.append(f"Uploaded to: {', '.join(ok_dests)}")
             for outcome in result.uploads:
                 if not outcome.dest:
-                    lines.append(f"Failed: {outcome.label} - {outcome.error}")
+                    failed.append(f"- {outcome.label}: {outcome.error}")
                 elif outcome.warning:
-                    lines.append(f"Warning: {outcome.label} - {outcome.warning}")
+                    warnings.append(f"- {outcome.label}: {outcome.warning}")
             pruned_count = len(removed_abs - {local_abs})
             if pruned_count > 0:
                 lines.append(f"Pruned {pruned_count} old local archive(s)")
         if result is not None and result.cleanup_error:
-            lines.append(f"Warning: local cleanup failed - {result.cleanup_error}")
+            warnings.append(f"- local cleanup failed: {result.cleanup_error}")
+        if failed:
+            lines.append("Failed:")
+            lines.extend(failed)
+        if warnings:
+            lines.append("Warnings:")
+            lines.extend(warnings)
         return "\n".join(lines)
 
     def notify(self, excep: Exception | None = None, result: NotifyResult | None = None):
