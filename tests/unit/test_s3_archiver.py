@@ -146,3 +146,26 @@ def test_clean_up_preserves_unmanaged_objects(aws):
     keys = {o["Key"] for o in client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
     assert "uploads/unrelated.tgz" in keys          # non-managed object never a deletion candidate
     assert len([k for k in keys if "bookstack_export_" in k]) == 1  # 3 managed -> keep_last=1
+
+
+def test_scan_ignores_nested_keys(aws):
+    # v2.3.0 minio-py listed non-recursively; nested "subfolders" under the
+    # prefix are user-managed space and must never be retention candidates
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", ["uploads/bookstack_export_1.tgz",
+                                  "uploads/archive/bookstack_export_2.tgz"])
+    arch = S3CompatibleArchiver(_provider(prefix="uploads", keep_last=1))
+    keys = [o["Key"] for o in arch._scan_objects(".tgz")]
+    assert keys == ["uploads/bookstack_export_1.tgz"]
+
+
+def test_clean_up_never_deletes_nested_keys(aws):
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket",
+          [f"uploads/bookstack_export_{i}.tgz" for i in range(3)]
+          + ["uploads/archive/bookstack_export_keepme.tgz"])
+    S3CompatibleArchiver(_provider(prefix="uploads", keep_last=1)).clean_up(".tgz")
+    keys = {o["Key"] for o in
+            client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert "uploads/archive/bookstack_export_keepme.tgz" in keys
+    assert len([k for k in keys if k.startswith("uploads/bookstack_export_")]) == 1

@@ -91,13 +91,20 @@ class S3CompatibleArchiver:
             self._delete_objects(to_delete)
 
     def _scan_objects(self, file_extension: str) -> list[dict]:
+        """List managed objects directly under the prefix (top-level only).
+
+        Delimiter='/' scopes the listing to one level — same as the v2 minio-py
+        default (recursive=False) — so objects in nested 'subfolders' under the
+        prefix are never retention candidates. Filtering happens per page so at
+        most one page of unfiltered entries is held in memory."""
         prefix = f"{self.prefix}/" if self.prefix else ""
-        objects: list[dict] = []
+        matched: list[dict] = []
         paginator = self._client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
-            objects.extend(page.get("Contents", []))
-        return [obj for obj in objects
-                if obj["Key"].endswith(file_extension) and _MANAGED_FILTER in obj["Key"]]
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
+            matched.extend(obj for obj in page.get("Contents", [])
+                           if obj["Key"].endswith(file_extension)
+                           and _MANAGED_FILTER in obj["Key"])
+        return matched
 
     def _get_stale_objects(self, file_extension: str) -> list[dict]:
         objects = self._scan_objects(file_extension)
