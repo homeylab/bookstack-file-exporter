@@ -19,6 +19,18 @@ def _md_code(text: str) -> str:
         return f"`` {text} ``"
     return f"`{text}`"
 
+def _pruned_bullets(result: NotifyResult, local_abs: str, removed_abs: set[str],
+                    fmt_label) -> list[str]:
+    """Bullets for the Pruned: group, shared by both renderers: local retention
+    count first, then one bullet per remote target that deleted objects
+    (zero-count targets omitted). fmt_label wraps untrusted target labels
+    (identity for text, _md_code for markdown)."""
+    pruned_local = len(removed_abs - {local_abs})
+    bullets = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
+    bullets.extend(f"- {fmt_label(o.label)}: {o.pruned} archive(s)"
+                   for o in result.uploads if o.pruned > 0)
+    return bullets
+
 # pylint: disable=too-few-public-methods
 class AppRiseNotify:
     """
@@ -112,12 +124,7 @@ class AppRiseNotify:
                     failed.append(f"- {outcome.label}: {outcome.error}")
                 elif outcome.warning:
                     warnings.append(f"- {outcome.label}: {outcome.warning}")
-            # Pruned: group covers local retention plus per-target remote retention,
-            # local bullet first, zero-count targets omitted.
-            pruned_local = len(removed_abs - {local_abs})
-            pruned = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
-            pruned.extend(f"- {o.label}: {o.pruned} archive(s)"
-                          for o in result.uploads if o.pruned > 0)
+            pruned = _pruned_bullets(result, local_abs, removed_abs, lambda l: l)
             if pruned:
                 lines.extend(["", "Pruned:"])
                 lines.extend(pruned)
@@ -170,10 +177,7 @@ class AppRiseNotify:
                     failed.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.error)}")
                 elif outcome.warning:
                     warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
-            pruned_local = len(removed_abs - {local_abs})
-            pruned = [f"- local: {pruned_local} archive(s)"] if pruned_local > 0 else []
-            pruned.extend(f"- {_md_code(o.label)}: {o.pruned} archive(s)"
-                          for o in result.uploads if o.pruned > 0)
+            pruned = _pruned_bullets(result, local_abs, removed_abs, _md_code)
             if pruned:
                 lines.extend(["", "**Pruned:**", ""])
                 lines.extend(pruned)

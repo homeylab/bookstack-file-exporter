@@ -43,7 +43,7 @@ Pruned:
 The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each successful target as a `- name: destination` bullet, and the `Pruned:` group shows how many old archives `keep_last` retention removed — `local` for the export directory plus one bullet per remote target that deleted objects (zero-count targets are omitted).
 
 ### Body Format
-By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Failed:`/`Warnings:` group headers become bold, failed targets and warnings render as real bullet lists, and values like paths, destinations, and error messages are quoted in code spans.
+By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Uploaded to:`/`Pruned:`/`Failed:`/`Warnings:` group headers become bold, each group renders as a real bullet list, and values like paths, destinations, and error messages are quoted in code spans.
 ```yaml
 notifications:
   apprise:
