@@ -21,6 +21,8 @@ For object storage configuration, find more information in the [Object Storage U
 
 **Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.**
 
+Unknown/misspelled keys anywhere in the config are rejected at startup with an error naming the key (e.g. `keeplast` → "Extra inputs are not permitted"), instead of being silently ignored.
+
 ## Full Example
 Below is an example configuration that shows example values for all possible options.
 

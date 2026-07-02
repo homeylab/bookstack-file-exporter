@@ -182,3 +182,27 @@ def test_endpoint_with_scheme_rejected():
         S3StorageConfig(name="t", endpoint="https://minio.local", bucket="b",
                           access_key="a", secret_key="s")
     assert "scheme" in str(exc.value).lower()
+
+
+# --- Task 5: extra="forbid" on all config models ---
+
+def test_unknown_entry_key_rejected():
+    with pytest.raises(ValidationError) as exc:
+        S3StorageConfig(**_entry(access_key="a", secret_key="s", keeplast=5))
+    assert "keeplast" in str(exc.value)
+
+
+def test_unknown_top_level_key_rejected():
+    raw = _user_input(_entry(access_key="a", secret_key="s"))
+    raw["export_workres"] = 2
+    with pytest.raises(ValidationError) as exc:
+        UserInput(**raw)
+    assert "export_workres" in str(exc.value)
+
+
+def test_unknown_nested_key_rejected():
+    raw = _user_input(_entry(access_key="a", secret_key="s"))
+    raw["http_config"] = {"timout": 5}
+    with pytest.raises(ValidationError) as exc:
+        UserInput(**raw)
+    assert "timout" in str(exc.value)

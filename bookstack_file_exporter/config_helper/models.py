@@ -3,13 +3,22 @@ import re
 from datetime import datetime
 from typing import Literal
 # pylint: disable=import-error
-from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from croniter import croniter, CroniterError
 
 log = logging.getLogger(__name__)
 
 # pylint: disable=too-few-public-methods
-class S3StorageConfig(BaseModel):
+class StrictModel(BaseModel):
+    """Config base: reject unknown keys. pydantic's default extra='ignore' silently
+    drops a typo'd key and leaves its field at default — for a backup tool that can
+    mean no retention ('keeplast'), ignored http settings ('timout'), or a target
+    silently rerouted to AWS ('endpont'). The removed/renamed-key before-validators
+    still run first, so 'minio:'/'host:'/'path:' keep their targeted migration hints."""
+    model_config = ConfigDict(extra="forbid")
+
+# pylint: disable=too-few-public-methods
+class S3StorageConfig(StrictModel):
     """YAML schema for one object_storage entry (flat S3-compatible config).
 
     No 'type' field: behavior is driven by fields. 'endpoint' presence selects
@@ -98,38 +107,36 @@ class S3StorageConfig(BaseModel):
         return self
 
 # pylint: disable=too-few-public-methods
-class BookstackAccess(BaseModel):
+class BookstackAccess(StrictModel):
     """YAML schema for bookstack access credentials"""
     token_id: str | None = ""
     token_secret: str | None = ""
 
 # pylint: disable=too-few-public-methods
-class Assets(BaseModel):
+class Assets(StrictModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
-    # Allow Pydantic to populate this field by Python name and by alias
-    # so legacy config key `modify_markdown` can still be accepted.
-    model_config = ConfigDict(populate_by_name=True)
-
     export_images: bool | None = False
     export_attachments: bool | None = False
-    modify_links: bool | None = Field(
-        default=False,
-        validation_alias=AliasChoices("modify_links", "modify_markdown"),
-    )
+    modify_links: bool | None = False
     export_meta: bool | None = False
 
     @model_validator(mode="before")
     @classmethod
     def _warn_deprecated_keys(cls, raw):
-        """Nudge on the deprecated 'modify_markdown' key. The value is still honored
-        via the validation_alias above; this only logs a rename reminder."""
+        """Honor and normalize the deprecated 'modify_markdown' key here (not via a
+        validation_alias) so a leftover copy doesn't trip extra='forbid' when both keys
+        are supplied. 'modify_links' wins when present; otherwise 'modify_markdown'
+        provides the value. Then drop it and nudge toward the rename."""
         if isinstance(raw, dict) and "modify_markdown" in raw:
             log.warning(
                 "DEPRECATED: 'assets.modify_markdown' is deprecated, use "
                 "'assets.modify_links' instead. It will be removed in a future version.")
+            raw = dict(raw)  # don't mutate the caller's dict in place
+            legacy = raw.pop("modify_markdown")
+            raw.setdefault("modify_links", legacy)
         return raw
 
-class HttpConfig(BaseModel):
+class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
     verify_ssl: bool | None = False
     timeout: int | None = 30
@@ -138,7 +145,7 @@ class HttpConfig(BaseModel):
     retry_count: int | None = 5
     additional_headers: dict[str, str] | None = {}
 
-class AppRiseNotifyConfig(BaseModel):
+class AppRiseNotifyConfig(StrictModel):
     """YAML schema for user provided app rise settings"""
     service_urls: list[str] | None = []
     config_path: str | None = ""
@@ -149,7 +156,7 @@ class AppRiseNotifyConfig(BaseModel):
     on_success: bool | None = False
     on_failure: bool | None = True
 
-class Notifications(BaseModel):
+class Notifications(StrictModel):
     """YAML schema for user provided notification settings"""
     apprise: AppRiseNotifyConfig | None = None
 
@@ -173,7 +180,7 @@ def _validate_pattern_list(patterns: list[str] | None) -> list[str] | None:
     return patterns
 
 
-class ResourceFilter(BaseModel):
+class ResourceFilter(StrictModel):
     """Include/exclude pattern lists for one resource type."""
     include: list[str] | None = None
     exclude: list[str] | None = None
@@ -185,7 +192,7 @@ class ResourceFilter(BaseModel):
         return _validate_pattern_list(value)
 
 
-class Filters(BaseModel):
+class Filters(StrictModel):
     """Per-resource-type regex filter configuration."""
     shelves: ResourceFilter | None = None
     books: ResourceFilter | None = None
@@ -197,7 +204,7 @@ class Filters(BaseModel):
 
 
 # pylint: disable=too-few-public-methods
-class UserInput(BaseModel):
+class UserInput(StrictModel):
     """YAML schema for user provided configuration file"""
     host: str
     credentials: BookstackAccess | None = BookstackAccess()
