@@ -1,110 +1,67 @@
-# pylint: disable=missing-function-docstring,protected-access
-"""Tests for credential resolution precedence and endpoint defaulting."""
-from minio.credentials import (
-    StaticProvider, EnvMinioProvider,
-    EnvAWSProvider, IamAwsProvider,
-)
-
-from bookstack_file_exporter.config_helper.models import BaseStorageConfig
-from bookstack_file_exporter.config_helper.config_helper import (
-    _resolve_credentials,
-    _resolve_endpoint,
-    _s3_provider_chain,
-)
+# pylint: disable=missing-function-docstring
+# protected-access: deliberately unit-tests the private _resolve_* rules one by one;
+# public-surface (constructor) coverage lives in test_remote_config.py
+# pylint: disable=protected-access
+import pytest
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 
-def _entry(**overrides):
-    base = {"type": "minio", "bucket": "b", "host": "minio.local"}
-    base.update(overrides)
-    return BaseStorageConfig(**base)
+def test_env_name_creds(monkeypatch, make_storage_entry):
+    monkeypatch.setenv("AK", "v1")
+    monkeypatch.setenv("SK", "v2")
+    e = make_storage_entry(access_key="", secret_key="", access_key_env="AK", secret_key_env="SK")
+    assert S3ProviderConfig._resolve_credentials(e) == ("v1", "v2")
 
+def test_env_names_unset_raises(monkeypatch, make_storage_entry):
+    monkeypatch.delenv("AK", raising=False)
+    monkeypatch.delenv("SK", raising=False)
+    e = make_storage_entry(access_key="", secret_key="", access_key_env="AK", secret_key_env="SK")
+    with pytest.raises(ValueError):
+        S3ProviderConfig._resolve_credentials(e)
 
-def test_per_entry_env_names_win(monkeypatch):
-    monkeypatch.setenv("M2_AK", "ak-env")
-    monkeypatch.setenv("M2_SK", "sk-env")
-    entry = _entry(access_key="inline-ak", secret_key="inline-sk",
-                   access_key_env="M2_AK", secret_key_env="M2_SK")
-    provider = _resolve_credentials(entry)
-    assert isinstance(provider, StaticProvider)
-    creds = provider.retrieve()
-    assert creds.access_key == "ak-env"      # env names beat inline
-    assert creds.secret_key == "sk-env"
+def test_inline_creds(make_storage_entry):
+    assert S3ProviderConfig._resolve_credentials(make_storage_entry()) == ("a", "s")
 
+def test_ambient_returns_none(make_storage_entry):
+    e = make_storage_entry(endpoint=None, region="us-east-1", ambient_auth=True,
+                            access_key="", secret_key="")
+    assert S3ProviderConfig._resolve_credentials(e) == (None, None)
 
-def test_per_entry_env_names_unset_raises(monkeypatch):
-    monkeypatch.delenv("MISSING_AK", raising=False)
-    monkeypatch.delenv("MISSING_SK", raising=False)
-    entry = _entry(access_key_env="MISSING_AK", secret_key_env="MISSING_SK")
-    try:
-        _resolve_credentials(entry)
-        assert False, "expected ValueError for unset referenced env vars"
-    except ValueError as err:
-        assert "MISSING_AK" in str(err)
+def test_endpoint_url_scheme_from_secure(make_storage_entry):
+    assert (S3ProviderConfig._resolve_endpoint_url(make_storage_entry(secure=True))
+            == "https://minio.local:9000")
+    assert (S3ProviderConfig._resolve_endpoint_url(make_storage_entry(secure=False))
+            == "http://minio.local:9000")
 
+def test_endpoint_url_none_without_endpoint(make_storage_entry):
+    e = make_storage_entry(endpoint=None, region="us-east-1", ambient_auth=True,
+                            access_key="", secret_key="")
+    assert S3ProviderConfig._resolve_endpoint_url(e) is None
 
-def test_inline_used_when_no_env_names(monkeypatch):
-    monkeypatch.delenv("MINIO_ACCESS_KEY", raising=False)
-    monkeypatch.delenv("MINIO_SECRET_KEY", raising=False)
-    entry = _entry(access_key="inline-ak", secret_key="inline-sk")
-    assert _resolve_credentials(entry).retrieve().access_key == "inline-ak"
+def test_region_default_us_east_1_when_endpoint_set(make_storage_entry):
+    assert S3ProviderConfig._resolve_region(make_storage_entry(region=None)) == "us-east-1"
+    assert S3ProviderConfig._resolve_region(make_storage_entry(region="eu-west-1")) == "eu-west-1"
 
+def test_region_none_for_aws_ambient(make_storage_entry):
+    e = make_storage_entry(endpoint=None, region=None, ambient_auth=True,
+                            access_key="", secret_key="")
+    assert S3ProviderConfig._resolve_region(e) is None
 
-def test_minio_standard_env_beats_inline(monkeypatch):
-    monkeypatch.setenv("MINIO_ACCESS_KEY", "env-ak")
-    monkeypatch.setenv("MINIO_SECRET_KEY", "env-sk")
-    entry = _entry(access_key="inline-ak", secret_key="inline-sk")
-    assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
+def test_addressing_inferred_and_overridden(make_storage_entry):
+    assert S3ProviderConfig._resolve_addressing(make_storage_entry()) == "path"  # endpoint set
+    assert S3ProviderConfig._resolve_addressing(
+        make_storage_entry(addressing_style="virtual")) == "virtual"  # pass-through
+    e = make_storage_entry(endpoint=None, region="us-east-1", ambient_auth=True,
+                            access_key="", secret_key="")
+    assert S3ProviderConfig._resolve_addressing(e) == "auto"                 # no endpoint
+    assert S3ProviderConfig._resolve_addressing(make_storage_entry(
+        endpoint=None, region="us-east-1", ambient_auth=True,
+        access_key="", secret_key="", addressing_style="path")) == "path"
 
-
-def test_s3_standard_env_beats_inline(monkeypatch):
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "env-ak")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
-    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
-                              access_key="inline-ak", secret_key="inline-sk")
-    assert _resolve_credentials(entry).retrieve().access_key == "env-ak"
-
-
-def test_s3_inline_beats_imds_when_env_unset(monkeypatch):
-    # With AWS_* env unset, inline StaticProvider precedes IamAwsProvider in the chain
-    # and short-circuits — retrieve() returns the inline key without any network/IMDS call.
-    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
-    monkeypatch.delenv("AWS_ACCESS_KEY", raising=False)
-    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
-    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
-                              access_key="inline-ak", secret_key="inline-sk")
-    assert _resolve_credentials(entry).retrieve().access_key == "inline-ak"
-
-
-def test_s3_bare_uses_aws_chain():
-    # Assert composition on OUR returned list (no reach into minio-py private _providers).
-    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1")
-    chain = _s3_provider_chain(entry)
-    assert [type(p) for p in chain] == [EnvAWSProvider, IamAwsProvider]
-
-
-def test_s3_chain_inserts_inline_between_env_and_iam():
-    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
-                              access_key="ak", secret_key="sk")
-    chain = _s3_provider_chain(entry)
-    assert [type(p) for p in chain] == [EnvAWSProvider, StaticProvider, IamAwsProvider]
-
-
-def test_minio_bare_uses_env_minio_provider():
-    entry = _entry()  # no creds at all
-    assert isinstance(_resolve_credentials(entry), EnvMinioProvider)
-
-
-def test_endpoint_uses_explicit_host():
-    entry = BaseStorageConfig(type="s3", bucket="b", region="us-east-1",
-                              host="custom.example.com")
-    assert _resolve_endpoint(entry) == "custom.example.com"
-
-
-def test_endpoint_s3_defaults_from_region():
-    entry = BaseStorageConfig(type="s3", bucket="b", region="eu-west-1")
-    assert _resolve_endpoint(entry) == "s3.eu-west-1.amazonaws.com"
-
-
-def test_endpoint_minio_empty_when_no_host():
-    entry = BaseStorageConfig(type="minio", bucket="b", host="")
-    assert _resolve_endpoint(entry) == ""
+def test_construction_wires_all_resolved_fields(make_storage_entry):
+    # custom-store entry: all four resolvers should wire together on the instance
+    provider = S3ProviderConfig(make_storage_entry(secure=True))
+    assert provider.endpoint_url == "https://minio.local:9000"
+    assert provider.region == "us-east-1"           # endpoint set, no explicit region
+    assert provider.addressing_style == "path"      # inferred from endpoint
+    assert (provider.access_key, provider.secret_key) == ("a", "s")

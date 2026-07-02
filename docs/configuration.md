@@ -21,6 +21,8 @@ For object storage configuration, find more information in the [Object Storage U
 
 **Schema and values are checked so ensure proper settings are provided. As mentioned, credentials can be specified as environment variables instead if preferred.**
 
+Unknown/misspelled keys anywhere in the config are rejected at startup with an error naming the key (e.g. `keeplast` → "Extra inputs are not permitted"), instead of being silently ignored.
+
 ## Full Example
 Below is an example configuration that shows example values for all possible options.
 
@@ -44,13 +46,15 @@ http_config:
   additional_headers:
     User-Agent: "test-agent"
 object_storage:
-  - type: minio
-    host: "minio.yourdomain.com"
+  - name: "minio-main"
+    endpoint: "minio.yourdomain.com"
     region: "us-east-1"
     bucket: "mybucket"
-    path: "bookstack/file_backups"
+    prefix: "bookstack/file_backups"
     secure: false
     keep_last: 5
+    access_key_env: "MINIO_ACCESS_KEY"
+    secret_key_env: "MINIO_SECRET_KEY"
 output_path: "bkps/"
 assets:
   export_images: true
@@ -96,7 +100,7 @@ More descriptions can be found for each section below:
 | `assets` | `object` | `false` | Optional section to export additional assets from pages. |
 | `assets.export_images` | `bool` | `false` | Optional (default: `false`), export all images to an `images` directory. Works at all export levels: per-page directory at `pages` level; per-book or per-chapter directory at `books`/`chapters` level. See [Backup Behavior](backup-behavior.md#backup-behavior) for more information on layout |
 | `assets.export_attachments` | `bool` | `false` | Optional (default: `false`), export all attachments to an `attachments` directory. Works at all export levels: per-page directory at `pages` level; per-book or per-chapter directory at `books`/`chapters` level. See [Backup Behavior](backup-behavior.md#backup-behavior) for more information on layout |
-| `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Controls link *rewriting* only — assets are downloaded whenever their export flag is set, regardless of `modify_links`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. Legacy key `modify_markdown` still accepted (deprecated); will be removed in a future version. See [Modify Links](backup-behavior.md#modify-links) for more information. |
+| `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Controls link *rewriting* only — assets are downloaded whenever their export flag is set, regardless of `modify_links`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. The legacy `modify_markdown` key was removed in v3.0.0 — rename it to `modify_links`. See [Modify Links](backup-behavior.md#modify-links) for more information. |
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export metadata about each archived page, book, or chapter in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
@@ -125,9 +129,14 @@ General
 - `BOOKSTACK_TOKEN_SECRET`
 
 [Object Storage Credentials](remote-storage.md#object-storage-upload)
-- `MINIO_ACCESS_KEY` — default MinIO access key; shared by all `minio` targets (v2-compatible). For distinct per-target creds, use `access_key_env`/`secret_key_env`.
-- `MINIO_SECRET_KEY` — default MinIO secret key (shared, as above)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` — AWS default chain for S3 targets
+
+There is no built-in, globally-shared object storage credential env var. Each `object_storage`
+entry must set `access_key_env`/`secret_key_env` (naming its own env vars), inline
+`access_key`/`secret_key`, or `ambient_auth: true`. When `ambient_auth: true` is set, boto3's
+own ambient chain is used at run time and recognizes:
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (optional)
+- a shared AWS config/credentials profile, an EC2/ECS instance/task role (IMDS), or an EKS
+  IRSA/Pod Identity web-identity role — no env vars needed for these
 
 ## Export Level
 

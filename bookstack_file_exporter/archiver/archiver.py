@@ -11,7 +11,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     PageArchiver,
 )
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common import util as common_util
@@ -162,15 +162,16 @@ class Archiver:
         Returns one UploadOutcome per target (dest on success, error on upload
         failure, or dest+warning when the upload landed but retention cleanup failed). Never
         raises on a per-target upload error — aggregate status is decided by
-        resolve_remote_status. Both 'minio' and 's3' share S3CompatibleArchiver.
+        resolve_remote_status. Each target gets its own S3CompatibleArchiver
+        instance (boto3), keeping credentials isolated; uploads run serially.
         """
         outcomes: list[UploadOutcome] = []
         for entry in self.config.object_storage_config or []:
             outcomes.append(self._upload(entry))
         return outcomes
 
-    def _upload(self, provider_config: StorageProviderConfig) -> UploadOutcome:
-        label = provider_config.config.label
+    def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
+        label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)
             dest = archiver.upload_backup(self._archiver.archive_file)

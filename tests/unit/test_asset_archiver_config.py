@@ -1,17 +1,11 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 # pylint: disable=protected-access
-"""Unit tests for Assets pydantic model and config_helper deprecation warning (Phase 2)."""
-import argparse
-import logging
-
+"""Unit tests for the Assets pydantic model and removed 'modify_markdown' key handling."""
 import pytest
 from pydantic import ValidationError
 
 from bookstack_file_exporter.config_helper.models import Assets
-from bookstack_file_exporter.config_helper.config_helper import (
-    ConfigNode,
-    build_user_input,
-)
+from bookstack_file_exporter.config_helper.config_helper import build_user_input
 
 _VALID_RAW = {
     "host": "https://wiki.example.com",
@@ -25,106 +19,46 @@ _VALID_RAW = {
 # ---------------------------------------------------------------------------
 
 class TestPhase2AssetsModel:
-    """Tests for pydantic Assets model with modify_links / modify_markdown alias."""
+    """Tests for pydantic Assets model; 'modify_markdown' was removed in v3.0.0."""
 
     def test_assets_accepts_modify_links(self):
         assets = Assets(modify_links=True)
-        assert assets.modify_links is True
-
-    def test_assets_accepts_legacy_modify_markdown(self):
-        assets = Assets(modify_markdown=True)
         assert assets.modify_links is True
 
     def test_assets_default_modify_links_is_false(self):
         assets = Assets()
         assert assets.modify_links is False
 
-    def test_assets_modify_links_wins_when_both_keys_present(self):
-        # modify_links=False should win over modify_markdown=True
-        assets = Assets(**{"modify_links": False, "modify_markdown": True})
-        assert assets.modify_links is False
+    def test_assets_rejects_removed_modify_markdown(self):
+        # v2.3.0 deprecated the alias with a removal promise; v3.0.0 completes it
+        with pytest.raises(ValidationError, match="modify_links"):
+            Assets(modify_markdown=True)
+
+    def test_assets_rejects_modify_markdown_even_with_modify_links(self):
+        # both keys present is still an error — the removed key must never be silently ignored
+        with pytest.raises(ValidationError, match="modify_markdown"):
+            Assets(**{"modify_links": False, "modify_markdown": True})
 
 
-class TestPhase2ConfigHelperDeprecationWarning:
-    """Tests for deprecation warning in config_helper.py."""
+class TestModifyMarkdownRemoved:
+    """'modify_markdown' is removed in v3.0.0: presence is a hard error with a rename hint."""
 
-    def _write_config(self, tmp_path, content: str) -> str:
-        config_file = tmp_path / "config.yml"
-        config_file.write_text(content)
-        return str(config_file)
+    def test_rejected_with_rename_hint(self):
+        raw = dict(_VALID_RAW)
+        raw["assets"] = {"modify_markdown": True}
+        with pytest.raises(ValidationError, match="modify_links"):
+            build_user_input(raw)
 
-    def test_deprecation_warning_emitted_when_legacy_key_present(self, tmp_path, caplog):
-        config_content = """
-host: https://wiki.example.com
-credentials:
-  token_id: abc
-  token_secret: def
-formats:
-  - markdown
-assets:
-  modify_markdown: true
-"""
-        config_file = self._write_config(tmp_path, config_content)
-        args = argparse.Namespace(config_file=config_file, output_dir=None)
-
-        logger_name = "bookstack_file_exporter.config_helper.config_helper"
-        with caplog.at_level(logging.WARNING, logger=logger_name):
-            ConfigNode(args)
-
-        warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("DEPRECATED" in m and "modify_markdown" in m for m in warning_msgs)
-
-    def test_deprecation_warning_emitted_exactly_once(self, tmp_path, caplog):
-        config_content = """
-host: https://wiki.example.com
-credentials:
-  token_id: abc
-  token_secret: def
-formats:
-  - markdown
-assets:
-  modify_markdown: true
-"""
-        config_file = self._write_config(tmp_path, config_content)
-        args = argparse.Namespace(config_file=config_file, output_dir=None)
-
-        logger_name = "bookstack_file_exporter.config_helper.config_helper"
-        with caplog.at_level(logging.WARNING, logger=logger_name):
-            ConfigNode(args)
-
-        deprecation_warnings = [
-            r for r in caplog.records
-            if r.levelno == logging.WARNING and "DEPRECATED" in r.message
-        ]
-        assert len(deprecation_warnings) == 1
-
-    def test_deprecation_warning_when_both_keys_present(self, tmp_path, caplog):
-        config_content = """
-host: https://wiki.example.com
-credentials:
-  token_id: abc
-  token_secret: def
-formats:
-  - markdown
-assets:
-  modify_links: false
-  modify_markdown: true
-"""
-        config_file = self._write_config(tmp_path, config_content)
-        args = argparse.Namespace(config_file=config_file, output_dir=None)
-
-        logger_name = "bookstack_file_exporter.config_helper.config_helper"
-        with caplog.at_level(logging.WARNING, logger=logger_name):
-            ConfigNode(args)
-
-        warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        # modify_links wins via alias; only one DEPRECATED warning emitted
-        assert any("DEPRECATED" in m and "modify_markdown" in m for m in warning_msgs)
+    def test_rejected_even_when_modify_links_also_present(self):
+        raw = dict(_VALID_RAW)
+        raw["assets"] = {"modify_links": False, "modify_markdown": True}
+        with pytest.raises(ValidationError, match="modify_markdown"):
+            build_user_input(raw)
 
     @pytest.mark.parametrize("bad_assets", [True, "bad_string", 42])
     def test_non_dict_assets_raises_clean_validation_error(self, bad_assets):
         """assets: true (or other non-dict) must surface as a pydantic ValidationError,
-        not an AttributeError from the deprecation-warn validator's dict access."""
+        not an AttributeError from the removed-key validator's dict access."""
         raw = dict(_VALID_RAW)
         raw["assets"] = bad_assets
         with pytest.raises(ValidationError):

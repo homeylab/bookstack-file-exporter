@@ -1,63 +1,77 @@
-import logging
+import os
 
-# pylint: disable=import-error
-from minio.credentials import Provider
-
-from bookstack_file_exporter.config_helper.models import BaseStorageConfig
-
-log = logging.getLogger(__name__)
+from bookstack_file_exporter.config_helper.models import S3StorageConfig, normalize_prefix
 
 
-def aws_endpoint_from_region(region: str) -> str:
-    """Default AWS S3 endpoint host for a region (used when no host is given)."""
-    return f"s3.{region}.amazonaws.com"
+## convenience class — one resolved, boto3-ready object storage target
+# pylint: disable=too-few-public-methods,too-many-instance-attributes
+class S3ProviderConfig:
+    """Resolved, boto3-ready view of one S3StorageConfig entry.
 
+    Owns the raw->resolved logic (endpoint scheme, region default, addressing inference,
+    credential env lookup), so config_helper just constructs one per entry and the archiver
+    consumes flat values. Constructing this reads os.environ for '*_env' credential names and
+    may raise ValueError if a referenced var is unset/empty (fail-closed; the pydantic model
+    already guarantees some credential source is configured). For a future non-S3 provider,
+    a sibling class (e.g. AzureProviderConfig) would own its own resolution — dispatch by
+    constructing the right class, no type switch."""
+    def __init__(self, entry: S3StorageConfig):
+        self.name = entry.name
+        self.bucket = entry.bucket
+        self.prefix = normalize_prefix(entry.prefix)
+        self.keep_last = entry.keep_last
+        self.endpoint_url = self._resolve_endpoint_url(entry)
+        self.region = self._resolve_region(entry)
+        self.addressing_style = self._resolve_addressing(entry)
+        self.access_key, self.secret_key = self._resolve_credentials(entry)
 
-## convenience class — holds one resolved object storage target (minio or s3)
-# pylint: disable=too-few-public-methods
-class StorageProviderConfig:
-    """Resolved configuration for a single object storage target.
+    @staticmethod
+    def _resolve_credentials(entry: S3StorageConfig) -> tuple[str | None, str | None]:
+        """Static creds, first match wins: per-entry env NAMES -> inline -> (None, None).
+        Once BOTH env names are set they are mandatory — a referenced-but-empty var raises,
+        no fallthrough to inline. (None, None) means no explicit creds; only valid when
+        entry.ambient_auth is True (the model validator guarantees this), signalling the
+        boto3 ambient chain."""
+        if entry.access_key_env and entry.secret_key_env:
+            access = os.environ.get(entry.access_key_env)
+            secret = os.environ.get(entry.secret_key_env)
+            if not access or not secret:
+                raise ValueError(
+                    f"credential env vars {entry.access_key_env}/{entry.secret_key_env} "
+                    "are referenced but not set or empty")
+            return access, secret
+        if entry.access_key and entry.secret_key:
+            return entry.access_key, entry.secret_key
+        return None, None
 
-    Carries a minio-py credential Provider (not raw key strings) plus the resolved
-    endpoint host and TLS flag, so the archiver can construct a Minio() client directly.
+    @staticmethod
+    def _resolve_endpoint_url(entry: S3StorageConfig) -> str | None:
+        """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
+        no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
+        if entry.endpoint:
+            scheme = "https" if entry.secure else "http"
+            return f"{scheme}://{entry.endpoint}"
+        return None
 
-    Args:
-        storage_type <str> = 'minio' | 's3'; drives validation + dispatch
-        endpoint <str> = host:port the client connects to (resolved; for s3 may be
-            defaulted from region)
-        secure <bool> = TLS on/off
-        credentials <Provider> = minio-py credential provider
-        config <BaseStorageConfig> = the raw parsed entry (bucket/path/region/keep_last)
-    """
+    @staticmethod
+    def _resolve_region(entry: S3StorageConfig) -> str | None:
+        """region_name for boto3. Explicit region wins. Else default us-east-1 when an endpoint
+        is set (skips boto3's GetBucketLocation discovery — fragile on compat stores — and
+        satisfies SigV4; cosmetic for MinIO/R2/B2). No endpoint + no region -> None (AWS under
+        ambient_auth; botocore resolves region from env/profile)."""
+        if entry.region:
+            return entry.region
+        if entry.endpoint:
+            return "us-east-1"
+        return None
 
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
-    def __init__(self, storage_type: str, endpoint: str, secure: bool,
-                 credentials: Provider, config: BaseStorageConfig):
-        self.type = storage_type
-        self.endpoint = endpoint
-        self.secure = secure
-        self.credentials = credentials
-        self.config = config
-        self._valid_checker = {
-            "minio": self._is_minio_valid,
-            "s3": self._is_s3_valid,
-        }
-
-    def is_valid(self) -> bool:
-        """check if this target's config is valid, dispatched on its own type"""
-        return self._valid_checker[self.type]()
-
-    def _is_minio_valid(self) -> bool:
-        """minio requires an explicit host; creds may resolve at call time."""
-        if not self.config.host:
-            log.error("host is missing from minio configuration and is required")
-            return False
-        return True
-
-    def _is_s3_valid(self) -> bool:
-        """s3 requires a region (host defaults from it); creds may come from the AWS
-        chain (incl. IAM role) at runtime, so they are NOT statically required here."""
-        if not self.config.region:
-            log.error("region is missing from s3 configuration and is required")
-            return False
-        return True
+    @staticmethod
+    def _resolve_addressing(entry: S3StorageConfig) -> str:
+        """botocore addressing_style, passed through verbatim when set. Unset => infer:
+        an endpoint (custom store, commonly MinIO/Ceph) -> 'path' (works OOTB; note
+        botocore treats 'auto' the same as 'path' whenever endpoint_url is set, so
+        'virtual' is the only value that gets virtual-hosted on a custom store);
+        no endpoint (AWS) -> 'auto' (virtual-hosted)."""
+        if entry.addressing_style:
+            return entry.addressing_style
+        return "path" if entry.endpoint else "auto"

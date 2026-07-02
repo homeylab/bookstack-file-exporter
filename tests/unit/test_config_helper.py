@@ -120,29 +120,8 @@ def test_build_user_input_logs_error_on_schema_failure(caplog):
     )
 
 
-def test_build_user_input_emits_deprecation_warning_for_legacy_key(caplog):
-    """build_user_input emits a DEPRECATED warning when modify_markdown is present.
-
-    The warning now originates from the Assets model validator, hence the models logger."""
-    raw = dict(_VALID_RAW)
-    raw["assets"] = {"modify_markdown": True}
-
-    logger_name = "bookstack_file_exporter.config_helper.models"
-    with caplog.at_level(logging.WARNING, logger=logger_name):
-        build_user_input(raw)
-
-    warning_messages = [
-        r.message for r in caplog.records
-        if r.levelno == logging.WARNING and r.name == logger_name
-    ]
-    assert any(
-        "DEPRECATED" in m and "modify_markdown" in m
-        for m in warning_messages
-    ), f"Expected deprecation warning; got: {warning_messages}"
-
-
 def test_build_user_input_no_warning_without_legacy_key(caplog):
-    """build_user_input must not emit a deprecation warning when only modify_links is used."""
+    """No warnings are emitted for a clean assets config using modify_links."""
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_links": True}
 
@@ -208,23 +187,35 @@ def test_generate_remote_config_empty_when_unset():
 
 
 def test_generate_remote_config_builds_resolved_list():
-    """Each entry becomes a StorageProviderConfig with resolved type + endpoint, in order.
+    """Each entry becomes a boto3-ready S3ProviderConfig with resolved endpoint_url /
+    region / addressing_style, in order.
 
-    Exercises the full orchestration seam: list iteration, _resolve_endpoint (minio host
-    vs s3 default-from-region), _resolve_credentials, and is_valid acceptance.
+    Exercises the full orchestration seam: list iteration, _resolve_endpoint_url (custom
+    store scheme://endpoint vs AWS None), _resolve_region (endpoint default vs explicit),
+    _resolve_addressing (path vs auto), and _resolve_credentials.
     """
     entries = [
-        models.BaseStorageConfig(type="minio", bucket="b1", host="minio.local:9000"),
-        models.BaseStorageConfig(type="s3", bucket="b2", region="eu-west-1"),
+        models.S3StorageConfig(name="one", bucket="b1", endpoint="minio.local:9000",
+                                 access_key="a", secret_key="s"),
+        models.S3StorageConfig(name="two", bucket="b2", region="eu-west-1",
+                                 access_key="a", secret_key="s"),
     ]
     result = _config_with_object_storage(entries)._generate_remote_config()
-    assert [c.type for c in result] == ["minio", "s3"]
-    assert result[0].endpoint == "minio.local:9000"           # explicit host
-    assert result[1].endpoint == "s3.eu-west-1.amazonaws.com"  # s3 default-from-region
+    assert [c.name for c in result] == ["one", "two"]
+    assert [c.bucket for c in result] == ["b1", "b2"]
+    # custom store: scheme from secure (default True) + path addressing + region default
+    assert result[0].endpoint_url == "https://minio.local:9000"
+    assert result[0].region == "us-east-1"
+    assert result[0].addressing_style == "path"
+    assert result[0].access_key == "a" and result[0].secret_key == "s"
+    # AWS S3: no endpoint -> None endpoint_url, explicit region, virtual addressing
+    assert result[1].endpoint_url is None
+    assert result[1].region == "eu-west-1"
+    assert result[1].addressing_style == "auto"
 
 
 def test_generate_remote_config_raises_on_invalid_entry():
-    """An entry failing per-type validation (s3 without region) raises at config load."""
-    entries = [models.BaseStorageConfig(type="s3", bucket="b", region=None)]
-    with pytest.raises(ValueError, match="provided s3 configuration is invalid"):
-        _config_with_object_storage(entries)._generate_remote_config()
+    """An AWS S3 entry (no endpoint) without a region now raises at construction time
+    (fail-closed schema validation), not inside _generate_remote_config."""
+    with pytest.raises(ValidationError, match="region"):
+        models.S3StorageConfig(name="t", bucket="b", access_key="a", secret_key="s")

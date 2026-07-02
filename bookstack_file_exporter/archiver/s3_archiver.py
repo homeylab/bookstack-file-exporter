@@ -2,110 +2,145 @@ import logging
 import os
 
 # pylint: disable=import-error
-from minio import Minio
-# pylint: disable=import-error
-from minio.datatypes import Object as MinioObject
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError, BotoCoreError
 
 from bookstack_file_exporter.common import util as common_util
-from bookstack_file_exporter.config_helper.remote import StorageProviderConfig
-
-
+from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 log = logging.getLogger(__name__)
 
-class S3CompatibleArchiver:
-    """Handles uploads, retention, and bucket validation for any S3-compatible target
-    (AWS S3, MinIO, or any other S3-compatible store). Both types share this class — the
-    upload/cleanup API surface (fput_object, list_objects, remove_object, bucket_exists)
-    is identical.
+# only objects whose name (after the configured prefix) STARTS with this marker are
+# eligible for retention clean up; anchored to guard user objects that merely contain
+# the marker somewhere in their name. Derived from the same EXPORT_BASENAME that
+# names the local archives (every tool-created archive starts with it), so upload
+# naming and retention matching cannot drift apart.
+_MANAGED_FILTER = f"{common_util.EXPORT_BASENAME}_"
 
-    Args:
-        :provider_config: <StorageProviderConfig> = resolved endpoint, secure flag,
-            credential Provider, and the raw entry (bucket/path/region/keep_last).
+# S3 DeleteObjects accepts at most 1000 keys per request (documented API limit,
+# enforced server-side; boto3/botocore expose no constant for it)
+_MAX_DELETE_KEYS = 1000
+
+class S3CompatibleArchiver:
+    """Uploads, retention, and bucket validation for any S3-compatible target (AWS S3,
+    MinIO, Cloudflare R2, Backblaze B2, Wasabi, DO Spaces) via a boto3 S3 client.
+
+    A boto3 Session is built per target from the resolved S3ProviderConfig, so each
+    target has independent credentials (no shared/process-global client state). When
+    access_key/secret_key are None the Session falls back to botocore's ambient chain
+    (env / shared config / IRSA / IMDS / assume-role) — used only when ambient_auth is set.
     """
-    def __init__(self, provider_config: StorageProviderConfig):
-        cfg = provider_config.config
-        self._client = Minio(
-            provider_config.endpoint,
-            credentials=provider_config.credentials,
-            secure=provider_config.secure,
-            region=cfg.region,
+    def __init__(self, provider_config: S3ProviderConfig):
+        session = boto3.session.Session(
+            aws_access_key_id=provider_config.access_key,
+            aws_secret_access_key=provider_config.secret_key,
+            region_name=provider_config.region,
         )
-        self.bucket = cfg.bucket
-        self.path = self._generate_path(cfg.path)
-        self.keep_last = cfg.keep_last
+        self._client = session.client(
+            "s3",
+            endpoint_url=provider_config.endpoint_url,
+            config=Config(s3={"addressing_style": provider_config.addressing_style}),
+        )
+        self.bucket = provider_config.bucket
+        self.prefix = provider_config.prefix
+        self.keep_last = provider_config.keep_last
         self._validate_bucket()
 
     def _validate_bucket(self):
-        if not self._client.bucket_exists(self.bucket):
-            raise ValueError(f"Given bucket does not exist: {self.bucket}")
+        """Startup bucket check via HeadBucket.
 
-    def _generate_path(self, path_name: str | None) -> str:
-        return path_name.rstrip('/') if path_name else ""
+        Fail loud on a definitively-missing bucket (404) — the common config mistake, caught
+        before a full export runs. Warn-and-proceed on an ambiguous ClientError (e.g. 403 from
+        a write-only key that can PutObject but lacks ListBucket, or a provider that restricts
+        HeadBucket): the credential may still upload fine, so don't falsely reject it — the
+        upload surfaces any real problem. A BotoCoreError (EndpointConnectionError /
+        ParamValidationError) is a hard failure: the endpoint itself is unreachable or
+        misconfigured, not just the bucket."""
+        try:
+            self._client.head_bucket(Bucket=self.bucket)
+        except ClientError as err:
+            code = err.response.get("Error", {}).get("Code", "")
+            status = err.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchBucket") or status == 404:
+                raise ValueError(f"Bucket does not exist: {self.bucket}") from err
+            log.warning(
+                "Could not verify bucket %s (%s); permissions or provider limitation — "
+                "upload will be attempted anyway", self.bucket, code or status)
+        except BotoCoreError as err:
+            raise ValueError(
+                f"Object storage endpoint unreachable or misconfigured for bucket "
+                f"{self.bucket}: {err}") from err
 
     def upload_backup(self, local_file_path: str) -> str:
-        """upload archive file to object storage bucket; return 'bucket/object_path' dest string"""
+        """upload archive file to object storage bucket; return 'bucket/object_path' dest string.
+
+        Upload errors are intentionally surfaced to the caller (archiver.py owns per-target
+        aggregation), unlike _validate_bucket which wraps failures in ValueError."""
         # this will be the name of the object to upload
         # only get the file name not path
-        # we are going to use path provided by user for object storage
+        # we are going to use the prefix provided by the user for object storage
         file_name = os.path.basename(local_file_path)
-        if self.path:
-            object_path = f"{self.path}/{file_name}"
-        else:
-            object_path = file_name
-        result = self._client.fput_object(self.bucket, object_path, local_file_path)
-        log.info("""Created object: %s with tag: %s and version-id: %s""",
-                 result.object_name, result.etag, result.version_id)
+        object_path = f"{self.prefix}/{file_name}" if self.prefix else file_name
+        self._client.upload_file(local_file_path, self.bucket, object_path)
+        log.info("Uploaded object: %s to bucket: %s", object_path, self.bucket)
         return f"{self.bucket}/{object_path}"
 
     def clean_up(self, file_extension: str):
         """delete objects based on 'keep_last' number"""
-        # this captures keep_last = 0
-        if not self.keep_last:
+        if not self.keep_last:  # captures keep_last == 0
             return
         to_delete = self._get_stale_objects(file_extension)
         if to_delete:
             self._delete_objects(to_delete)
 
-    def _scan_objects(self, file_extension: str) -> list[MinioObject]:
-        filter_str = "bookstack_export_"
-        # prefix should end in '/' for object listing; empty path -> root listing
-        # (a "/" prefix matches nothing, so empty-path retention would silently no-op)
-        # ref: https://min.io/docs/minio/linux/developers/python/API.html#list_objects
-        path_prefix = f"{self.path}/" if self.path else ""
-        # get all objects in archive path/directory
-        full_list: list[MinioObject] = self._client.list_objects(self.bucket, prefix=path_prefix)
-        # validate and filter out non managed objects
-        return [object for object in full_list
-                if object.object_name.endswith(file_extension)
-                    and filter_str in object.object_name]
+    def _scan_objects(self, file_extension: str) -> list[dict]:
+        """List managed objects directly under the prefix (top-level only).
 
-    def _get_stale_objects(self, file_extension: str) -> list[MinioObject]:
-        minio_objects = self._scan_objects(file_extension)
-        if not minio_objects:
+        Delimiter='/' scopes the listing to one level — same as the v2 minio-py
+        default (recursive=False) — so objects in nested 'subfolders' under the
+        prefix are never retention candidates. Filtering happens per page so at
+        most one page of unfiltered entries is held in memory."""
+        prefix = f"{self.prefix}/" if self.prefix else ""
+        matched: list[dict] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
+            matched.extend(obj for obj in page.get("Contents", [])
+                           if obj["Key"].endswith(file_extension)
+                           and obj["Key"].removeprefix(prefix).startswith(_MANAGED_FILTER))
+        return matched
+
+    def _get_stale_objects(self, file_extension: str) -> list[dict]:
+        objects = self._scan_objects(file_extension)
+        if not objects:
             log.debug("No objects found to clean up")
             return []
         if self.keep_last < 0:
-            # we want to keep one copy at least
-            # last copy that remains if local is deleted
-            log.debug("'keep_last' set to negative number, ignoring")
+            log.warning(
+                "'keep_last' for bucket %s is negative (%s); skipping retention "
+                "— no objects deleted", self.bucket, self.keep_last)
             return []
-        to_delete = []
-        if len(minio_objects) > self.keep_last:
-            log.debug("Number of objects is greater than 'keep_last'")
-            log.debug("Running clean up of objects")
-            to_delete = self._filter_objects(minio_objects)
-        return to_delete
+        if len(objects) > self.keep_last:
+            log.debug("Number of objects is greater than 'keep_last'; running clean up")
+            return self._filter_objects(objects)
+        return []
 
-    def _filter_objects(self, minio_objects: list[MinioObject]) -> list[MinioObject]:
+    def _filter_objects(self, objects: list[dict]) -> list[dict]:
         objects_to_clean = common_util.oldest_beyond_keep(
-            minio_objects,
-            key=lambda d: d.last_modified,
-            keep_last=self.keep_last,
-        )
+            objects, key=lambda d: d["LastModified"], keep_last=self.keep_last)
         log.debug("%d objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 
-    def _delete_objects(self, minio_objects: list[MinioObject]):
-        for item in minio_objects:
-            self._client.remove_object(self.bucket, item.object_name)
+    def _delete_objects(self, objects: list[dict]):
+        for i in range(0, len(objects), _MAX_DELETE_KEYS):
+            chunk = objects[i:i + _MAX_DELETE_KEYS]
+            resp = self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": obj["Key"]} for obj in chunk],
+                        "Quiet": True})
+            errors = resp.get("Errors", [])
+            if errors:
+                failed = ", ".join(e.get("Key", "?") for e in errors)
+                raise ValueError(
+                    f"retention delete failed for {len(errors)} object(s) in bucket "
+                    f"{self.bucket}: {failed}")

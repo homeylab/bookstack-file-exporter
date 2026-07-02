@@ -72,8 +72,8 @@ Below are versions that have major changes to the way configuration or exporter 
 | Start Version | Target Version | Description |
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
-| `1.6.X` | `vX.X.X` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key still works but will be removed in a future release. |
-| `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry with `type: minio`. See [Migrating from v2](docs/remote-storage.md#migrating-from-v2) for the exact mapping. |
+| `1.6.X` | `3.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key was removed in `3.0.0`. |
+| `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry using the flat schema (`name`, `endpoint`, `prefix`, `ambient_auth`, etc — no `type` field). See [Migrating from v2](docs/remote-storage.md#migrating-from-v2) for the exact mapping. |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~

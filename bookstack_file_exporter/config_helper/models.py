@@ -3,38 +3,81 @@ import re
 from datetime import datetime
 from typing import Literal
 # pylint: disable=import-error
-from pydantic import BaseModel, Field, AliasChoices, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from croniter import croniter, CroniterError
 
 log = logging.getLogger(__name__)
 
-# pylint: disable=too-few-public-methods
-class BaseStorageConfig(BaseModel):
-    """YAML schema for one object_storage entry (minio or s3).
+def normalize_prefix(raw: str | None) -> str:
+    """Canonical object-key prefix: no leading/trailing '/'. Single definition so the
+    duplicate-destination warning and S3ProviderConfig resolution always agree on what
+    counts as 'the same destination'. A leading '/' would become a literal empty
+    top-level "folder" in object keys; consumers join with '/' themselves."""
+    return (raw or "").strip("/")
 
-    Permissive model: per-type required-ness (minio->host, s3->region) is checked at
-    runtime in remote.py is_valid(); only the always-true cred-pair invariant is enforced
-    here. Separate per-type models are deferred until fields genuinely diverge (YAGNI).
+# pylint: disable=too-few-public-methods
+class StrictModel(BaseModel):
+    """Config base: reject unknown keys. pydantic's default extra='ignore' silently
+    drops a typo'd key and leaves its field at default — for a backup tool that can
+    mean no retention ('keeplast'), ignored http settings ('timout'), or a target
+    silently rerouted to AWS ('endpont'). The removed/renamed-key before-validators
+    still run first, so 'minio:'/'host:'/'path:' keep their targeted migration hints.
+
+    Dev note: those before-validators are migration UX only, not a safety layer —
+    extra='forbid' alone still rejects the legacy keys, just with a generic
+    unknown-key error. They can be deleted once v2-era configs have aged out."""
+    model_config = ConfigDict(extra="forbid")
+
+    @staticmethod
+    def _reject_keys(raw, hints: dict[str, str]):
+        """Shared body for mode='before' removed/renamed-key validators: raise the
+        targeted hint when a legacy key is present, ahead of extra='forbid' turning it
+        into a generic unknown-key error. Non-dict input passes through untouched so
+        pydantic reports the type error, not an AttributeError from here."""
+        if isinstance(raw, dict):
+            for key, msg in hints.items():
+                if key in raw:
+                    raise ValueError(msg)
+        return raw
+
+# pylint: disable=too-few-public-methods
+class S3StorageConfig(StrictModel):
+    """YAML schema for one object_storage entry (flat S3-compatible config).
+
+    No 'type' field: behavior is driven by fields. 'endpoint' presence selects
+    custom-store vs AWS and infers path-style; 'ambient_auth' opts into the boto3
+    SDK credential chain (env / IRSA / IMDS / assume-role); 'region' defaults to
+    us-east-1 when an endpoint is set.
     """
-    type: Literal["minio", "s3"]
-    host: str | None = ""
+    name: str
+    endpoint: str | None = None
     bucket: str
+    prefix: str | None = ""
     region: str | None = None
-    path: str | None = ""
     secure: bool = True
+    addressing_style: Literal["path", "virtual", "auto"] | None = None  # None => inferred
+    ambient_auth: bool = False
     keep_last: int | None = 0
     access_key: str | None = ""
     secret_key: str | None = ""
     access_key_env: str | None = None
     secret_key_env: str | None = None
-    name: str | None = None
 
-    @property
-    def label(self) -> str:
-        """Target identity, intended for logs/notifications (consumed today only by the
-        uniqueness check below; wired into output in a later task). Excludes creds (secrets)
-        and host/region by design, so a bare type/bucket collision forces a distinct name."""
-        return self.name or f"{self.type}/{self.bucket}"
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_or_renamed_keys(cls, raw):
+        """Reject renamed keys loudly. pydantic's default extra='ignore' would SILENTLY
+        drop them — for a backup tool that means a v2.3.0 config moved into an
+        object_storage list but keeping a leftover 'host:'/'path:' would parse as
+        endpoint=None and quietly become an AWS target. Same fail-loud principle as
+        UserInput._reject_removed_keys. 'host'/'path' were the v2.3.0 field names, renamed
+        to 'endpoint'/'prefix'."""
+        return cls._reject_keys(raw, {
+            "host": "object_storage: 'host' was renamed to 'endpoint'. "
+                    "Update your config (see 'Migrating from v2' in docs/remote-storage.md).",
+            "path": "object_storage: 'path' was renamed to 'prefix'. "
+                    "Update your config (see 'Migrating from v2' in docs/remote-storage.md).",
+        })
 
     @model_validator(mode="after")
     def _check_cred_pairs(self):
@@ -47,39 +90,68 @@ class BaseStorageConfig(BaseModel):
                 "access_key_env and secret_key_env must be set together (or both omitted)")
         return self
 
+    @model_validator(mode="after")
+    def _check_endpoint_no_scheme(self):
+        """'endpoint' is host[:port], not a URL — the scheme is derived from 'secure'. A
+        pasted 'https://minio.local' would otherwise become 'http://https://minio.local'."""
+        # astroid FP: won't narrow the str|None 'endpoint' attr through the guard (E1135);
+        # the truthiness check makes the membership test safe.
+        if self.endpoint and "://" in self.endpoint:  # pylint: disable=unsupported-membership-test
+            raise ValueError(
+                f"endpoint {self.endpoint!r} must be host[:port] without a scheme; "
+                "use 'secure: true|false' to control TLS.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_credentials_present(self):
+        """Fail-closed: an entry MUST carry explicit creds (env NAMES or inline) OR opt
+        into the ambient chain via ambient_auth. Never silently fall through to ambient."""
+        has_env = bool(self.access_key_env and self.secret_key_env)
+        has_inline = bool(self.access_key and self.secret_key)
+        if not (has_env or has_inline or self.ambient_auth):
+            raise ValueError(
+                f"object_storage target {self.name!r} has no credentials: set access_key_env"
+                "+secret_key_env, or access_key+secret_key, or ambient_auth: true (env / IAM "
+                "role / IRSA).")
+        return self
+
+    @model_validator(mode="after")
+    def _check_region_for_aws(self):
+        """A no-endpoint target is AWS S3, which needs a region for signing/endpoint. Require
+        it unless ambient_auth is on (botocore can resolve region from env/profile)."""
+        if not self.endpoint and not self.region and not self.ambient_auth:
+            raise ValueError(
+                f"object_storage target {self.name!r}: 'region' is required for AWS S3 "
+                "targets (no 'endpoint') unless ambient_auth resolves it.")
+        return self
+
 # pylint: disable=too-few-public-methods
-class BookstackAccess(BaseModel):
+class BookstackAccess(StrictModel):
     """YAML schema for bookstack access credentials"""
     token_id: str | None = ""
     token_secret: str | None = ""
 
 # pylint: disable=too-few-public-methods
-class Assets(BaseModel):
+class Assets(StrictModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
-    # Allow Pydantic to populate this field by Python name and by alias
-    # so legacy config key `modify_markdown` can still be accepted.
-    model_config = ConfigDict(populate_by_name=True)
-
     export_images: bool | None = False
     export_attachments: bool | None = False
-    modify_links: bool | None = Field(
-        default=False,
-        validation_alias=AliasChoices("modify_links", "modify_markdown"),
-    )
+    modify_links: bool | None = False
     export_meta: bool | None = False
 
     @model_validator(mode="before")
     @classmethod
-    def _warn_deprecated_keys(cls, raw):
-        """Nudge on the deprecated 'modify_markdown' key. The value is still honored
-        via the validation_alias above; this only logs a rename reminder."""
-        if isinstance(raw, dict) and "modify_markdown" in raw:
-            log.warning(
-                "DEPRECATED: 'assets.modify_markdown' is deprecated, use "
-                "'assets.modify_links' instead. It will be removed in a future version.")
-        return raw
+    def _reject_removed_keys(cls, raw):
+        """'modify_markdown' shipped in v2.3.0 as a deprecated alias of 'modify_links'
+        with an explicit removal promise; v3.0.0 completes that cycle. Reject with a
+        rename hint instead of letting extra='forbid' emit a generic unknown-key error."""
+        return cls._reject_keys(raw, {
+            "modify_markdown": "'assets.modify_markdown' was removed in v3.0.0 — rename "
+                               "it to 'assets.modify_links'. See 'Potential Breaking "
+                               "Upgrades' in the README.",
+        })
 
-class HttpConfig(BaseModel):
+class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
     verify_ssl: bool | None = False
     timeout: int | None = 30
@@ -88,7 +160,7 @@ class HttpConfig(BaseModel):
     retry_count: int | None = 5
     additional_headers: dict[str, str] | None = {}
 
-class AppRiseNotifyConfig(BaseModel):
+class AppRiseNotifyConfig(StrictModel):
     """YAML schema for user provided app rise settings"""
     service_urls: list[str] | None = []
     config_path: str | None = ""
@@ -99,7 +171,7 @@ class AppRiseNotifyConfig(BaseModel):
     on_success: bool | None = False
     on_failure: bool | None = True
 
-class Notifications(BaseModel):
+class Notifications(StrictModel):
     """YAML schema for user provided notification settings"""
     apprise: AppRiseNotifyConfig | None = None
 
@@ -123,7 +195,7 @@ def _validate_pattern_list(patterns: list[str] | None) -> list[str] | None:
     return patterns
 
 
-class ResourceFilter(BaseModel):
+class ResourceFilter(StrictModel):
     """Include/exclude pattern lists for one resource type."""
     include: list[str] | None = None
     exclude: list[str] | None = None
@@ -135,7 +207,7 @@ class ResourceFilter(BaseModel):
         return _validate_pattern_list(value)
 
 
-class Filters(BaseModel):
+class Filters(StrictModel):
     """Per-resource-type regex filter configuration."""
     shelves: ResourceFilter | None = None
     books: ResourceFilter | None = None
@@ -147,7 +219,7 @@ class Filters(BaseModel):
 
 
 # pylint: disable=too-few-public-methods
-class UserInput(BaseModel):
+class UserInput(StrictModel):
     """YAML schema for user provided configuration file"""
     host: str
     credentials: BookstackAccess | None = BookstackAccess()
@@ -160,7 +232,7 @@ class UserInput(BaseModel):
     # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
     assets: Assets | None = Assets()
-    object_storage: list[BaseStorageConfig] | None = None
+    object_storage: list[S3StorageConfig] | None = None
     keep_last: int | None = 0
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
@@ -185,26 +257,46 @@ class UserInput(BaseModel):
         (extra='ignore'). 'minio:' was REMOVED in v3 (not deprecated -- it no longer
         does anything), so ANY presence is an error: a backup tool must never run on a
         stale config that silently produces no uploads. v3.0.0 is the expected break."""
-        if isinstance(raw, dict) and "minio" in raw:
-            raise ValueError(
-                "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
-                "See the 'Migrating from v2' section in the README.")
-        return raw
+        return cls._reject_keys(raw, {
+            "minio": "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
+                     "See 'Migrating from v2' in docs/remote-storage.md.",
+        })
 
     @model_validator(mode="after")
-    def _check_unique_object_storage_labels(self):
-        """Enforce distinct labels across all object_storage entries."""
+    def _check_unique_object_storage_names(self):
+        """Enforce a distinct 'name' across all object_storage entries — it is the
+        target identity used in logs and notifications."""
         if not self.object_storage:
             return self
         seen: set[str] = set()
         # pylint: disable-next=not-an-iterable
         for entry in self.object_storage:
-            lbl = entry.label
-            if lbl in seen:
+            if entry.name in seen:
                 raise ValueError(
-                    f"Duplicate object_storage label {lbl!r}. "
-                    "Two entries share the same type/bucket; set a distinct 'name' on each.")
-            seen.add(lbl)
+                    f"Duplicate object_storage name {entry.name!r}; "
+                    "each entry needs a distinct 'name'.")
+            seen.add(entry.name)
+        return self
+
+    @model_validator(mode="after")
+    def _warn_duplicate_destinations(self):
+        """Two entries pointing at the same endpoint/bucket/prefix write and prune the
+        same object keys (upload collisions; retention double-prunes with each entry's
+        keep_last). Distinct names make this legal, so warn rather than reject."""
+        if not self.object_storage:
+            return self
+        seen: dict[tuple[str | None, str, str], str] = {}
+        # pylint: disable-next=not-an-iterable
+        for entry in self.object_storage:
+            dest = (entry.endpoint, entry.bucket, normalize_prefix(entry.prefix))
+            if dest in seen:
+                log.warning(
+                    "object_storage targets %r and %r resolve to the same destination "
+                    "(endpoint=%s bucket=%s prefix=%r): uploads collide and retention "
+                    "will prune the same objects under both entries",
+                    seen[dest], entry.name, entry.endpoint or "aws", dest[1], dest[2])
+            else:
+                seen[dest] = entry.name
         return self
 
     @model_validator(mode="after")
