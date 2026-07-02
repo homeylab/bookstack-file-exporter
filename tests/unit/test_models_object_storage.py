@@ -114,6 +114,26 @@ def test_distinct_names_ok():
     assert len(ui.object_storage) == 2
 
 
+# --- UserInput duplicate-destination warning ---
+
+def test_same_destination_different_names_warns(caplog):
+    import logging
+    e1 = _entry(name="a", prefix="daily/", access_key="a", secret_key="s")
+    e2 = _entry(name="b", prefix="daily", access_key="a2", secret_key="s2")
+    with caplog.at_level(logging.WARNING):
+        UserInput(**_user_input(e1, e2))
+    assert "same destination" in caplog.text
+
+
+def test_distinct_destinations_no_warning(caplog):
+    import logging
+    e1 = _entry(name="a", prefix="daily", access_key="a", secret_key="s")
+    e2 = _entry(name="b", prefix="weekly", access_key="a", secret_key="s")
+    with caplog.at_level(logging.WARNING):
+        UserInput(**_user_input(e1, e2))
+    assert "same destination" not in caplog.text
+
+
 # --- Task 2b: fail-closed creds + region + reject-legacy-type validators ---
 
 def test_no_creds_and_no_ambient_is_error():

@@ -258,6 +258,27 @@ class UserInput(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _warn_duplicate_destinations(self):
+        """Two entries pointing at the same endpoint/bucket/prefix write and prune the
+        same object keys (upload collisions; retention double-prunes with each entry's
+        keep_last). Distinct names make this legal, so warn rather than reject."""
+        if not self.object_storage:
+            return self
+        seen: dict[tuple[str | None, str, str], str] = {}
+        # pylint: disable-next=not-an-iterable
+        for entry in self.object_storage:
+            dest = (entry.endpoint, entry.bucket, (entry.prefix or "").strip("/"))
+            if dest in seen:
+                log.warning(
+                    "object_storage targets %r and %r resolve to the same destination "
+                    "(endpoint=%s bucket=%s prefix=%r): uploads collide and retention "
+                    "will prune the same objects under both entries",
+                    seen[dest], entry.name, entry.endpoint or "aws", dest[1], dest[2])
+            else:
+                seen[dest] = entry.name
+        return self
+
+    @model_validator(mode="after")
     def _check_schedule_config(self):
         if self.run_schedule:
             if self.run_interval:
