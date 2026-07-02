@@ -169,3 +169,28 @@ def test_clean_up_never_deletes_nested_keys(aws):
             client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
     assert "uploads/archive/bookstack_export_keepme.tgz" in keys
     assert len([k for k in keys if k.startswith("uploads/bookstack_export_")]) == 1
+
+
+def test_delete_objects_uses_batch_api(aws):
+    from unittest.mock import patch
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", [f"uploads/bookstack_export_{i}.tgz" for i in range(3)])
+    arch = S3CompatibleArchiver(_provider(prefix="uploads", keep_last=1))
+    with patch.object(arch._client, "delete_objects",
+                      wraps=arch._client.delete_objects) as spy:
+        arch.clean_up(".tgz")
+    assert spy.call_count == 1          # one batch call, not one per key
+    remaining = {o["Key"] for o in
+                 client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert len(remaining) == 1
+
+
+def test_delete_objects_raises_on_partial_errors(aws):
+    from unittest.mock import patch
+    arch = S3CompatibleArchiver(_provider(prefix="uploads", keep_last=1))
+    with patch.object(arch._client, "delete_objects",
+                      return_value={"Errors": [{"Key": "uploads/bad.tgz",
+                                                 "Code": "AccessDenied"}]}):
+        with pytest.raises(ValueError) as exc:
+            arch._delete_objects([{"Key": "uploads/bad.tgz"}])
+    assert "uploads/bad.tgz" in str(exc.value)

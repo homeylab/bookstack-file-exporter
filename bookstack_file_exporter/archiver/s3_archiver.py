@@ -128,5 +128,16 @@ class S3CompatibleArchiver:
         return objects_to_clean
 
     def _delete_objects(self, objects: list[dict]):
-        for item in objects:
-            self._client.delete_object(Bucket=self.bucket, Key=item["Key"])
+        # DeleteObjects accepts at most 1000 keys per request
+        for i in range(0, len(objects), 1000):
+            chunk = objects[i:i + 1000]
+            resp = self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": obj["Key"]} for obj in chunk],
+                        "Quiet": True})
+            errors = resp.get("Errors", [])
+            if errors:
+                failed = ", ".join(e.get("Key", "?") for e in errors)
+                raise ValueError(
+                    f"retention delete failed for {len(errors)} object(s) in bucket "
+                    f"{self.bucket}: {failed}")
