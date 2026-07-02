@@ -179,6 +179,7 @@ class AppRiseNotifyConfig(StrictModel):
     custom_attachment_path: str | None = ""
     on_success: bool | None = False
     on_failure: bool | None = True
+    body_format: Literal["text", "markdown"] = "text"
 
 class Notifications(StrictModel):
     """YAML schema for user provided notification settings"""
