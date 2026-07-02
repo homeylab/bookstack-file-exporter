@@ -17,6 +17,18 @@ class StrictModel(BaseModel):
     still run first, so 'minio:'/'host:'/'path:' keep their targeted migration hints."""
     model_config = ConfigDict(extra="forbid")
 
+    @staticmethod
+    def _reject_keys(raw, hints: dict[str, str]):
+        """Shared body for mode='before' removed/renamed-key validators: raise the
+        targeted hint when a legacy key is present, ahead of extra='forbid' turning it
+        into a generic unknown-key error. Non-dict input passes through untouched so
+        pydantic reports the type error, not an AttributeError from here."""
+        if isinstance(raw, dict):
+            for key, msg in hints.items():
+                if key in raw:
+                    raise ValueError(msg)
+        return raw
+
 # pylint: disable=too-few-public-methods
 class S3StorageConfig(StrictModel):
     """YAML schema for one object_storage entry (flat S3-compatible config).
@@ -49,16 +61,12 @@ class S3StorageConfig(StrictModel):
         endpoint=None and quietly become an AWS target. Same fail-loud principle as
         UserInput._reject_removed_keys. 'host'/'path' were the v2.3.0 field names, renamed
         to 'endpoint'/'prefix'."""
-        if not isinstance(raw, dict):
-            return raw
-        hints = {
-            "host": "'host' was renamed to 'endpoint'.",
-            "path": "'path' was renamed to 'prefix'.",
-        }
-        for key, hint in hints.items():
-            if key in raw:
-                raise ValueError(f"object_storage: {hint} Update your config (see v3 migration).")
-        return raw
+        return cls._reject_keys(raw, {
+            "host": "object_storage: 'host' was renamed to 'endpoint'. "
+                    "Update your config (see v3 migration).",
+            "path": "object_storage: 'path' was renamed to 'prefix'. "
+                    "Update your config (see v3 migration).",
+        })
 
     @model_validator(mode="after")
     def _check_cred_pairs(self):
@@ -242,11 +250,10 @@ class UserInput(StrictModel):
         (extra='ignore'). 'minio:' was REMOVED in v3 (not deprecated -- it no longer
         does anything), so ANY presence is an error: a backup tool must never run on a
         stale config that silently produces no uploads. v3.0.0 is the expected break."""
-        if isinstance(raw, dict) and "minio" in raw:
-            raise ValueError(
-                "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
-                "See the 'Migrating from v2' section in the README.")
-        return raw
+        return cls._reject_keys(raw, {
+            "minio": "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
+                     "See the 'Migrating from v2' section in the README.",
+        })
 
     @model_validator(mode="after")
     def _check_unique_object_storage_names(self):
