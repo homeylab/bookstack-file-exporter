@@ -31,12 +31,6 @@ class S3StorageConfig(BaseModel):
     access_key_env: str | None = None
     secret_key_env: str | None = None
 
-    @property
-    def label(self) -> str:
-        """Required, user-chosen target identity for logs/notifications and the
-        uniqueness check — the sole guaranteed-unique key across entries."""
-        return self.name
-
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_or_renamed_keys(cls, raw):
@@ -248,18 +242,19 @@ class UserInput(BaseModel):
         return raw
 
     @model_validator(mode="after")
-    def _check_unique_object_storage_labels(self):
-        """Enforce distinct labels across all object_storage entries."""
+    def _check_unique_object_storage_names(self):
+        """Enforce a distinct 'name' across all object_storage entries — it is the
+        target identity used in logs and notifications."""
         if not self.object_storage:
             return self
         seen: set[str] = set()
         # pylint: disable-next=not-an-iterable
         for entry in self.object_storage:
-            lbl = entry.label
-            if lbl in seen:
+            if entry.name in seen:
                 raise ValueError(
-                    f"Duplicate object_storage name {lbl!r}; each entry needs a distinct 'name'.")
-            seen.add(lbl)
+                    f"Duplicate object_storage name {entry.name!r}; "
+                    "each entry needs a distinct 'name'.")
+            seen.add(entry.name)
         return self
 
     @model_validator(mode="after")

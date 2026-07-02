@@ -58,17 +58,11 @@ def test_userinput_object_storage_defaults_none():
     assert ui.object_storage is None
 
 
-# --- name (required) and label property ---
+# --- name (required) ---
 
 def test_name_required():
     with pytest.raises(ValidationError):
         S3StorageConfig(bucket="b", endpoint="h", access_key="a", secret_key="s")
-
-
-def test_label_is_name():
-    cfg = S3StorageConfig(name="minio-main", bucket="b", endpoint="h",
-                            access_key="a", secret_key="s")
-    assert cfg.label == "minio-main"
 
 
 def test_endpoint_and_prefix_fields():
