@@ -8,6 +8,13 @@ from croniter import croniter, CroniterError
 
 log = logging.getLogger(__name__)
 
+def normalize_prefix(raw: str | None) -> str:
+    """Canonical object-key prefix: no leading/trailing '/'. Single definition so the
+    duplicate-destination warning and S3ProviderConfig resolution always agree on what
+    counts as 'the same destination'. A leading '/' would become a literal empty
+    top-level "folder" in object keys; consumers join with '/' themselves."""
+    return (raw or "").strip("/")
+
 # pylint: disable=too-few-public-methods
 class StrictModel(BaseModel):
     """Config base: reject unknown keys. pydantic's default extra='ignore' silently
@@ -277,7 +284,7 @@ class UserInput(StrictModel):
         seen: dict[tuple[str | None, str, str], str] = {}
         # pylint: disable-next=not-an-iterable
         for entry in self.object_storage:
-            dest = (entry.endpoint, entry.bucket, (entry.prefix or "").strip("/"))
+            dest = (entry.endpoint, entry.bucket, normalize_prefix(entry.prefix))
             if dest in seen:
                 log.warning(
                     "object_storage targets %r and %r resolve to the same destination "

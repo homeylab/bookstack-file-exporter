@@ -1,6 +1,6 @@
 import os
 
-from bookstack_file_exporter.config_helper.models import S3StorageConfig
+from bookstack_file_exporter.config_helper.models import S3StorageConfig, normalize_prefix
 
 
 ## convenience class — one resolved, boto3-ready object storage target
@@ -18,9 +18,7 @@ class S3ProviderConfig:
     def __init__(self, entry: S3StorageConfig):
         self.name = entry.name
         self.bucket = entry.bucket
-        # normalized: no leading/trailing '/'. A leading '/' would become a literal
-        # empty top-level "folder" in object keys; consumers join with '/' themselves.
-        self.prefix = (entry.prefix or "").strip("/")
+        self.prefix = normalize_prefix(entry.prefix)
         self.keep_last = entry.keep_last
         self.endpoint_url = self._resolve_endpoint_url(entry)
         self.region = self._resolve_region(entry)
