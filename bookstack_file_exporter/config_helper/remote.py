@@ -48,10 +48,10 @@ class S3ProviderConfig:
     def _resolve_endpoint_url(entry: S3StorageConfig) -> str | None:
         """boto3 endpoint_url: explicit endpoint -> scheme://endpoint (scheme from `secure`);
         no endpoint -> None (AWS default regional endpoint, derived from region_name)."""
-        if entry.endpoint:
-            scheme = "https" if entry.secure else "http"
-            return f"{scheme}://{entry.endpoint}"
-        return None
+        if entry.is_aws:
+            return None
+        scheme = "https" if entry.secure else "http"
+        return f"{scheme}://{entry.endpoint}"
 
     @staticmethod
     def _resolve_region(entry: S3StorageConfig) -> str | None:
@@ -61,9 +61,7 @@ class S3ProviderConfig:
         ambient_auth; botocore resolves region from env/profile)."""
         if entry.region:
             return entry.region
-        if entry.endpoint:
-            return "us-east-1"
-        return None
+        return None if entry.is_aws else "us-east-1"
 
     @staticmethod
     def _resolve_addressing(entry: S3StorageConfig) -> str:
@@ -74,4 +72,4 @@ class S3ProviderConfig:
         no endpoint (AWS) -> 'auto' (virtual-hosted)."""
         if entry.addressing_style:
             return entry.addressing_style
-        return "path" if entry.endpoint else "auto"
+        return "auto" if entry.is_aws else "path"

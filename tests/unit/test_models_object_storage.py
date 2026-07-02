@@ -22,6 +22,18 @@ def test_entry_defaults():
     assert cfg.keep_last == 0
 
 
+def test_is_aws_discriminant():
+    """Single source for 'no endpoint => AWS': validators and resolvers read this."""
+    custom = S3StorageConfig(**_entry(access_key="a", secret_key="s"))
+    aws = S3StorageConfig(**_entry(endpoint=None, region="us-east-1",
+                                   access_key="a", secret_key="s"))
+    empty = S3StorageConfig(**_entry(endpoint="", region="us-east-1",
+                                     access_key="a", secret_key="s"))
+    assert custom.is_aws is False
+    assert aws.is_aws is True
+    assert empty.is_aws is True  # truthiness: empty-string endpoint still selects AWS
+
+
 def test_inline_cred_half_pair_rejected():
     with pytest.raises(ValidationError, match="access_key and secret_key"):
         S3StorageConfig(**_entry(access_key="AKIA"))  # secret missing
