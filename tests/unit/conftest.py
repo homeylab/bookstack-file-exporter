@@ -13,15 +13,15 @@ from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 def make_storage_entry():
     """Factory for a minimal valid custom-store S3StorageConfig; kwargs override."""
     def _make(**overrides):
-        base = dict(name="t", bucket="b", endpoint="minio.local:9000",
-                    access_key="a", secret_key="s")
+        base = {"name": "t", "bucket": "b", "endpoint": "minio.local:9000",
+                "access_key": "a", "secret_key": "s"}
         base.update(overrides)
         return S3StorageConfig(**base)
     return _make
 
 
 @pytest.fixture
-def make_provider(make_storage_entry):
+def make_provider(make_storage_entry):  # pylint: disable=redefined-outer-name
     """Factory for a resolved S3ProviderConfig; kwargs are entry overrides."""
     def _make(**overrides):
         return S3ProviderConfig(make_storage_entry(**overrides))

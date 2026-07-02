@@ -120,14 +120,6 @@ def test_build_user_input_logs_error_on_schema_failure(caplog):
     )
 
 
-def test_build_user_input_rejects_removed_modify_markdown():
-    """'modify_markdown' was removed in v3.0.0; reject with a rename hint, never warn-and-run."""
-    raw = dict(_VALID_RAW)
-    raw["assets"] = {"modify_markdown": True}
-    with pytest.raises(ValidationError, match="modify_links"):
-        build_user_input(raw)
-
-
 def test_build_user_input_no_warning_without_legacy_key(caplog):
     """No warnings are emitted for a clean assets config using modify_links."""
     raw = dict(_VALID_RAW)

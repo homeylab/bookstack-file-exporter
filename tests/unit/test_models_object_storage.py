@@ -1,5 +1,7 @@
 # pylint: disable=missing-function-docstring
 """Unit tests for S3StorageConfig and UserInput.object_storage parsing."""
+import logging
+
 import pytest
 from pydantic import ValidationError
 
@@ -117,7 +119,6 @@ def test_distinct_names_ok():
 # --- UserInput duplicate-destination warning ---
 
 def test_same_destination_different_names_warns(caplog):
-    import logging
     e1 = _entry(name="a", prefix="daily/", access_key="a", secret_key="s")
     e2 = _entry(name="b", prefix="daily", access_key="a2", secret_key="s2")
     with caplog.at_level(logging.WARNING):
@@ -126,7 +127,6 @@ def test_same_destination_different_names_warns(caplog):
 
 
 def test_distinct_destinations_no_warning(caplog):
-    import logging
     e1 = _entry(name="a", prefix="daily", access_key="a", secret_key="s")
     e2 = _entry(name="b", prefix="weekly", access_key="a", secret_key="s")
     with caplog.at_level(logging.WARNING):

@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from bookstack_file_exporter.archiver.archiver import Archiver, AggregateUploadError
-from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,

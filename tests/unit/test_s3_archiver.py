@@ -1,5 +1,8 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
 # pylint: disable=protected-access
+# unused-argument: the `aws` fixture is injected purely for its side effect
+# (activates moto's mock_aws and creates the bucket)
+# pylint: disable=unused-argument
 import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -31,21 +34,24 @@ def aws(monkeypatch):
 
 
 def test_upload_returns_bucket_slash_object_with_prefix(aws, tmp_path, provider):
-    f = tmp_path / "export.tgz"; f.write_bytes(b"data")
+    f = tmp_path / "export.tgz"
+    f.write_bytes(b"data")
     assert S3CompatibleArchiver(provider(prefix="backups/2024")).upload_backup(str(f)) \
         == "test-bucket/backups/2024/export.tgz"
 
 
 def test_upload_returns_bucket_slash_filename_without_prefix(aws, tmp_path, provider):
-    f = tmp_path / "export.tgz"; f.write_bytes(b"data")
+    f = tmp_path / "export.tgz"
+    f.write_bytes(b"data")
     assert S3CompatibleArchiver(provider()).upload_backup(str(f)) == "test-bucket/export.tgz"
 
 
 def test_upload_puts_object(aws, tmp_path, provider):
-    f = tmp_path / "archive.tgz"; f.write_bytes(b"xyz")
+    f = tmp_path / "archive.tgz"
+    f.write_bytes(b"xyz")
     S3CompatibleArchiver(provider(prefix="uploads")).upload_backup(str(f))
-    keys = [o["Key"] for o in
-            boto3.client("s3", region_name="us-east-1").list_objects_v2(Bucket="test-bucket").get("Contents", [])]
+    listing = boto3.client("s3", region_name="us-east-1").list_objects_v2(Bucket="test-bucket")
+    keys = [o["Key"] for o in listing.get("Contents", [])]
     assert "uploads/archive.tgz" in keys
 
 
@@ -88,11 +94,13 @@ def test_validate_bucket_403_warns_and_proceeds(monkeypatch, caplog, provider):
 
 
 def test_ambient_none_keys_uses_env_chain(aws, tmp_path, make_provider):
-    # provider with access_key=None -> Session(None,None) -> botocore ambient chain (AWS_* env from `aws` fixture)
+    # provider with access_key=None -> Session(None,None) -> botocore ambient
+    # chain (AWS_* env vars set by the `aws` fixture)
     prov = make_provider(name="amb", bucket="test-bucket", prefix="",
                           endpoint=None, region="us-east-1", ambient_auth=True,
                           access_key="", secret_key="")
-    f = tmp_path / "export.tgz"; f.write_bytes(b"data")
+    f = tmp_path / "export.tgz"
+    f.write_bytes(b"data")
     assert S3CompatibleArchiver(prov).upload_backup(str(f)) == "test-bucket/export.tgz"
 
 
@@ -119,7 +127,8 @@ def test_clean_up_keep_last_zero_deletes_nothing(aws, provider):
 def test_scan_paginates_beyond_1000(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", [f"bookstack_export_{i:04d}.tgz" for i in range(1001)])
-    assert len(S3CompatibleArchiver(provider(prefix=None, keep_last=1))._scan_objects(".tgz")) == 1001
+    arch = S3CompatibleArchiver(provider(prefix=None, keep_last=1))
+    assert len(arch._scan_objects(".tgz")) == 1001
 
 
 def test_filter_objects_keeps_newest_by_lastmodified(aws, provider):
