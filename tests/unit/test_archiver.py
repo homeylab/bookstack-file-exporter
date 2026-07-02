@@ -522,6 +522,34 @@ def test_archive_remote_construction_failure_recorded(archiver_instance, mock_co
     assert "no such bucket" in outcomes[0].error
 
 
+def test_archive_remote_uploads_run_concurrently(archiver_instance, mock_config):
+    """Both uploads must be in flight at once: each upload blocks on a 2-party
+    barrier, so a serial implementation deadlocks the first upload until the
+    5s barrier timeout turns it into an error outcome and fails the assert."""
+    barrier = threading.Barrier(2, timeout=5)
+    mock_config.object_storage_config = [
+        _provider_entry("minio/b"), _provider_entry("s3/aws")]
+
+    def make_instance(provider_config):
+        inst = MagicMock()
+
+        def upload(_path):
+            barrier.wait()
+            return f"{provider_config.name}/a.tgz"
+
+        inst.upload_backup.side_effect = upload
+        return inst
+
+    archiver_instance._s3_archiver_cls = MagicMock(side_effect=make_instance)
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert [o.dest for o in outcomes] == ["minio/b/a.tgz", "s3/aws/a.tgz"]
+    assert [o.error for o in outcomes] == [None, None]
+
+
 # ---------------------------------------------------------------------------
 # resolve_remote_status
 # ---------------------------------------------------------------------------

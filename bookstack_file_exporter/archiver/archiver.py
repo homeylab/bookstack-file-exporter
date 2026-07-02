@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import logging
 import os
@@ -20,6 +21,11 @@ from bookstack_file_exporter.common.util import HttpHelper
 log = logging.getLogger(__name__)
 
 _DATE_STR_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+# Cap concurrent target uploads: targets are typically 1-3; beyond a few, wall clock
+# is bounded by upload bandwidth, not target count. Not user-configurable until
+# someone needs it (adding a knob later is non-breaking).
+_MAX_UPLOAD_WORKERS = 4
 
 
 class AggregateUploadError(Exception):
@@ -160,15 +166,25 @@ class Archiver:
         """Upload to every configured target, attempting all even if some fail.
 
         Returns one UploadOutcome per target (dest on success, error on upload
-        failure, or dest+warning when the upload landed but retention cleanup failed). Never
-        raises on a per-target upload error — aggregate status is decided by
-        resolve_remote_status. Each target gets its own S3CompatibleArchiver
-        instance (boto3), keeping credentials isolated; uploads run serially.
+        failure, or dest+warning when the upload landed but retention cleanup failed),
+        in config order. Never raises on a per-target upload error — aggregate status
+        is decided by resolve_remote_status.
+
+        Targets upload concurrently (one thread each, capped at _MAX_UPLOAD_WORKERS):
+        the work is I/O-bound (HeadBucket RTT, multi-MB upload, retention listing), the
+        same rationale as node_archiver's export_workers pool. Each _upload constructs
+        its own S3CompatibleArchiver with its own boto3 Session, so no client state is
+        shared across threads. executor.map preserves input order, and _upload's
+        catch-all means no worker exception can propagate out of map().
         """
-        outcomes: list[UploadOutcome] = []
-        for entry in self.config.object_storage_config or []:
-            outcomes.append(self._upload(entry))
-        return outcomes
+        entries = self.config.object_storage_config or []
+        if not entries:
+            return []
+        if len(entries) == 1:
+            return [self._upload(entries[0])]
+        workers = min(len(entries), _MAX_UPLOAD_WORKERS)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(executor.map(self._upload, entries))
 
     def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
         label = provider_config.name

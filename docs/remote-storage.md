@@ -150,8 +150,9 @@ At startup each target's bucket is checked with a `HeadBucket` call:
 
 ## Multi-target upload behavior
 
-Every configured `object_storage` target is attempted, even if an earlier one fails. The run
-outcome is one of:
+Every configured `object_storage` target is attempted, even if others fail. Targets upload
+concurrently (one thread per target, capped at 4); log lines from different targets may
+interleave, and each is tagged with the target's `name`. The run outcome is one of:
 
 | Outcome | When | Exit code | Notification |
 |---|---|---|---|
