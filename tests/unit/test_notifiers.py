@@ -68,7 +68,8 @@ class TestGetMessageTextSuccessBranch:
             removed=[],
         )
         body = notifier._get_message_text(None, result=result)
-        assert "Uploaded to: bucket1/backups/export.tgz, bucket2/export.tgz" in body
+        assert ("\n\nUploaded to:\n- t1: bucket1/backups/export.tgz\n"
+                "- t2: bucket2/export.tgz" in body)
 
     def test_removed_has_old_files_shows_pruned_count(self):
         notifier = _make_notifier()
@@ -183,7 +184,7 @@ def test_body_lists_ok_and_failed_targets():
         uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", None),
                  UploadOutcome("s3/dr", None, "connection refused")])
     body = inst._get_message_text(None, result)
-    assert "Uploaded to: minio-b/a.tgz" in body      # ok target -> dest
+    assert "Uploaded to:\n- minio/b: minio-b/a.tgz" in body  # ok target -> labeled bullet
     assert "Failed:\n- s3/dr: connection refused" in body  # failed target -> bullet under header
 
 
@@ -193,7 +194,7 @@ def test_body_lists_retention_warning():
         status=ExportStatus.PARTIAL, local="/a/b.tgz",
         uploads=[UploadOutcome("s3/aws", "s3-aws/a.tgz", None, "delete denied")])
     body = inst._get_message_text(None, result)
-    assert "Uploaded to: s3-aws/a.tgz" in body
+    assert "Uploaded to:\n- s3/aws: s3-aws/a.tgz" in body
     assert "Warnings:\n- s3/aws: delete denied" in body
 
 
@@ -255,7 +256,7 @@ class TestMarkdownBody:
         body = notifier._get_message_text(None, result=self._partial_result())
         assert "**Bookstack File Exporter completed with errors.**" in body
         assert "Archive: `/data/export.tgz`" in body
-        assert "Uploaded to: `minio-b/a.tgz`" in body
+        assert "**Uploaded to:**\n\n- `minio/b`: `minio-b/a.tgz`" in body
         # blank line between header and bullets => real <ul> after conversion
         assert "**Failed:**\n\n- `s3/dr`: `Forbidden <edge>`" in body
         assert "**Warnings:**\n\n- local cleanup failed: `permission denied`" in body
@@ -289,7 +290,9 @@ class TestMarkdownBody:
         notifier = _make_notifier(body_format="markdown")
         body = notifier._get_message_text(None, result=result)
         assert "Archive: `/data/export.tgz` (removed locally after upload)" in body
-        assert "Pruned 1 old local archive(s)" in body
+        # blank line after the upload bullets: a plain line straight after a list
+        # would be lazily absorbed into the last bullet in MARKDOWN->HTML
+        assert "- `s3/main`: `b/a.tgz`\n\nPruned 1 old local archive(s)" in body
         assert "**Warnings:**\n\n- `s3/main`: `retention failed <x>`" in body
 
     def test_text_mode_output_unchanged(self):

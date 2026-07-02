@@ -31,10 +31,14 @@ Bookstack File Exporter completed successfully.
 
 Completed At: 2025-09-06 01:05:27
 Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
-Uploaded to: my-bucket/bookstack, my-bucket-s3/bookstack
+
+Uploaded to:
+- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_010527.tgz
+- aws-s3: my-bucket-s3/bookstack/bookstack_export_2025-09-06_010527.tgz
+
 Pruned 2 old local archive(s)
 ```
-The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each remote destination, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
+The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each successful target as a `- name: destination` bullet, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
 
 ### Body Format
 By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Failed:`/`Warnings:` group headers become bold, failed targets and warnings render as real bullet lists, and values like paths, destinations, and error messages are quoted in code spans.

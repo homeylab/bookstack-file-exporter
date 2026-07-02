@@ -101,11 +101,12 @@ class AppRiseNotify:
             if local_abs in removed_abs:
                 archive_line += " (removed locally after upload)"
             lines.append(archive_line)
-            # Preserve the concise "Uploaded to:" success line for targets that succeeded;
-            # failures are grouped explicitly below it (partial runs).
-            ok_dests = [o.dest for o in result.uploads if o.dest]
-            if ok_dests:
-                lines.append(f"Uploaded to: {', '.join(ok_dests)}")
+            # Successful targets get labeled bullets under one "Uploaded to:" header,
+            # the same visual language as the Failed:/Warnings: groups below.
+            ok_uploads = [o for o in result.uploads if o.dest]
+            if ok_uploads:
+                lines.extend(["", "Uploaded to:"])
+                lines.extend(f"- {o.label}: {o.dest}" for o in ok_uploads)
             for outcome in result.uploads:
                 if not outcome.dest:
                     failed.append(f"- {outcome.label}: {outcome.error}")
@@ -113,7 +114,7 @@ class AppRiseNotify:
                     warnings.append(f"- {outcome.label}: {outcome.warning}")
             pruned_count = len(removed_abs - {local_abs})
             if pruned_count > 0:
-                lines.append(f"Pruned {pruned_count} old local archive(s)")
+                lines.extend(["", f"Pruned {pruned_count} old local archive(s)"])
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {result.cleanup_error}")
         if failed:
@@ -154,9 +155,10 @@ class AppRiseNotify:
             if local_abs in removed_abs:
                 archive_line += " (removed locally after upload)"
             lines.append(archive_line)
-            ok_dests = [_md_code(o.dest) for o in result.uploads if o.dest]
-            if ok_dests:
-                lines.append(f"Uploaded to: {', '.join(ok_dests)}")
+            ok_uploads = [o for o in result.uploads if o.dest]
+            if ok_uploads:
+                lines.extend(["", "**Uploaded to:**", ""])
+                lines.extend(f"- {_md_code(o.label)}: {_md_code(o.dest)}" for o in ok_uploads)
             for outcome in result.uploads:
                 if not outcome.dest:
                     failed.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.error)}")
@@ -164,7 +166,9 @@ class AppRiseNotify:
                     warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
             pruned_count = len(removed_abs - {local_abs})
             if pruned_count > 0:
-                lines.append(f"Pruned {pruned_count} old local archive(s)")
+                # blank line first: a plain line straight after the upload bullets
+                # would be lazily absorbed into the last bullet in MARKDOWN->HTML
+                lines.extend(["", f"Pruned {pruned_count} old local archive(s)"])
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {_md_code(result.cleanup_error)}")
         # Blank line before AND after each group header: without the leading one,
