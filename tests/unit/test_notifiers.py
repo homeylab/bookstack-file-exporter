@@ -263,6 +263,23 @@ class TestMarkdownBody:
         assert "`Forbidden <edge>`" in body          # wrapped
         assert ": Forbidden <edge>" not in body      # never raw
 
+    def test_markdown_unrecoverable_error_bolded_and_code_wrapped(self):
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(RuntimeError("boom <tag> & `tick`"))
+        assert "**Bookstack File Exporter encountered an unrecoverable error.**" in body
+        assert "Error message: `` boom <tag> & `tick` ``" in body
+
+    def test_markdown_warning_pruned_and_removed_suffix(self):
+        result = NotifyResult(
+            status=ExportStatus.PARTIAL, local="/data/export.tgz",
+            uploads=[UploadOutcome("s3/main", "b/a.tgz", warning="retention failed <x>")],
+            removed=["/data/export.tgz", "/data/old.tgz"])
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=result)
+        assert "Archive: `/data/export.tgz` (removed locally after upload)" in body
+        assert "Pruned 1 old local archive(s)" in body
+        assert "**Warnings:**\n\n- `s3/main`: `retention failed <x>`" in body
+
     def test_text_mode_output_unchanged(self):
         """Default mode must render the exact current text body."""
         notifier = _make_notifier()  # body_format defaults to text
