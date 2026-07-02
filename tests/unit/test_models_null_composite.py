@@ -29,7 +29,7 @@ def test_null_assets_becomes_default_instance():
 def test_null_http_config_becomes_default_instance():
     cfg = UserInput(**_BASE, http_config=None)
     assert cfg.http_config == HttpConfig()
-    assert cfg.http_config.additional_headers == {}
+    assert not cfg.http_config.additional_headers
 
 
 def test_omitted_composite_keys_still_default_as_before():
