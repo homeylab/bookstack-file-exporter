@@ -120,29 +120,16 @@ def test_build_user_input_logs_error_on_schema_failure(caplog):
     )
 
 
-def test_build_user_input_emits_deprecation_warning_for_legacy_key(caplog):
-    """build_user_input emits a DEPRECATED warning when modify_markdown is present.
-
-    The warning now originates from the Assets model validator, hence the models logger."""
+def test_build_user_input_rejects_removed_modify_markdown():
+    """'modify_markdown' was removed in v3.0.0; reject with a rename hint, never warn-and-run."""
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_markdown": True}
-
-    logger_name = "bookstack_file_exporter.config_helper.models"
-    with caplog.at_level(logging.WARNING, logger=logger_name):
+    with pytest.raises(ValidationError, match="modify_links"):
         build_user_input(raw)
-
-    warning_messages = [
-        r.message for r in caplog.records
-        if r.levelno == logging.WARNING and r.name == logger_name
-    ]
-    assert any(
-        "DEPRECATED" in m and "modify_markdown" in m
-        for m in warning_messages
-    ), f"Expected deprecation warning; got: {warning_messages}"
 
 
 def test_build_user_input_no_warning_without_legacy_key(caplog):
-    """build_user_input must not emit a deprecation warning when only modify_links is used."""
+    """No warnings are emitted for a clean assets config using modify_links."""
     raw = dict(_VALID_RAW)
     raw["assets"] = {"modify_links": True}
 

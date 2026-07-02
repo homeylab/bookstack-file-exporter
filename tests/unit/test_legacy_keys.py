@@ -5,7 +5,8 @@ Deprecated/removed keys are now handled inside the pydantic models (Assets and
 UserInput before-validators), exercised here through build_user_input:
   - REMOVED 'minio:' -> hard error on ANY presence (deprecated != removed; it no
     longer does anything, so warning would be misleading)
-  - DEPRECATED 'assets.modify_markdown' -> warn only (value still honored via alias)
+  - REMOVED 'assets.modify_markdown' -> hard error with rename hint (deprecation
+    cycle from v2.3.0 completed in v3.0.0)
 """
 import logging
 
@@ -41,12 +42,10 @@ def test_minio_alongside_valid_object_storage_still_raises():
         build_user_input(raw)
 
 
-def test_modify_markdown_warns(caplog):
+def test_modify_markdown_rejected():
     raw = _raw(assets={"modify_markdown": True})
-    with caplog.at_level(logging.WARNING, logger=_LOGGER):
-        build_user_input(raw)  # must NOT raise (alias still honors the value)
-    assert any("DEPRECATED" in r.message and "modify_markdown" in r.message
-               for r in caplog.records if r.name == _LOGGER)
+    with pytest.raises(ValidationError, match="modify_markdown"):
+        build_user_input(raw)
 
 
 def test_clean_config_no_warning_no_error(caplog):

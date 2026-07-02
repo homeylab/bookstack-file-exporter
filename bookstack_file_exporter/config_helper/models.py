@@ -63,9 +63,9 @@ class S3StorageConfig(StrictModel):
         to 'endpoint'/'prefix'."""
         return cls._reject_keys(raw, {
             "host": "object_storage: 'host' was renamed to 'endpoint'. "
-                    "Update your config (see v3 migration).",
+                    "Update your config (see 'Migrating from v2' in docs/remote-storage.md).",
             "path": "object_storage: 'path' was renamed to 'prefix'. "
-                    "Update your config (see v3 migration).",
+                    "Update your config (see 'Migrating from v2' in docs/remote-storage.md).",
         })
 
     @model_validator(mode="after")
@@ -130,19 +130,15 @@ class Assets(StrictModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _warn_deprecated_keys(cls, raw):
-        """Honor and normalize the deprecated 'modify_markdown' key here (not via a
-        validation_alias) so a leftover copy doesn't trip extra='forbid' when both keys
-        are supplied. 'modify_links' wins when present; otherwise 'modify_markdown'
-        provides the value. Then drop it and nudge toward the rename."""
-        if isinstance(raw, dict) and "modify_markdown" in raw:
-            log.warning(
-                "DEPRECATED: 'assets.modify_markdown' is deprecated, use "
-                "'assets.modify_links' instead. It will be removed in a future version.")
-            raw = dict(raw)  # don't mutate the caller's dict in place
-            legacy = raw.pop("modify_markdown")
-            raw.setdefault("modify_links", legacy)
-        return raw
+    def _reject_removed_keys(cls, raw):
+        """'modify_markdown' shipped in v2.3.0 as a deprecated alias of 'modify_links'
+        with an explicit removal promise; v3.0.0 completes that cycle. Reject with a
+        rename hint instead of letting extra='forbid' emit a generic unknown-key error."""
+        return cls._reject_keys(raw, {
+            "modify_markdown": "'assets.modify_markdown' was removed in v3.0.0 — rename "
+                               "it to 'assets.modify_links'. See 'Potential Breaking "
+                               "Upgrades' in the README.",
+        })
 
 class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
@@ -252,7 +248,7 @@ class UserInput(StrictModel):
         stale config that silently produces no uploads. v3.0.0 is the expected break."""
         return cls._reject_keys(raw, {
             "minio": "'minio' was removed in v3.0.0; migrate to 'object_storage'. "
-                     "See the 'Migrating from v2' section in the README.",
+                     "See 'Migrating from v2' in docs/remote-storage.md.",
         })
 
     @model_validator(mode="after")

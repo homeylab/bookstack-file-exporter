@@ -145,7 +145,7 @@ The configuration item, `assets.modify_links`, can be set to `true` to rewrite i
 
 - **Eligible formats**: `markdown` and `html` only. PDF, plaintext, and zip exports are not yet requested/implemented.
 - **Scope**: rewrites image `src` attributes and their outer anchor `href` wrappers; rewrites attachment `<a href>` links. Does **not** rewrite inter-page, inter-book, inter-chapter, or inter-shelf links (deferred to a future issue).
-- **Legacy alias**: the old key `modify_markdown` will be removed in a future version. Rename to `modify_links` in your configuration.
+- **Removed key**: the legacy `modify_markdown` key was removed in v3.0.0. Rename it to `modify_links` in your configuration.
 
 ### Markdown example
 

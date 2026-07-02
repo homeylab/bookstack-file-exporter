@@ -214,3 +214,8 @@ Key renames, all enforced by validation (not silently ignored):
   explicitly, or set `ambient_auth: true` to use boto3's own ambient chain (which does still
   recognize the standard `AWS_*` env vars, a shared profile, or IRSA/IMDS/assume-role).
 - `secure` now defaults to `true`; set `secure: false` for plain-HTTP local MinIO.
+
+### Other v3 key changes (outside `object_storage`)
+
+- `assets.modify_markdown` (deprecated alias since v2.3.0) was **removed** — rename it to
+  `assets.modify_links`. Presence is now a config error with a rename hint.
