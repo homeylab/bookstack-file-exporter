@@ -36,6 +36,21 @@ Pruned 2 old local archive(s)
 ```
 The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each remote destination, and `Pruned N old local archive(s)` appears when `keep_last` removed older archives.
 
+### Body Format
+By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Failed:`/`Warnings:` group headers become bold, failed targets and warnings render as real bullet lists, and values like paths, destinations, and error messages are quoted in code spans.
+```yaml
+notifications:
+  apprise:
+    service_urls:
+      - "slack://TokenA/TokenB/TokenC/"
+    body_format: markdown
+```
+Whether `markdown` is an improvement depends on your notification targets:
+- Markdown-native targets (e.g. Slack) and HTML-native targets (e.g. Telegram, email) render the bold headers, bullet lists, and code-quoted error messages properly.
+- Plain-text targets (e.g. generic `json://` webhooks, ntfy, SMS) will show the literal `**` and backtick characters — apprise passes a Markdown body through to text targets unchanged, it does not strip the markup. This is why `markdown` is opt-in; choose based on your target mix.
+
+`body_format` is the input-side knob: it tells apprise what format the body is written in, and apprise then converts it to each service URL's native format. To override the target-side format for a specific URL, use apprise's per-URL `?format=` parameter (e.g. `json://host/notify?format=markdown`) — see the [apprise wiki](https://github.com/caronc/apprise/wiki) for details.
+
 ## apprise
 The apprise configuration is a part of the configuration yaml file under the notifications section and can be modified under `notifications.apprise`.
 
@@ -49,6 +64,7 @@ The apprise configuration is a part of the configuration yaml file under the not
 | `apprise.custom_attachment_path` | `str` | To include a custom attachment to the apprise notification, specify the path to a file | 
 | `apprise.on_success` | `bool` | Default: `false`, set to `true` if notifications should be sent on successful export runs |
 | `apprise.on_failure` | `bool` | Default: `true`, send notifications if run fails |
+| `apprise.body_format` | `str` | Default: `text`, set to `markdown` to render the notification body as Markdown. See [Body Format](#body-format) for the trade-offs |
 
 `apprise.service_urls` can contain sensitive information and can be specified as an environment variable instead as a string list, example: `export APPRISE_URLS='["json://localhost:8080/notify"]'`.
 
