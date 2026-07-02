@@ -248,6 +248,15 @@ class TestMarkdownBody:
         assert "**Failed:**\n\n- `s3/dr`: `Forbidden <edge>`" in body
         assert "**Warnings:**\n\n- local cleanup failed: `permission denied`" in body
 
+    def test_markdown_group_headers_separated_from_preceding_lines(self):
+        """A blank line must precede each group header too: CommonMark lazy
+        continuation otherwise absorbs **Warnings:** into the last Failed bullet
+        (one merged <ul> after apprise's MARKDOWN->HTML conversion)."""
+        notifier = _make_notifier(body_format="markdown")
+        body = notifier._get_message_text(None, result=self._partial_result())
+        assert "\n\n**Failed:**\n\n" in body
+        assert "\n\n**Warnings:**\n\n" in body
+
     def test_markdown_error_strings_are_code_wrapped(self):
         notifier = _make_notifier(body_format="markdown")
         body = notifier._get_message_text(None, result=self._partial_result())

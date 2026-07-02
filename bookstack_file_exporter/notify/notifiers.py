@@ -167,13 +167,14 @@ class AppRiseNotify:
                 lines.append(f"Pruned {pruned_count} old local archive(s)")
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {_md_code(result.cleanup_error)}")
+        # Blank line before AND after each group header: without the leading one,
+        # CommonMark lazy continuation absorbs the header into the preceding bullet
+        # list; without the trailing one, the bullets never become a <ul>.
         if failed:
-            lines.append("**Failed:**")
-            lines.append("")
+            lines.extend(["", "**Failed:**", ""])
             lines.extend(failed)
         if warnings:
-            lines.append("**Warnings:**")
-            lines.append("")
+            lines.extend(["", "**Warnings:**", ""])
             lines.extend(warnings)
         return "\n".join(lines)
 
