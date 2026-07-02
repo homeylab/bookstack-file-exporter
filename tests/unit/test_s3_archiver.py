@@ -1,7 +1,12 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name
 # pylint: disable=protected-access
+import logging
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+
 import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
 from moto import mock_aws
 
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
@@ -50,8 +55,6 @@ def test_validate_bucket_raises_when_missing(aws, provider):
 
 
 def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch, provider):
-    from unittest.mock import MagicMock
-    from botocore.exceptions import EndpointConnectionError
     fake = MagicMock()
     fake.head_bucket.side_effect = EndpointConnectionError(endpoint_url="http://unreachable:9000")
     monkeypatch.setattr("boto3.session.Session.client", lambda self, *a, **k: fake)
@@ -61,8 +64,6 @@ def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch, provider):
 
 def test_validate_bucket_404_raises(monkeypatch, provider):
     # definitively-missing bucket: hard fail before an export runs
-    from unittest.mock import MagicMock
-    from botocore.exceptions import ClientError
     err = ClientError(
         {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadBucket")
     fake = MagicMock()
@@ -75,9 +76,6 @@ def test_validate_bucket_404_raises(monkeypatch, provider):
 def test_validate_bucket_403_warns_and_proceeds(monkeypatch, caplog, provider):
     # write-only key (PutObject but no ListBucket) => HeadBucket 403; must NOT block
     # construction, since the upload itself may still succeed. Warn instead.
-    import logging
-    from unittest.mock import MagicMock
-    from botocore.exceptions import ClientError
     err = ClientError(
         {"Error": {"Code": "403"}, "ResponseMetadata": {"HTTPStatusCode": 403}}, "HeadBucket")
     fake = MagicMock()
@@ -125,7 +123,6 @@ def test_scan_paginates_beyond_1000(aws, provider):
 
 
 def test_filter_objects_keeps_newest_by_lastmodified(aws, provider):
-    from datetime import datetime, timezone
     arch = S3CompatibleArchiver(provider(keep_last=2))
     # input deliberately NOT in chronological order to prove it sorts by LastModified
     objs = [
@@ -173,7 +170,6 @@ def test_clean_up_never_deletes_nested_keys(aws, provider):
 
 
 def test_delete_objects_uses_batch_api(aws, provider):
-    from unittest.mock import patch
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", [f"uploads/bookstack_export_{i}.tgz" for i in range(3)])
     arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
@@ -187,7 +183,6 @@ def test_delete_objects_uses_batch_api(aws, provider):
 
 
 def test_delete_objects_raises_on_partial_errors(aws, provider):
-    from unittest.mock import patch
     arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
     with patch.object(arch._client, "delete_objects",
                       return_value={"Errors": [{"Key": "uploads/bad.tgz",
