@@ -238,6 +238,16 @@ class Archiver:
         """full path to the produced .tgz archive"""
         return self._archiver.archive_file
 
+    @property
+    def failed_nodes(self) -> list[str]:
+        """Node exports skipped after fetch failures ('name (format)' entries)."""
+        return self._archiver.failed_node_exports
+
+    @property
+    def failed_assets(self) -> list[str]:
+        """Asset downloads skipped after fetch failures (asset names)."""
+        return self._archiver.failed_asset_downloads
+
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already

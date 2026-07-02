@@ -724,3 +724,13 @@ class TestBooksArchiverModifyLinksWiring:
         config.object_storage_config = []
         archiver = Archiver(config, mock_http_client)
         assert archiver._archiver.modify_links is True
+
+
+class TestFailedContentProperties:
+    def test_properties_delegate_to_node_archiver(self, mock_config, mock_http_client):
+        node_archiver = MagicMock()
+        node_archiver.failed_node_exports = ["my-book/secret.md"]
+        node_archiver.failed_asset_downloads = ["images/gallery/broken.png"]
+        archiver = Archiver(mock_config, mock_http_client, node_archiver=node_archiver)
+        assert archiver.failed_nodes == ["my-book/secret.md"]
+        assert archiver.failed_assets == ["images/gallery/broken.png"]
