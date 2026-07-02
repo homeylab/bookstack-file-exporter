@@ -1,5 +1,42 @@
 # Changelog
 
+## [3.0.0](https://github.com/homeylab/bookstack-file-exporter/compare/v2.3.0...v3.0.0) (2026-07-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* boto3 object-storage client + flat S3 schema (v3.0.0) ([#149](https://github.com/homeylab/bookstack-file-exporter/issues/149))
+* the 'minio:' config key is removed; use 'object_storage:'.
+
+### Features
+
+* add CLI exit codes and graceful scheduled-mode lifecycle ([#133](https://github.com/homeylab/bookstack-file-exporter/issues/133)) ([a081024](https://github.com/homeylab/bookstack-file-exporter/commit/a081024a4076903eb8a55bf24ebc680eaec3d70a))
+* add opt-in JSON-structured logging toggle ([#135](https://github.com/homeylab/bookstack-file-exporter/issues/135)) ([d8fe5f2](https://github.com/homeylab/bookstack-file-exporter/commit/d8fe5f2581c8b9a27fdbc3f4dbb859c52f060437))
+* boto3 object-storage client + flat S3 schema (v3.0.0) ([#149](https://github.com/homeylab/bookstack-file-exporter/issues/149)) ([505e03c](https://github.com/homeylab/bookstack-file-exporter/commit/505e03cb658ad93b9ecd7c8eceebccb1f272e93a))
+* cron schedule (run_schedule) for daemon mode ([#136](https://github.com/homeylab/bookstack-file-exporter/issues/136)) ([911a34f](https://github.com/homeylab/bookstack-file-exporter/commit/911a34f4ab4ca903c4d1790952aef0d5aaf0549b))
+* honor export_images/export_attachments standalone at book/chapter level ([#134](https://github.com/homeylab/bookstack-file-exporter/issues/134)) ([cd13e48](https://github.com/homeylab/bookstack-file-exporter/commit/cd13e48c2de28ad54ea278f5693e6e05b6540a52))
+* opt-in /healthz health server for scheduled mode ([#137](https://github.com/homeylab/bookstack-file-exporter/issues/137)) ([4b4949f](https://github.com/homeylab/bookstack-file-exporter/commit/4b4949fd69c6ee22256ccc1336a1a6686395e439))
+* opt-in export_workers for parallel node fetch ([#140](https://github.com/homeylab/bookstack-file-exporter/issues/140)) ([881fb74](https://github.com/homeylab/bookstack-file-exporter/commit/881fb7417a5a5220d448842471dcf21910c95b0f))
+* pre-v3 improvements — cleanup-failure PARTIAL, parallel uploads, is_aws single-sourcing ([#150](https://github.com/homeylab/bookstack-file-exporter/issues/150)) ([5dd9533](https://github.com/homeylab/bookstack-file-exporter/commit/5dd9533e2e82c1c35f3eab51b7678fd825b021b3))
+* production-grade graceful shutdown for scheduled mode ([#138](https://github.com/homeylab/bookstack-file-exporter/issues/138)) ([6e12ae3](https://github.com/homeylab/bookstack-file-exporter/commit/6e12ae3cb6f41814378c23f79119ab143b19292a))
+* report archive path and destinations in success notification ([#121](https://github.com/homeylab/bookstack-file-exporter/issues/121)) ([ac6db62](https://github.com/homeylab/bookstack-file-exporter/commit/ac6db624fbbff1996735c227e0e82b6ed84c79b9))
+* S3 upload support via object_storage list (v3.0.0) ([#142](https://github.com/homeylab/bookstack-file-exporter/issues/142)) ([633ded5](https://github.com/homeylab/bookstack-file-exporter/commit/633ded5a576a7a31eac23b9e0907f320bc494625))
+* support LOG_LEVEL env var for log level ([#147](https://github.com/homeylab/bookstack-file-exporter/issues/147)) ([80f72f0](https://github.com/homeylab/bookstack-file-exporter/commit/80f72f077a3b26b4935d9f51b8f80eb5507c1236))
+
+
+### Bug Fixes
+
+* raise clear error on empty config file ([#126](https://github.com/homeylab/bookstack-file-exporter/issues/126)) ([11c6b00](https://github.com/homeylab/bookstack-file-exporter/commit/11c6b0070629d91343cea78bb4c67243c9853b4a))
+* resolve apprise urls in one validated env probe ([#125](https://github.com/homeylab/bookstack-file-exporter/issues/125)) ([be1bf23](https://github.com/homeylab/bookstack-file-exporter/commit/be1bf230b723dc680011d3bf44163b376ea8bc8a))
+
+
+### Documentation
+
+* modernize + trim example config for v3 schema ([#148](https://github.com/homeylab/bookstack-file-exporter/issues/148)) ([19b79b7](https://github.com/homeylab/bookstack-file-exporter/commit/19b79b7cf534a323a70f897d68e146104a8e23f3))
+* note README tracks main, point to release tags for versioned docs ([#141](https://github.com/homeylab/bookstack-file-exporter/issues/141)) ([8b5623c](https://github.com/homeylab/bookstack-file-exporter/commit/8b5623c6a004d0c9354ff532bc7db4e932cdbbf1))
+* split README into docs/ topic pages + add CONTRIBUTING ([#146](https://github.com/homeylab/bookstack-file-exporter/issues/146)) ([7544ced](https://github.com/homeylab/bookstack-file-exporter/commit/7544cedeefe6e4d303d5d185f5e3c730bcf42251))
+* sync 2.4.0 feature docs for health endpoint and notifications ([#139](https://github.com/homeylab/bookstack-file-exporter/issues/139)) ([e270768](https://github.com/homeylab/bookstack-file-exporter/commit/e270768ecdedfb32d14807c283905b945a84a2f5))
+
 ## [2.3.0](https://github.com/homeylab/bookstack-file-exporter/compare/v2.2.0...v2.3.0) (2026-06-15)
 
 

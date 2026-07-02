@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bookstack-file-exporter"
-version = "2.3.0"
+version = "3.0.0"
 description = "An exporter written in python to export all documents from a bookstack instance in different formats"
 readme = "README.md"
 license = { text = "MIT License" }
