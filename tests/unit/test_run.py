@@ -720,6 +720,30 @@ class TestExporterReturnValue:
         assert result.status is ExportStatus.SUCCESS
         assert [o.dest for o in result.uploads] == ["bucket/export.tgz"]
         assert result.removed == ["/local/export.tgz"]
+        assert result.cleanup_error is None
+
+    def test_local_cleanup_failure_downgrades_to_partial(self, monkeypatch):
+        """clean_up() raising must not fail the run: the export and uploads already
+        produced durable copies, so a failed local prune is housekeeping (mirrors the
+        remote retention-failure pattern in archiver._upload)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = [
+            UploadOutcome("s3/b", "bucket/export.tgz", None)]
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
+        mock_archiver.clean_up.side_effect = OSError("permission denied")
+        mock_archiver.archive_file = "/local/export.tgz"
+
+        result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.PARTIAL
+        assert not result.removed
+        assert "permission denied" in result.cleanup_error
 
     def test_success_path_do_notify_called_with_result(self, monkeypatch):
         """On success, run() calls do_notify(result=<NotifyResult>)."""

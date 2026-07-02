@@ -25,3 +25,4 @@ class NotifyResult:
     local: str | None = None                            # local .tgz path, None if no archive
     uploads: list[UploadOutcome] = field(default_factory=list)  # one per configured target
     removed: list[str] = field(default_factory=list)    # local files clean_up() deleted
+    cleanup_error: str | None = None    # str(exception) when local retention pruning failed

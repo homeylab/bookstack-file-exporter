@@ -150,8 +150,9 @@ At startup each target's bucket is checked with a `HeadBucket` call:
 
 ## Multi-target upload behavior
 
-Every configured `object_storage` target is attempted, even if an earlier one fails. The run
-outcome is one of:
+Every configured `object_storage` target is attempted, even if others fail. Targets upload
+concurrently (one thread per target, capped at 4); log lines from different targets may
+interleave, and each is tagged with the target's `name`. The run outcome is one of:
 
 | Outcome | When | Exit code | Notification |
 |---|---|---|---|
@@ -167,6 +168,10 @@ upload fails, the run is a hard failure — the local archive is preserved so th
 A target that uploads successfully but whose retention cleanup (pruning old objects per `keep_last`)
 fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced
 (exit 3 / `on_failure` / `degraded` health) so unbounded object growth is noticed.
+
+The same applies locally: if pruning old local archives (top-level `keep_last`) fails after the
+export and uploads succeeded, the run is **Partial** — the backup is safe, the failed cleanup is
+surfaced in the notification, and stale local files are left for the next run to prune.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).

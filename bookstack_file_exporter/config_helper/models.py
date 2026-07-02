@@ -63,6 +63,15 @@ class S3StorageConfig(StrictModel):
     access_key_env: str | None = None
     secret_key_env: str | None = None
 
+    @property
+    def is_aws(self) -> bool:
+        """The schema's core discriminant, single-sourced: no 'endpoint' means AWS S3;
+        an 'endpoint' means a custom S3-compatible store. Validators and the
+        S3ProviderConfig resolvers read this instead of re-deriving from 'endpoint'
+        so the rule can only change in one place. Truthiness (not `is None`) so an
+        empty-string endpoint still selects AWS."""
+        return not self.endpoint
+
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_or_renamed_keys(cls, raw):
@@ -119,7 +128,7 @@ class S3StorageConfig(StrictModel):
     def _check_region_for_aws(self):
         """A no-endpoint target is AWS S3, which needs a region for signing/endpoint. Require
         it unless ambient_auth is on (botocore can resolve region from env/profile)."""
-        if not self.endpoint and not self.region and not self.ambient_auth:
+        if self.is_aws and not self.region and not self.ambient_auth:
             raise ValueError(
                 f"object_storage target {self.name!r}: 'region' is required for AWS S3 "
                 "targets (no 'endpoint') unless ambient_auth resolves it.")
