@@ -168,6 +168,10 @@ A target that uploads successfully but whose retention cleanup (pruning old obje
 fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced
 (exit 3 / `on_failure` / `degraded` health) so unbounded object growth is noticed.
 
+The same applies locally: if pruning old local archives (top-level `keep_last`) fails after the
+export and uploads succeeded, the run is **Partial** — the backup is safe, the failed cleanup is
+surfaced in the notification, and stale local files are left for the next run to prune.
+
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
 

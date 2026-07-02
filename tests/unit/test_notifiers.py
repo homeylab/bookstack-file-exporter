@@ -86,6 +86,20 @@ class TestGetMessageTextSuccessBranch:
         assert "(removed locally after upload)" not in body
         assert "Pruned 2 old local archive(s)" in body
 
+    def test_cleanup_error_shows_warning_line(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local="/data/export.tgz",
+                              uploads=[], removed=[], cleanup_error="permission denied")
+        body = notifier._get_message_text(None, result=result)
+        assert "Warning: local cleanup failed - permission denied" in body
+        assert "completed with errors" in body
+
+    def test_no_cleanup_error_no_warning_line(self):
+        notifier = _make_notifier()
+        result = NotifyResult(local="/data/export.tgz", uploads=[], removed=[])
+        body = notifier._get_message_text(None, result=result)
+        assert "local cleanup failed" not in body
+
     def test_abspath_normalization_relative_vs_absolute(self):
         """Relative and absolute path forms of the same file are treated as the same."""
         notifier = _make_notifier()

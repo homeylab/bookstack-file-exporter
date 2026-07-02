@@ -90,6 +90,8 @@ class AppRiseNotify:
             pruned_count = len(removed_abs - {local_abs})
             if pruned_count > 0:
                 lines.append(f"Pruned {pruned_count} old local archive(s)")
+        if result is not None and result.cleanup_error:
+            lines.append(f"Warning: local cleanup failed - {result.cleanup_error}")
         return "\n".join(lines)
 
     def notify(self, excep: Exception | None = None, result: NotifyResult | None = None):

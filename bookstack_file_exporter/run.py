@@ -244,14 +244,24 @@ def exporter(config: ConfigNode, stop=None):
         outcomes = archive.archive_remote()
         status = archive.resolve_remote_status(outcomes)
 
-        # clean_up only runs when a durable copy survives (hard-fail raised above, so the
-        # local .tgz is preserved for retry).
-        removed = archive.clean_up()
+        # Local retention pruning is housekeeping: at this point durable copies exist
+        # (resolve_remote_status raised otherwise), so a failed local delete downgrades
+        # the run to PARTIAL instead of failing it — same treatment as a remote
+        # retention failure in archiver._upload. Stale local files are harmless; the
+        # next run prunes them.
+        removed: list[str] = []
+        cleanup_error: str | None = None
+        try:
+            removed = archive.clean_up()
+        except Exception as err:  # pylint: disable=broad-except
+            log.error("Local cleanup failed (export and uploads succeeded): %s", err)
+            status = ExportStatus.PARTIAL
+            cleanup_error = str(err)
 
-        local = archive.archive_file
         log.info("Created file archive: %s.tgz", archive.archive_dir)
         log.info("Completed run")
-        return NotifyResult(status=status, local=local, uploads=outcomes, removed=removed)
+        return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
+                            removed=removed, cleanup_error=cleanup_error)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
         # exception, one-shot KeyboardInterrupt). No-op on success: the tar is
