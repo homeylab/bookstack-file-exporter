@@ -147,8 +147,13 @@ def run(config: ConfigNode, stop=None):
     try:
         result = exporter(config, stop)
         if config.user_inputs.notifications:
-            notif = NotifyHandler(config.user_inputs.notifications)
-            notif.do_notify(result=result)
+            try:
+                notif = NotifyHandler(config.user_inputs.notifications)
+                notif.do_notify(result=result)
+            except Exception as notif_err:  # pylint: disable=broad-exception-caught
+                # log-and-continue: the export itself succeeded, a failed
+                # notification must not downgrade or fail the run
+                log.error("Failed to send notification: %s", str(notif_err))
         return result
     except Exception as run_err: # general catch all for notifications
         if not config.user_inputs.notifications:

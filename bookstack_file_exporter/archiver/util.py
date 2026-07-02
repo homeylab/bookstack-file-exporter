@@ -56,7 +56,7 @@ def create_gzip(file_path: str, gzip_file: str, remove_old: bool = True):
     if remove_old:
         remove_file(file_path)
 
-def scan_archives(base_dir: str, extension: str) -> str:
+def scan_archives(base_dir: str, extension: str) -> list[str]:
     """scan export directory for archives"""
     file_pattern = f"{base_dir}_*{extension}"
     return glob.glob(file_pattern)
