@@ -4,7 +4,7 @@ import logging
 # pylint: disable=import-error
 import yaml
 
-from bookstack_file_exporter.common.util import check_var
+from bookstack_file_exporter.common.util import check_var, EXPORT_BASENAME
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
@@ -51,7 +51,8 @@ _API_PATHS = {
 
 _UNASSIGNED_BOOKS_DIR = "unassigned/"
 
-_BASE_DIR_NAME = "bookstack_export"
+# shared with s3_archiver's retention filter — see EXPORT_BASENAME in common/util.py
+_BASE_DIR_NAME = EXPORT_BASENAME
 
 _BOOKSTACK_TOKEN_FIELD ='BOOKSTACK_TOKEN_ID'
 _BOOKSTACK_TOKEN_SECRET_FIELD='BOOKSTACK_TOKEN_SECRET'

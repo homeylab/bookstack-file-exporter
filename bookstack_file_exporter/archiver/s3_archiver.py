@@ -13,8 +13,10 @@ log = logging.getLogger(__name__)
 
 # only objects whose name (after the configured prefix) STARTS with this marker are
 # eligible for retention clean up; anchored to guard user objects that merely contain
-# the marker somewhere in their name (every tool-created archive starts with it)
-_MANAGED_FILTER = "bookstack_export_"
+# the marker somewhere in their name. Derived from the same EXPORT_BASENAME that
+# names the local archives (every tool-created archive starts with it), so upload
+# naming and retention matching cannot drift apart.
+_MANAGED_FILTER = f"{common_util.EXPORT_BASENAME}_"
 
 # S3 DeleteObjects accepts at most 1000 keys per request (documented API limit,
 # enforced server-side; boto3/botocore expose no constant for it)

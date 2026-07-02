@@ -18,6 +18,13 @@ T = TypeVar("T")
 
 log = logging.getLogger(__name__)
 
+# Base name for everything the tool creates: the local export directory and .tgz
+# archive stem (config_helper), and — with a trailing '_' — the anchored
+# managed-object filter for remote retention (s3_archiver). Single definition so
+# local naming and remote retention can never drift apart: retention only deletes
+# objects whose name it recognizes as tool-created.
+EXPORT_BASENAME = "bookstack_export"
+
 # pylint: disable=too-many-instance-attributes
 class HttpHelper:
     """
