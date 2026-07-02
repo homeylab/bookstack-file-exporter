@@ -12,7 +12,7 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
+from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
@@ -64,9 +64,10 @@ def _run_once(config: ConfigNode) -> int:
 
     try:
         result = run(config)
-        if result is not None and result.status is ExportStatus.PARTIAL:
-            return 3
-        return 0
+        if result is None:
+            # nothing to archive (empty instance) is a clean no-op, not a failure
+            return 0
+        return STATUS_EFFECTS[result.status].exit_code
     except KeyboardInterrupt:
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
@@ -114,7 +115,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         try:
             result = run(config, stop)
             if status:
-                if result is not None and result.status is ExportStatus.PARTIAL:
+                if result is not None and STATUS_EFFECTS[result.status].health_degraded:
                     status.mark_degraded(result)
                 else:
                     status.mark_success(result)

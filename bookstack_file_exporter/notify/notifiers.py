@@ -3,7 +3,7 @@ from datetime import datetime
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyFormat
 
 from bookstack_file_exporter.config_helper import notifications
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
+from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
 
 _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 
@@ -77,9 +77,11 @@ class AppRiseNotify:
         if self.config.custom_title:
             return self.config.custom_title
         if excep:
+            # hard failure is a raised exception, never an ExportStatus value,
+            # so it sits outside the STATUS_EFFECTS table by design
             return _DEFAULT_TITLE_PREFIX + "Failed"
-        if result is not None and result.status is ExportStatus.PARTIAL:
-            return _DEFAULT_TITLE_PREFIX + "Partial"
+        if result is not None:
+            return _DEFAULT_TITLE_PREFIX + STATUS_EFFECTS[result.status].title_suffix
         return _DEFAULT_TITLE_PREFIX + "Success"
 
     def _get_message_text(self, error_msg: None | Exception,
