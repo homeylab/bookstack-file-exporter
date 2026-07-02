@@ -1,12 +1,9 @@
 # pylint: disable=missing-function-docstring,missing-class-docstring
-from bookstack_file_exporter.config_helper.models import S3StorageConfig
 from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 
-def test_holds_boto3_ready_values():
-    entry = S3StorageConfig(name="minio-main", bucket="b", prefix="daily", keep_last=5,
-                            endpoint="minio.local:9000", secure=False,
-                            access_key="a", secret_key="s")
+def test_holds_boto3_ready_values(make_storage_entry):
+    entry = make_storage_entry(name="minio-main", prefix="daily", keep_last=5, secure=False)
     p = S3ProviderConfig(entry)
     assert p.name == "minio-main"
     assert p.bucket == "b" and p.prefix == "daily" and p.keep_last == 5
@@ -16,9 +13,10 @@ def test_holds_boto3_ready_values():
     assert p.access_key == "a" and p.secret_key == "s"
 
 
-def test_ambient_holder_has_none_keys():
-    entry = S3StorageConfig(name="aws", bucket="b", prefix="", keep_last=0,
-                            region="us-east-1", ambient_auth=True)
+def test_ambient_holder_has_none_keys(make_storage_entry):
+    entry = make_storage_entry(name="aws", prefix="", keep_last=0,
+                                endpoint=None, region="us-east-1", ambient_auth=True,
+                                access_key="", secret_key="")
     p = S3ProviderConfig(entry)
     assert p.name == "aws" and p.bucket == "b" and p.prefix == "" and p.keep_last == 0
     assert p.endpoint_url is None
@@ -27,13 +25,11 @@ def test_ambient_holder_has_none_keys():
     assert p.access_key is None and p.secret_key is None
 
 
-def test_prefix_normalized_at_resolution():
-    entry = S3StorageConfig(name="t", bucket="b", prefix="/daily/exports///",
-                            endpoint="minio.local:9000", access_key="a", secret_key="s")
+def test_prefix_normalized_at_resolution(make_storage_entry):
+    entry = make_storage_entry(prefix="/daily/exports///")
     assert S3ProviderConfig(entry).prefix == "daily/exports"
 
 
-def test_none_prefix_resolves_empty():
-    entry = S3StorageConfig(name="t", bucket="b", prefix=None,
-                            endpoint="minio.local:9000", access_key="a", secret_key="s")
+def test_none_prefix_resolves_empty(make_storage_entry):
+    entry = make_storage_entry(prefix=None)
     assert S3ProviderConfig(entry).prefix == ""
