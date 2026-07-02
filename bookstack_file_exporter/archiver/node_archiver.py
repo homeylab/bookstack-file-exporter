@@ -1,6 +1,7 @@
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 # pylint: disable=import-error
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
@@ -36,6 +37,17 @@ _REWRITABLE_FORMATS = {"markdown", "html"}
 # 429 guidance is the single source of truth on the field in config_helper/models.py.
 # NOTE: README's "Parallel Export" section mirrors this 16 in prose; keep in sync.
 _EXPORT_WORKERS_SOFT_MAX = 16
+
+
+@dataclass
+class ContentFailures:
+    """Archive-relative paths of files ONE node's export failed to produce.
+
+    Returned by _export_node so failures ride the existing return path back to
+    the coordinating thread instead of workers mutating shared archiver state.
+    """
+    nodes: list[str] = field(default_factory=list)   # node exports (path + format ext)
+    assets: list[str] = field(default_factory=list)  # asset downloads (get_relative_path)
 
 
 # pylint: disable=too-many-instance-attributes
@@ -81,6 +93,13 @@ class NodeArchiver:
         # the signal handler only SETS this flag (it cannot safely raise across
         # arbitrary code), so the export must poll it to cancel.
         self._stop = None
+        # Content-loss ledger: archive-relative paths this run failed to produce
+        # (node exports) or download (assets). Merged only by the coordinating
+        # thread — the serial loop or the as_completed loop — from _export_node's
+        # returned ContentFailures, so no lock is needed even with
+        # export_workers > 1. A non-empty ledger downgrades the run to PARTIAL.
+        self.failed_node_exports: list[str] = []
+        self.failed_asset_downloads: list[str] = []
         # Opt-in node-level fetch parallelism (default 1 = serial, today's behavior).
         self.export_workers = export_workers
         if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
@@ -96,6 +115,11 @@ class NodeArchiver:
     def _stop_requested(self) -> bool:
         """True when a shutdown signal has flagged this run for cancellation."""
         return self._stop is not None and self._stop.is_set()
+
+    def _merge_failures(self, failures: ContentFailures) -> None:
+        """Fold one node's failures into the run ledger (coordinating thread only)."""
+        self.failed_node_exports.extend(failures.nodes)
+        self.failed_asset_downloads.extend(failures.assets)
 
     def _default_asset_archiver(self, api_urls: dict[str, str], http_client: HttpHelper):
         """Build an AssetArchiver when no double is injected, or return None if assets disabled."""
@@ -259,7 +283,8 @@ class NodeArchiver:
         for _, node in nodes.items():
             if self._stop_requested():
                 return
-            self._export_node(node, resource_type, image_map, attachment_map)
+            self._merge_failures(
+                self._export_node(node, resource_type, image_map, attachment_map))
 
     def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
                                image_map: dict[int, list],
@@ -267,7 +292,8 @@ class NodeArchiver:
         """Fan node fetches across a thread pool; writes serialize in write_tar.
 
         Memory stays ~= export_workers x fattest-node: only max_workers tasks run
-        at once, and _export_node returns None so completed futures hold nothing.
+        at once, and _export_node returns only the tiny ContentFailures ledger,
+        so completed futures hold no bulky payload.
 
         Cancellation is cooperative, NOT a hard kill. On stop:
           - queued (not-yet-started) futures are dropped by shutdown(cancel_futures=True);
@@ -289,14 +315,16 @@ class NodeArchiver:
         # executor.shutdown(wait=True), so we always join every worker before
         # returning, even on an exception.
         with ThreadPoolExecutor(max_workers=self.export_workers) as executor:
-            futures = []
+            # {future: node} so the exception path below can name the lost node
+            futures = {}
             for _, node in nodes.items():
                 if self._stop_requested():
                     break
                 # submit() schedules the call on a pool thread and returns
                 # immediately with a Future handle (a promise of the result).
-                futures.append(executor.submit(
-                    self._export_node, node, resource_type, image_map, attachment_map))
+                futures[executor.submit(
+                    self._export_node, node, resource_type, image_map,
+                    attachment_map)] = node
             # as_completed yields each future the moment it finishes, in
             # completion order (NOT submission order) — so we react to whichever
             # node returns first.
@@ -308,32 +336,41 @@ class NodeArchiver:
                 # worker thread raised. We catch broadly so one bad node is logged
                 # and skipped rather than aborting every other node's export.
                 try:
-                    future.result()
+                    self._merge_failures(future.result())
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     log.error("Node export worker failed, skipping node: %s", exc)
+                    # formats already exported before the crash are unknown here,
+                    # so the entry carries no extension
+                    self.failed_node_exports.append(
+                        f"{self._node_output_path(futures[future])} (worker error)")
 
     def _export_node(self, node: Node, resource_type: str,
                      image_map: dict[int, list],
-                     attachment_map: dict[int, list]) -> None:
+                     attachment_map: dict[int, list]) -> ContentFailures:
         """Fetch and archive ONE node in every requested format.
 
         Self-contained per node (no shared mutable state): safe to run in a
         worker thread when export_workers > 1. Writes go through write_data ->
-        write_tar, which serializes appends under a module lock. Returns None so
-        completed pool futures retain no payload (peak RAM ~= workers x fattest-node).
+        write_tar, which serializes appends under a module lock. Returns only the
+        tiny ContentFailures ledger, so completed pool futures retain no bulky
+        payload (peak RAM ~= workers x fattest-node).
         """
-        assets_by_page = self._download_node_assets(node, image_map, attachment_map)
+        assets_by_page, failed_assets = self._download_node_assets(
+            node, image_map, attachment_map)
+        failures = ContentFailures(assets=failed_assets)
         for fmt in self.export_formats:
             # Per-format checkpoint: a single book/chapter export call can be slow
             # (server-side render); stop between formats instead of after all of them.
             if self._stop_requested():
-                return
+                return failures
             url = f"{self.api_urls[resource_type]}/{node.id_}/export/{fmt}"
             try:
                 data = self._get_node_data(url)
             except (HTTPError, RetryError):
                 log.error("Failed to get %s data for node id=%d format=%s - skipping",
                           resource_type, node.id_, fmt)
+                failures.nodes.append(
+                    f"{self._node_output_path(node)}{_FILE_EXTENSION_MAP[fmt]}")
                 continue
             if fmt == "markdown" and self.modify_links:
                 data = self._rewrite_combined_markdown(data, assets_by_page)
@@ -342,14 +379,19 @@ class NodeArchiver:
             self._archive_node(node, fmt, data)
         if self.export_meta:
             self._archive_node_meta(node, node.meta)
+        return failures
 
     def _download_node_assets(self, node: Node, image_map: dict[int, list],
-                              attachment_map: dict[int, list]) -> dict:
-        """Download this node's descendant-page assets; return survivors grouped per page+type."""
+                              attachment_map: dict[int, list]) -> tuple[dict, list[str]]:
+        """Download this node's descendant-page assets.
+
+        Returns (survivors grouped per page+type, archive-relative paths of the
+        assets that failed to download)."""
         if not (image_map or attachment_map):
-            return {}
+            return {}, []
         page_names = self._asset_page_map(node)
         grouped = {"images": {}, "attachments": {}}
+        failed_paths: list[str] = []
         for asset_type, amap in (("images", image_map), ("attachments", attachment_map)):
             if self._stop_requested():
                 break
@@ -359,10 +401,12 @@ class NodeArchiver:
                     continue
                 failed = self._archive_node_assets(
                     asset_type, self._asset_parent_path(node), page_name, assets)
+                failed_paths.extend(
+                    a.get_relative_path(page_name) for a in assets if a.id_ in failed)
                 survivors = [a for a in assets if a.id_ not in failed]
                 if survivors:
                     grouped[asset_type][page_name] = survivors
-        return grouped
+        return grouped, failed_paths
 
     def _rewrite_combined(self, data: bytes, assets_by_page: dict, rewriter) -> bytes:
         """Run the shared guard and double loop, delegating each page to rewriter."""
