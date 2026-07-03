@@ -15,7 +15,7 @@ def _run_gate(excep, result, on_success, on_failure):
     a_config = MagicMock(on_success=on_success, on_failure=on_failure)
     with patch("bookstack_file_exporter.notify.handler.notifications") as notif_mod, \
          patch("bookstack_file_exporter.notify.handler.notifiers") as notif_pkg:
-        notif_mod.AppRiseNotifyConfig.return_value = a_config
+        notif_mod.ResolvedAppriseConfig.return_value = a_config
         sender = MagicMock()
         notif_pkg.AppRiseNotify.return_value = sender
         h._handle_apprise(MagicMock(), excep, result)

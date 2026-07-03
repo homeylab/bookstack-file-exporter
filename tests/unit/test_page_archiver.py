@@ -40,20 +40,17 @@ def page_archiver(tmp_path):
 # ---------------------------------------------------------------------------
 
 class TestStopFlag:
-    def test_stop_defaults_to_none(self, page_archiver):
-        assert page_archiver._stop is None
-
     def test_stop_requested_false_when_unset(self, page_archiver):
         assert page_archiver._stop_requested() is False
 
     def test_stop_requested_false_when_event_clear(self, page_archiver):
-        page_archiver._stop = threading.Event()
+        page_archiver.set_stop(threading.Event())
         assert page_archiver._stop_requested() is False
 
     def test_stop_requested_true_when_event_set(self, page_archiver):
         ev = threading.Event()
         ev.set()
-        page_archiver._stop = ev
+        page_archiver.set_stop(ev)
         assert page_archiver._stop_requested() is True
 
 
@@ -61,7 +58,7 @@ class TestCooperativeCancellation:
     def test_export_nodes_bails_before_first_node_when_stopped(self, page_archiver):
         ev = threading.Event()
         ev.set()
-        page_archiver._stop = ev
+        page_archiver.set_stop(ev)
         page_archiver._download_node_assets = MagicMock()
         page_archiver._get_node_data = MagicMock()
 
@@ -73,7 +70,7 @@ class TestCooperativeCancellation:
 
     def test_export_nodes_stops_between_nodes(self, page_archiver):
         ev = threading.Event()
-        page_archiver._stop = ev
+        page_archiver.set_stop(ev)
         page_archiver._download_node_assets = MagicMock(return_value=({}, []))
         # set the flag the moment the first node's data is fetched
         page_archiver._get_node_data = MagicMock(side_effect=lambda url: ev.set() or b"data")
@@ -92,7 +89,7 @@ class TestCooperativeCancellation:
     def test_download_node_assets_breaks_asset_type_loop_when_stopped(self, page_archiver):
         ev = threading.Event()
         ev.set()
-        page_archiver._stop = ev
+        page_archiver.set_stop(ev)
         page_archiver._archive_node_assets = MagicMock(return_value=set())
         page_archiver._asset_page_map = MagicMock(return_value={1: "page-1"})
 
@@ -107,7 +104,7 @@ class TestCooperativeCancellation:
     def test_archive_node_assets_breaks_asset_loop_when_stopped(self, page_archiver):
         ev = threading.Event()
         ev.set()
-        page_archiver._stop = ev
+        page_archiver.set_stop(ev)
         # asset nodes present; the per-asset guard must break before the first one.
         page_archiver.asset_archiver = MagicMock()
         failed = page_archiver._archive_node_assets(
@@ -725,7 +722,7 @@ class TestParallelExport:
                                 asset_archiver=MagicMock())
         archiver.asset_archiver.get_asset_nodes.return_value = {}
         ev = threading.Event()
-        archiver._stop = ev
+        archiver.set_stop(ev)
         parent = build_node(id=1, name="bk", slug="bk")
         pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
                  for i in range(2, 22)}  # 20 pages
@@ -752,7 +749,7 @@ class TestParallelExport:
         archiver.asset_archiver.get_asset_nodes.return_value = {}
         ev = threading.Event()
         ev.set()  # stop requested up front
-        archiver._stop = ev
+        archiver.set_stop(ev)
         parent = build_node(id=1, name="bk", slug="bk")
         pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
                  for i in range(2, 12)}  # 10 pages

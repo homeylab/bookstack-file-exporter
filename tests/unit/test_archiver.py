@@ -49,7 +49,7 @@ class TestSetStop:
     def test_set_stop_forwards_to_node_archiver(self, archiver_instance):
         ev = threading.Event()
         archiver_instance.set_stop(ev)
-        assert archiver_instance._archiver._stop is ev
+        archiver_instance._archiver.set_stop.assert_called_once_with(ev)
 
 
 class TestDiscardPartial:
@@ -228,7 +228,14 @@ class TestBuildArchiver:
 
 @pytest.fixture
 def five_files():
-    return ["oldest.tgz", "old.tgz", "mid.tgz", "new.tgz", "newest.tgz"]
+    # filenames embed the run timestamp, chronological order == basename sort order
+    return [
+        "bkps_2024-01-01_00-00-00.tgz",
+        "bkps_2024-01-02_00-00-00.tgz",
+        "bkps_2024-01-03_00-00-00.tgz",
+        "bkps_2024-01-04_00-00-00.tgz",
+        "bkps_2024-01-05_00-00-00.tgz",
+    ]
 
 
 @pytest.fixture
@@ -262,15 +269,13 @@ def test_filter_archives_5_files_keep_2(
 ):
     keep_last = 2
     expected_len = 3
-    expected_oldest = ["oldest.tgz", "old.tgz", "mid.tgz"]
+    expected_oldest = five_files[:3]
     mock_config.user_inputs.keep_last = keep_last
-    fake_ctimes = {
-        "oldest.tgz": 100,
-        "old.tgz": 150,
-        "mid.tgz": 200,
-        "new.tgz": 250,
-        "newest.tgz": 300,
-    }
+    # ctimes are deliberately reversed (newest-first): a chmod/chown -R or volume
+    # restore can reset ctime, so prune order must follow the filename timestamp,
+    # not stat times. If _filter_archives ever regresses to sorting by ctime,
+    # this assertion flips to the wrong 3 files and fails.
+    fake_ctimes = dict(zip(five_files, [500, 400, 300, 200, 100]))
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._filter_archives(five_files)
     assert len(result) == expected_len
@@ -681,15 +686,22 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 ):
     """keep_last > 0 with more archives than cap: only the excess (old) ones returned."""
     mock_config.user_inputs.keep_last = 1
-    # Three archives; keep_last=1 → 2 oldest should be deleted, newest kept
-    file_list = ["old1.tgz", "old2.tgz", "current.tgz"]
+    # Three archives, filenames carry the run timestamp; keep_last=1 -> the 2
+    # oldest by filename should be deleted, newest kept.
+    file_list = [
+        "bkps_2024-01-01_00-00-00.tgz",
+        "bkps_2024-01-02_00-00-00.tgz",
+        "bkps_2024-01-03_00-00-00.tgz",
+    ]
     patch_scan_archives(file_list)
-    fake_ctimes = {"old1.tgz": 100, "old2.tgz": 200, "current.tgz": 300}
+    # ctimes are deliberately reversed to prove prune order follows the filename
+    # timestamp, not stat times (which chmod/chown -R or a volume restore can reset).
+    fake_ctimes = dict(zip(file_list, [300, 200, 100]))
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     archiver_instance._delete_files = MagicMock()
     result = archiver_instance.clean_up()
-    assert result == ["old1.tgz", "old2.tgz"]
-    assert "current.tgz" not in result
+    assert result == file_list[:2]
+    assert file_list[2] not in result
 
 
 # ---------------------------------------------------------------------------

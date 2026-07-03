@@ -2,9 +2,9 @@
 # pylint: disable=protected-access
 """Unit tests for AppRiseNotify._get_message_text success-branch formatting."""
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from apprise import NotifyFormat
+from apprise import AppriseConfig, NotifyFormat
 
 from bookstack_file_exporter.config_helper import models as config_models
 from bookstack_file_exporter.config_helper import notifications
@@ -30,11 +30,11 @@ def _make_notifier(body_format="text"):
 
 
 def _apprise_notify_config(**overrides):
-    """Build a real notifications.AppRiseNotifyConfig via the pydantic model,
+    """Build a real notifications.ResolvedAppriseConfig via the pydantic model,
     so _create_client() runs against production config wiring."""
     base = {"service_urls": ["json://localhost"]}
     base.update(overrides)
-    return notifications.AppRiseNotifyConfig(config_models.AppRiseNotifyConfig(**base))
+    return notifications.ResolvedAppriseConfig(config_models.AppRiseNotifyConfig(**base))
 
 
 class TestCreateClientAssetWiring:
@@ -63,6 +63,17 @@ class TestCreateClientAssetWiring:
         notifier = AppRiseNotify(config)
         assert notifier._client.asset.plugin_paths == [plugin_dir]
         assert notifier._client[0].asset.plugin_paths == [plugin_dir]
+
+    def test_config_path_branch_constructs_appriseconfig_with_asset(self, tmp_path):
+        # AppriseConfig carries its own default AppriseAsset -- the asset built
+        # above (storage_path/plugin_paths) must be threaded into it explicitly,
+        # or config-file-loaded plugins silently get apprise's stock asset.
+        config = _apprise_notify_config(
+            config_path=str(tmp_path / "missing.yml"), storage_path=str(tmp_path))
+        with patch("bookstack_file_exporter.notify.notifiers.AppriseConfig",
+                   wraps=AppriseConfig) as spy:
+            AppRiseNotify(config)
+        assert spy.call_args.kwargs["asset"].storage_path == str(tmp_path)
 
 
 class TestGetMessageTextSuccessBranch:

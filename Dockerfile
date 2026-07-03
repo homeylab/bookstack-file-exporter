@@ -10,7 +10,7 @@ LABEL \
 
 # Get security updates and clean up apt cache for smaller size
 RUN apt update -y && apt upgrade -y && \
-    apt install dumb-init && \
+    apt-get install -y dumb-init && \
     rm -rf /var/lib/apt/lists/*
 
 # create docker user

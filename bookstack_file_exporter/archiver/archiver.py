@@ -107,7 +107,7 @@ class Archiver:
         One-shot mode never calls this, so the archiver's flag stays None (no-op
         at every checkpoint). Scheduled mode forwards its threading.Event here.
         """
-        self._archiver._stop = stop  # pylint: disable=protected-access
+        self._archiver.set_stop(stop)
 
     def discard_partial(self):
         """Remove this run's intermediate tar and any .tgz.partial; never the final .tgz.
@@ -278,7 +278,11 @@ class Archiver:
         """get older archives based on keep number"""
         files_to_clean = common_util.oldest_beyond_keep(
             file_list,
-            key=lambda f: os.stat(f).st_ctime,
+            # ctime is inode-change time, not creation time -- a chmod/chown -R or
+            # volume restore resets it, making prune order arbitrary. The filename
+            # embeds the run timestamp (..._%Y-%m-%d_%H-%M-%S.tgz), which sorts
+            # lexicographically in chronological order, so use that instead.
+            key=os.path.basename,
             keep_last=self.config.user_inputs.keep_last,
         )
         log.debug("%d local archives will be cleaned up", len(files_to_clean))
