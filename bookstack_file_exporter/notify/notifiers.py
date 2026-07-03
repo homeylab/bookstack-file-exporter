@@ -128,6 +128,17 @@ class AppRiseNotify:
                 "",
                 f"Error message: {str(error_msg)}",
             ])
+        if result is not None and result.status is ExportStatus.EMPTY:
+            # Archive-less run: no Archive/Uploaded/Pruned/Failed sections make
+            # sense when nothing was ever written.
+            return "\n".join([
+                "",
+                "Bookstack File Exporter completed - nothing to archive.",
+                "",
+                f"Completed At: {timestamp}",
+                "",
+                f"No {result.export_level} content was found to export.",
+            ])
         partial = result is not None and result.status is ExportStatus.PARTIAL
         headline = ("Bookstack File Exporter completed with errors."
                     if partial else
@@ -186,6 +197,15 @@ class AppRiseNotify:
                 f"Occurred At: {timestamp}",
                 "",
                 f"Error message: {_md_code(str(error_msg))}",
+            ])
+        if result is not None and result.status is ExportStatus.EMPTY:
+            return "\n".join([
+                "",
+                "**Bookstack File Exporter completed - nothing to archive.**",
+                "",
+                f"Completed At: {timestamp}",
+                "",
+                f"No {result.export_level} content was found to export.",
             ])
         partial = result is not None and result.status is ExportStatus.PARTIAL
         headline = ("**Bookstack File Exporter completed with errors.**"

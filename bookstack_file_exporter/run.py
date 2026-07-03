@@ -72,7 +72,10 @@ def _run_once(config: ConfigNode) -> int:
     try:
         result = run(config)
         if result is None:
-            # nothing to archive (empty instance) is a clean no-op, not a failure
+            # Defensive/unreachable: None only comes from run.py's shutdown
+            # paths, which require a stop flag -- one-shot mode never passes
+            # one, so run() can't return None here. Kept as a safe default (0)
+            # rather than a KeyError if that ever changes.
             return 0
         return STATUS_EFFECTS[result.status].exit_code
     except KeyboardInterrupt:
@@ -121,8 +124,11 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
             status.mark_running()
         try:
             result = run(config, stop)
-            if status:
-                if result is not None and STATUS_EFFECTS[result.status].health_degraded:
+            # None = cycle cancelled by shutdown; the loop breaks right after
+            # (stop.is_set() below) and the server shuts down, so the cycle is
+            # never marked success/degraded for work that didn't finish.
+            if status and result is not None:
+                if STATUS_EFFECTS[result.status].health_degraded:
                     status.mark_degraded(result)
                 else:
                     status.mark_success(result)
@@ -154,7 +160,11 @@ def run(config: ConfigNode, stop=None):
     """run export process with error handling and notification support"""
     try:
         result = exporter(config, stop)
-        if config.user_inputs.notifications:
+        # None = cancelled by shutdown (run.py's shutdown-during-fetch /
+        # shutdown-mid-cycle paths); notifying would report an outcome that
+        # never happened, so skip notification entirely. Any real outcome
+        # (including EMPTY) still notifies below.
+        if result is not None and config.user_inputs.notifications:
             try:
                 notif = NotifyHandler(config.user_inputs.notifications)
                 notif.do_notify(result=result)
@@ -231,7 +241,7 @@ def exporter(config: ConfigNode, stop=None):
             "No %s data available from given Bookstack instance. Nothing to archive",
             export_level,
         )
-        return None
+        return NotifyResult(status=ExportStatus.EMPTY, export_level=export_level)
 
     log.info("Beginning archive")
     try:
@@ -256,7 +266,7 @@ def exporter(config: ConfigNode, stop=None):
                     f"{len(archive.failed_assets)} asset download(s) failed")
         elif not archive.has_exported_content:
             log.warning("No %s content was archived. Nothing to upload", export_level)
-            return None
+            return NotifyResult(status=ExportStatus.EMPTY, export_level=export_level)
 
         # create tar if needed and gzip tar
         archive.create_archive()

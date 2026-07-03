@@ -50,6 +50,12 @@ class TestStatusEffects:
         assert effects.health_degraded is True
         assert effects.title_suffix == "Partial"
 
+    def test_empty_effects(self):
+        effects = STATUS_EFFECTS[ExportStatus.EMPTY]
+        assert effects.exit_code == 0
+        assert effects.health_degraded is False
+        assert effects.title_suffix == "Success"
+
     def test_every_status_has_effects(self):
         """Adding an ExportStatus without an effects row must fail loudly here,
         not KeyError at exit time."""

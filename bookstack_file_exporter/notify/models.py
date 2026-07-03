@@ -3,9 +3,17 @@ from enum import Enum
 
 
 class ExportStatus(Enum):
-    """Terminal run outcome. Hard failure is a raised exception, never a value here."""
+    """Terminal run outcome. Hard failure is a raised exception, never a value here.
+
+    SUCCESS: archive produced and durable copies exist.
+    PARTIAL: run finished but degraded (content loss, a failed upload, or a
+        failed retention cleanup).
+    EMPTY: run completed but found nothing to archive (empty instance / filters
+        matched nothing) -- not a failure, not cancelled.
+    """
     SUCCESS = "success"
     PARTIAL = "partial"
+    EMPTY = "empty"
 
 
 @dataclass(frozen=True)
@@ -26,6 +34,10 @@ STATUS_EFFECTS: dict[ExportStatus, StatusEffects] = {
         exit_code=0, health_degraded=False, title_suffix="Success"),
     ExportStatus.PARTIAL: StatusEffects(
         exit_code=3, health_degraded=True, title_suffix="Partial"),
+    # title stays "Success": operators' alerting rules match on title, and the
+    # body carries the nothing-to-archive detail instead.
+    ExportStatus.EMPTY: StatusEffects(
+        exit_code=0, health_degraded=False, title_suffix="Success"),
 }
 
 

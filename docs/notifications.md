@@ -41,6 +41,16 @@ Pruned:
 - aws-s3: 1 archive(s)
 
 
+##### Nothing To Archive Message #####
+{TITLE}: Bookstack File Exporter Success
+{BODY}:
+Bookstack File Exporter completed - nothing to archive.
+
+Completed At: 2025-09-06 01:05:27
+
+No pages content was found to export.
+
+
 ##### Partial Message #####
 {TITLE}: Bookstack File Exporter Partial
 {BODY}:
@@ -57,6 +67,8 @@ Failed:
 - assets: 115 asset download(s) failed
 ```
 The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each successful target as a `- name: destination` bullet, and the `Pruned:` group shows how many old archives `keep_last` retention removed — `local` for the export directory plus one bullet per remote target that deleted objects (zero-count targets are omitted).
+
+When a run completes but finds nothing to archive (an empty Bookstack instance, or filters that matched nothing), the notification title still reads "Success" — this is not a failure — but the body says so plainly and omits the `Archive:`/`Uploaded to:`/`Pruned:` sections entirely, since no archive was ever produced. It is gated the same as any other success (`apprise.on_success`), not `on_failure`.
 
 The partial body adds a `Failed:` group. Content dropped during export (a page/book/chapter export or an asset download that failed after retries) is reported first as count-only bullets — `- content: N <level> export(s) failed` and `- assets: N asset download(s) failed` — followed by one bullet per failed upload target, if any. Full per-path detail is not included in the notification; it is in the run logs.
 

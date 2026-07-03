@@ -37,6 +37,8 @@ class NotifyHandler:
         apprise = notifiers.AppRiseNotify(a_config)
         # PARTIAL is a degraded run: treat it like a failure for gating so on_failure
         # subscribers are alerted (a copy survived, but a target did not receive it).
+        # EMPTY is success-toned (nothing to archive is not a degradation) and falls
+        # through to the on_success branch below like SUCCESS.
         is_partial = result is not None and result.status is ExportStatus.PARTIAL
         fire_failure = excep is not None or is_partial
         if (not fire_failure and a_config.on_success) or (fire_failure and a_config.on_failure):

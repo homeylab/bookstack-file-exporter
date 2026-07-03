@@ -35,3 +35,15 @@ def test_partial_suppressed_when_on_failure_false():
 def test_success_fires_on_success():
     result = NotifyResult(status=ExportStatus.SUCCESS, local="/a/b.tgz")
     assert _run_gate(None, result, on_success=True, on_failure=False) is True
+
+
+def test_empty_fires_on_success():
+    """EMPTY is success-toned: it must route through the on_success gate,
+    same as SUCCESS, not the on_failure gate PARTIAL uses."""
+    result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+    assert _run_gate(None, result, on_success=True, on_failure=False) is True
+
+
+def test_empty_suppressed_when_on_success_false():
+    result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+    assert _run_gate(None, result, on_success=False, on_failure=True) is False

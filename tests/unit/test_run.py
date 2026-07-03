@@ -463,6 +463,81 @@ class TestScheduledHealthServer:
         assert snap["last_run"]["status"] == "success"
         assert snap["last_run"]["archive_file"] == "export.tgz"
 
+    def test_cancelled_cycle_marks_neither_success_nor_degraded(self):
+        """run() returning None means the cycle was cancelled by shutdown, not
+        that it finished -- health must keep its last real state rather than
+        being marked for a cycle that never completed."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        fake_status.mark_success.assert_not_called()
+        fake_status.mark_degraded.assert_not_called()
+
+    def test_empty_cycle_marks_success(self):
+        """An EMPTY-status cycle (nothing to archive) is a real outcome, not a
+        cancellation -- it must still be marked via mark_success."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+        empty_result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+            return empty_result
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        fake_status.mark_success.assert_called_once_with(empty_result)
+        fake_status.mark_degraded.assert_not_called()
+
+    def test_partial_cycle_marks_degraded(self):
+        """A PARTIAL cycle (content loss, archive survived) must degrade health,
+        never mark_success."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+        partial_result = NotifyResult(status=ExportStatus.PARTIAL, local="bkps/a.tgz",
+                                      failed_assets=["images/a.png"], export_level="pages")
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+            return partial_result
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        fake_status.mark_degraded.assert_called_once_with(partial_result)
+        fake_status.mark_success.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _run_scheduled() — double-signal force-kill (SIG_DFL restore)
@@ -542,6 +617,18 @@ def test_run_once_returns_one_on_exception():
 
 
 def test_run_once_returns_zero_when_result_none():
+    """Defensive guard only: one-shot mode never passes a stop flag, so run()
+    cannot actually return None here (that path requires cooperative shutdown).
+    The guard exists purely to avoid a KeyError if that ever changes."""
     with patch("bookstack_file_exporter.run.signal.signal"), \
          patch.object(run, "run", return_value=None):
+        assert run._run_once(MagicMock()) == 0
+
+
+def test_run_once_returns_zero_on_empty():
+    """Nothing-to-archive is a clean outcome (exit 0), same as SUCCESS."""
+    with patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run",
+                      return_value=NotifyResult(status=ExportStatus.EMPTY,
+                                                export_level="pages")):
         assert run._run_once(MagicMock()) == 0
