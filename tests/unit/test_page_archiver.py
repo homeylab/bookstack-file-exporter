@@ -276,14 +276,14 @@ class TestArchivePages:
             return_value=b"page bytes",
         ), patch(
             "bookstack_file_exporter.archiver.util.TarStream.write"
-        ) as mock_write_tar:
+        ) as mock_stream_write:
             archiver.archive(page_nodes)
 
-        # 2 pages × 1 format = 2 write_tar calls
-        assert mock_write_tar.call_count == 2
+        # 2 pages × 1 format = 2 stream write calls
+        assert mock_stream_write.call_count == 2
 
     def test_archive_respects_multiple_formats(self, tmp_path, build_node):
-        """archive should call write_tar once per page per format."""
+        """archive should write to the stream once per page per format."""
         mock_asset = MagicMock()
         config = _make_config(formats=["markdown", "html"], export_images=False,
                                export_attachments=False, export_meta=False)
@@ -301,11 +301,11 @@ class TestArchivePages:
             return_value=b"content",
         ), patch(
             "bookstack_file_exporter.archiver.util.TarStream.write"
-        ) as mock_write_tar:
+        ) as mock_stream_write:
             archiver.archive(page_nodes)
 
-        # 1 page × 2 formats = 2 write_tar calls
-        assert mock_write_tar.call_count == 2
+        # 1 page × 2 formats = 2 stream write calls
+        assert mock_stream_write.call_count == 2
 
     def test_failed_page_format_skipped_run_continues(self, tmp_path, build_node):
         """A 403/404 on one page-format export is skipped, not fatal; others still written."""
@@ -330,11 +330,11 @@ class TestArchivePages:
             side_effect=_byte_response,
         ), patch(
             "bookstack_file_exporter.archiver.util.TarStream.write"
-        ) as mock_write_tar:
+        ) as mock_stream_write:
             archiver.archive({30: good, 3: forbidden})  # must not raise
 
         # forbidden page skipped, good page written → 1 write
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -883,11 +883,11 @@ class TestFailureLedger:
             side_effect=HTTPError("500"),
         ), patch(
             "bookstack_file_exporter.archiver.util.TarStream.write"
-        ) as mock_write_tar:
+        ) as mock_stream_write:
             archiver.archive({60: page})
 
         # meta WAS written (tar exists) but no document content did
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
         assert archiver.content_written is False
         assert archiver.failed_node_exports == [f"{page.file_path}.md"]
 

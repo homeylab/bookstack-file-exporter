@@ -3,24 +3,13 @@ import os
 import logging
 import tarfile
 import threading
-import shutil
 from io import BytesIO
-import gzip
 import glob
 from pathlib import Path
 
 from bookstack_file_exporter.common.util import HttpHelper
 
 log = logging.getLogger(__name__)
-
-# Serializes tar appends across threads. write_tar opens the archive in append
-# mode ("a") per call; two concurrent opens both seek to EOF and corrupt it.
-# The lock lives HERE (inside the writer) so single-writer safety is structural,
-# not a convention every caller must remember. Used by the export_workers pool.
-# threading.Lock is a plain non-reentrant mutex; `with _tar_write_lock:` acquires
-# on entry and releases on block exit (even if the body raises) — so only one
-# thread is ever inside the append below at a time.
-_tar_write_lock = threading.Lock()
 
 def get_byte_response(url: str, http_client: HttpHelper) -> bytes:
     """get byte response from http request"""
@@ -42,8 +31,8 @@ class TarStream:
     Opens the target lazily on the first write ("w:gz" straight onto the
     .tgz.partial path), so an empty run never creates a file. All writes
     serialize under an internal lock — single-writer safety is structural,
-    not a convention callers must remember (same contract the old write_tar
-    provided). Compression runs inside the lock: concurrent WRITERS serialize
+    not a convention callers must remember. Compression runs inside the
+    lock: concurrent WRITERS serialize
     on compress time, but fetching threads are unaffected (zlib releases the
     GIL during compression).
 
@@ -120,18 +109,6 @@ class TarStream:
                     log.debug("Ignoring close error while discarding archive stream",
                               exc_info=True)
 
-# append to a tar file instead of creating files locally and then tar'ing after
-def write_tar(base_tar_dir: str, file_path: str, data: bytes):
-    """append byte data to tar file (thread-safe via _tar_write_lock)"""
-    with _tar_write_lock:
-        with tarfile.open(base_tar_dir, "a") as tar:
-            data_obj = BytesIO(data)
-            tar_info = tarfile.TarInfo(name=file_path)
-            tar_info.size = data_obj.getbuffer().nbytes
-            log.debug("Adding file: %s with size: %d bytes to tar file",
-                      tar_info.name, tar_info.size)
-            tar.addfile(tar_info, fileobj=data_obj)
-
 def get_json_bytes(data: dict[str, str | int]) -> bytes:
     """dump dict to json file"""
     return json.dumps(data, indent=4).encode('utf-8')
@@ -140,14 +117,6 @@ def get_json_bytes(data: dict[str, str | int]) -> bytes:
 def remove_file(file_path: str):
     """remove a file"""
     os.remove(file_path)
-
-def create_gzip(file_path: str, gzip_file: str, remove_old: bool = True):
-    """create a gzip of an existing file/dir and remove it"""
-    with open(file_path, 'rb') as f_in:
-        with gzip.open(gzip_file, 'wb') as f_out:
-            shutil.copyfileobj(f_in, f_out)
-    if remove_old:
-        remove_file(file_path)
 
 def scan_archives(base_dir: str, extension: str) -> list[str]:
     """scan export directory for archives"""

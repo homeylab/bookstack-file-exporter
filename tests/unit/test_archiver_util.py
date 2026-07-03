@@ -1,10 +1,7 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 """Unit tests for archiver utility functions (scan, compress, delete)."""
-import gzip
 import json
-import os
 import tarfile
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -82,109 +79,6 @@ def test_get_json_bytes_is_indented():
     result = util.get_json_bytes(data)
     text = result.decode("utf-8")
     assert "\n" in text  # indent=4 produces newlines
-
-
-# ---------------------------------------------------------------------------
-# write_tar
-# ---------------------------------------------------------------------------
-
-def test_write_tar_creates_tar_file(tmp_path):
-    tar_path = str(tmp_path / "archive.tar")
-    util.write_tar(tar_path, "hello.txt", b"hello world")
-    assert os.path.isfile(tar_path)
-
-
-def test_write_tar_appends_entry(tmp_path):
-    tar_path = str(tmp_path / "archive.tar")
-    util.write_tar(tar_path, "file1.txt", b"data1")
-    util.write_tar(tar_path, "file2.txt", b"data2")
-    with tarfile.open(tar_path, "r") as tar:
-        names = tar.getnames()
-    assert "file1.txt" in names
-    assert "file2.txt" in names
-
-
-def test_write_tar_correct_content(tmp_path):
-    tar_path = str(tmp_path / "archive.tar")
-    content = b"exact bytes"
-    util.write_tar(tar_path, "doc.txt", content)
-    with tarfile.open(tar_path, "r") as tar:
-        member = tar.getmember("doc.txt")
-        extracted = tar.extractfile(member).read()
-    assert extracted == content
-
-
-def test_write_tar_entry_size_matches(tmp_path):
-    tar_path = str(tmp_path / "archive.tar")
-    content = b"size check"
-    util.write_tar(tar_path, "check.txt", content)
-    with tarfile.open(tar_path, "r") as tar:
-        member = tar.getmember("check.txt")
-    assert member.size == len(content)
-
-
-def test_write_tar_concurrent_appends_all_present(tmp_path):
-    """Concurrent appends from many threads must all land in a valid tar.
-
-    Without serialization, two concurrent tarfile.open(path,"a") both seek to
-    EOF and corrupt the archive. A Barrier maximizes overlap to expose it.
-    """
-    tar_path = str(tmp_path / "concurrent.tar")
-    n = 50
-    barrier = threading.Barrier(n)
-
-    def worker(i):
-        barrier.wait()  # release all threads simultaneously
-        util.write_tar(tar_path, f"file{i}.txt", f"data{i}".encode())
-
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    with tarfile.open(tar_path, "r") as tar:
-        names = set(tar.getnames())
-    assert names == {f"file{i}.txt" for i in range(n)}
-
-
-# ---------------------------------------------------------------------------
-# create_gzip
-# ---------------------------------------------------------------------------
-
-def test_create_gzip_produces_gzip_file(tmp_path):
-    src = tmp_path / "source.tar"
-    src.write_bytes(b"raw bytes")
-    gz = tmp_path / "source.tar.gz"
-    util.create_gzip(str(src), str(gz))
-    assert gz.is_file()
-
-
-def test_create_gzip_removes_original_by_default(tmp_path):
-    src = tmp_path / "source.tar"
-    src.write_bytes(b"raw bytes")
-    gz = tmp_path / "source.tar.gz"
-    util.create_gzip(str(src), str(gz))
-    assert not src.exists()
-
-
-def test_create_gzip_keeps_original_when_remove_old_false(tmp_path):
-    src = tmp_path / "source.tar"
-    src.write_bytes(b"raw bytes")
-    gz = tmp_path / "source.tar.gz"
-    util.create_gzip(str(src), str(gz), remove_old=False)
-    assert src.exists()
-
-
-def test_create_gzip_content_survives_round_trip(tmp_path):
-    original = b"important data"
-    src = tmp_path / "data.tar"
-    src.write_bytes(original)
-    gz = tmp_path / "data.tar.gz"
-    util.create_gzip(str(src), str(gz), remove_old=False)
-    with gzip.open(str(gz), "rb") as f:
-        recovered = f.read()
-    assert recovered == original
 
 
 # ---------------------------------------------------------------------------
