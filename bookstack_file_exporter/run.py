@@ -44,6 +44,37 @@ def entrypoint(args: argparse.Namespace) -> int:
     return _run_scheduled(config, lambda: inputs.run_interval)
 
 
+def _install_signal_handlers(stop: threading.Event) -> dict:
+    """Install SIGTERM/SIGINT handlers for cooperative shutdown in both run modes.
+
+    Signal handlers run in the main thread between bytecodes, mid-anything;
+    raising across arbitrary code is unsafe and SIGTERM has no default
+    exception. So the handler only SETS the stop flag (which also breaks
+    scheduled mode's interruptible stop.wait()); the export polls it at
+    checkpoints to cancel. It also restores the default disposition for BOTH
+    catchable signals so that ANY second signal -- not only an identical
+    repeat -- force-kills via the kernel with its conventional exit code
+    (SIGINT->130, SIGTERM->143). This is an operator escape hatch if a slow
+    in-flight download won't drain inside the grace window (e.g. `docker stop`
+    then an impatient Ctrl-C).
+
+    Returns the dict the handler records the signal number into; one-shot mode
+    reads it to derive its 128+signum exit code (scheduled mode exits 0).
+    """
+    received = {}
+
+    def _handle_signal(signum, _frame):
+        received["signum"] = signum
+        log.info("Received signal %s, shutting down (signal again to force)", signum)
+        stop.set()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+    return received
+
+
 def _run_once(config: ConfigNode) -> int:
     """Run the export exactly once and return an exit code.
 
@@ -61,18 +92,8 @@ def _run_once(config: ConfigNode) -> int:
     actual outcome -- matching scheduled mode finishing its cycle instead of
     force-stopping mid-upload.
     """
-    received = {}
     stop = threading.Event()
-
-    def _handle_signal(signum, _frame):
-        received["signum"] = signum
-        log.info("Received signal %s, shutting down (signal again to force)", signum)
-        stop.set()
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    received = _install_signal_handlers(stop)
 
     try:
         result = run(config, stop)
@@ -98,24 +119,7 @@ def _run_once(config: ConfigNode) -> int:
 def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     """Run the export on a repeating schedule until a stop signal is received."""
     stop = threading.Event()
-
-    def _handle_signal(signum, _frame):
-        # Signal handlers run in the main thread between bytecodes, mid-anything;
-        # raising across arbitrary code is unsafe and SIGTERM has no default
-        # exception. So we only SET a flag (also breaks the interruptible
-        # stop.wait() below); the export polls it at checkpoints to cancel.
-        log.info("Received signal %s, shutting down (signal again to force)", signum)
-        stop.set()
-        # Restore the default disposition for BOTH catchable signals so that ANY
-        # second signal — not only an identical repeat — force-kills via the
-        # kernel with its conventional exit code (SIGINT->130, SIGTERM->143). This
-        # is an operator escape hatch if a slow in-flight download won't drain
-        # inside the grace window (e.g. `docker stop` then an impatient Ctrl-C).
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    _install_signal_handlers(stop)
 
     status = None
     server = None

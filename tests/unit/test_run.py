@@ -103,7 +103,6 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGTERM](signal.SIGTERM, None)
-            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -123,7 +122,6 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGINT](signal.SIGINT, None)
-            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -144,7 +142,6 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGTERM](signal.SIGTERM, None)
-            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -186,7 +183,6 @@ class TestRunOncePath:
         def _signal_mid_run(_config, _stop=None):
             captured_stop["stop"] = _stop
             captured[signal.SIGTERM](signal.SIGTERM, None)
-            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
