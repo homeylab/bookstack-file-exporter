@@ -160,10 +160,12 @@ interleave, and each is tagged with the target's `name`. The run outcome is one 
 | Partial | some content failed to export (pages/books/chapters or assets), some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
 | Failure | the export itself failed, **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
 
-A *partial* run means at least one durable copy of the backup survived (a remote target, or the
-local `.tgz` when `keep_last >= 0`). It is reported via the `on_failure` notification so it is
-not silently treated as a clean success. When `keep_last < 0` (local archive deleted) AND every
-upload fails, the run is a hard failure — the local archive is preserved so the run can be retried.
+A *partial* run means the run finished but its result is degraded — the archive is missing
+content, or fewer durable copies exist than configured (for upload failures: at least one copy
+survived, a remote target or the local `.tgz` when `keep_last >= 0`). It is reported via the
+`on_failure` notification so it is not silently treated as a clean success. When `keep_last < 0`
+(local archive deleted) AND every upload fails, the run is a hard failure — the local archive is
+preserved so the run can be retried.
 
 A target that uploads successfully but whose retention cleanup (pruning old objects per `keep_last`)
 fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced
@@ -175,7 +177,8 @@ surfaced in the notification, and stale local files are left for the next run to
 
 Content loss — a page export or asset download that failed after retries — also yields a
 **Partial** run; the notification carries the failure counts, and per-path detail is in the run
-logs.
+logs. This includes the extreme case where every fetch failed and no archive was produced at
+all: the run is still Partial, never a silent no-op.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
