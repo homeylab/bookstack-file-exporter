@@ -62,13 +62,13 @@ class AppRiseNotify:
     AppRiseNotify helps send notifications via apprise for failed export runs
 
     Args:
-        :config: <notifications.AppRiseNotifyConfig> = Configuration with user inputs and
+        :config: <notifications.ResolvedAppriseConfig> = Configuration with user inputs and
                                                        general options
 
     Returns:
         AppRiseNotify instance to help handle apprise notification integration.
     """
-    def __init__(self, config: notifications.AppRiseNotifyConfig):
+    def __init__(self, config: notifications.ResolvedAppriseConfig):
         self.config = config
         self._client = self._create_client()
 

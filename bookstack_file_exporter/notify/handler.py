@@ -19,32 +19,20 @@ class NotifyHandler:
         NotifyHandler instance to help handle notification integrations.
     """
     def __init__(self, config: models.Notifications):
-        self.targets = self._get_targets(config)
-        self._supported_notifiers={
-            "apprise": self._handle_apprise
-        }
-
-    def _get_targets(self, config: models.Notifications):
-        targets = {}
-
-        if config.apprise:
-            targets["apprise"] = config.apprise
-
-        return targets
+        self.apprise_config = config.apprise
 
     def do_notify(self, excep: None | Exception = None, result: NotifyResult | None = None) -> None:
         """handle notification sending for all configured targets"""
-        if len(self.targets) == 0:
+        if not self.apprise_config:
             log.debug("No notification targets found")
             return
-        for target, config in self.targets.items():
-            log.debug("Starting notification handling for: %s", target)
-            self._supported_notifiers[target](config, excep, result)
+        log.debug("Starting notification handling for: apprise")
+        self._handle_apprise(self.apprise_config, excep, result)
 
     def _handle_apprise(self, config: models.AppRiseNotifyConfig,
                         excep: None | Exception = None,
                         result: NotifyResult | None = None):
-        a_config = notifications.AppRiseNotifyConfig(config)
+        a_config = notifications.ResolvedAppriseConfig(config)
         a_config.validate()
         apprise = notifiers.AppRiseNotify(a_config)
         # PARTIAL is a degraded run: treat it like a failure for gating so on_failure

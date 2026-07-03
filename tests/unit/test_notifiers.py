@@ -30,11 +30,11 @@ def _make_notifier(body_format="text"):
 
 
 def _apprise_notify_config(**overrides):
-    """Build a real notifications.AppRiseNotifyConfig via the pydantic model,
+    """Build a real notifications.ResolvedAppriseConfig via the pydantic model,
     so _create_client() runs against production config wiring."""
     base = {"service_urls": ["json://localhost"]}
     base.update(overrides)
-    return notifications.AppRiseNotifyConfig(config_models.AppRiseNotifyConfig(**base))
+    return notifications.ResolvedAppriseConfig(config_models.AppRiseNotifyConfig(**base))
 
 
 class TestCreateClientAssetWiring:

@@ -6,7 +6,7 @@ _APPRISE_FIELDS = {
 }
 
 # pylint: disable=too-few-public-methods, too-many-instance-attributes
-class AppRiseNotifyConfig:
+class ResolvedAppriseConfig:
     """
     Convenience class to hold apprise notification configuration
 
@@ -14,7 +14,7 @@ class AppRiseNotifyConfig:
         :config: <models.AppRiseNotifyConfig> = user input configuration
 
     Returns:
-        AppRiseNotifyConfig instance for holding configuration
+        ResolvedAppriseConfig instance for holding configuration
     """
     def __init__(self, config: models.AppRiseNotifyConfig):
         # env (JSON array string) wins over the config-file list; resolved +
