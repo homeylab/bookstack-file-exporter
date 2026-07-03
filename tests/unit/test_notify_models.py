@@ -60,3 +60,4 @@ class TestStatusEffects:
         result = NotifyResult()
         assert result.failed_nodes == []
         assert result.failed_assets == []
+        assert result.export_level == "pages"

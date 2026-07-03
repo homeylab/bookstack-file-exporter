@@ -42,6 +42,10 @@ def _patch_exporter_collaborators(monkeypatch, config, book_nodes, chapter_nodes
                         MagicMock(return_value=mock_export_helper))
 
     mock_archiver = MagicMock()
+    # real Archiver returns empty ledgers by default; a bare MagicMock attribute
+    # is truthy and would wrongly downgrade every test run to PARTIAL
+    mock_archiver.failed_nodes = []
+    mock_archiver.failed_assets = []
     monkeypatch.setattr("bookstack_file_exporter.run.Archiver",
                         MagicMock(return_value=mock_archiver))
 
@@ -505,3 +509,91 @@ class TestExporterStopWiring:
             with pytest.raises(RuntimeError):
                 run.exporter(cfg, None)
         archive.discard_partial.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Content loss downgrades the run to PARTIAL
+# ---------------------------------------------------------------------------
+
+class TestExporterContentLoss:
+    def _happy_archiver(self, mock_archiver):
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = []
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
+        mock_archiver.clean_up.return_value = []
+        mock_archiver.archive_file = "/local/export.tgz"
+
+    def test_failed_nodes_downgrade_to_partial(self, monkeypatch):
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._happy_archiver(mock_archiver)
+        mock_archiver.failed_nodes = ["my-book/secret.md"]
+
+        result = run.exporter(config)
+
+        assert result.status is ExportStatus.PARTIAL
+        assert result.failed_nodes == ["my-book/secret.md"]
+        assert result.failed_assets == []  # pylint: disable=use-implicit-booleaness-not-comparison
+
+    def test_failed_assets_downgrade_to_partial(self, monkeypatch):
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._happy_archiver(mock_archiver)
+        mock_archiver.failed_assets = ["images/gallery/broken.png"]
+
+        result = run.exporter(config)
+
+        assert result.status is ExportStatus.PARTIAL
+        assert result.failed_assets == ["images/gallery/broken.png"]
+
+    def test_no_content_loss_stays_success(self, monkeypatch):
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._happy_archiver(mock_archiver)
+
+        result = run.exporter(config)
+
+        assert result.status is ExportStatus.SUCCESS
+        assert result.failed_nodes == []  # pylint: disable=use-implicit-booleaness-not-comparison
+        assert result.export_level == "pages"
+
+    def test_all_fetches_failed_returns_partial_not_none(self, monkeypatch):
+        """No tar written but the ledger has entries: that is total content loss,
+        not a benign empty instance -- must surface as PARTIAL, never None."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = False
+        mock_archiver.failed_nodes = ["my-book/secret.md"]
+
+        result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.PARTIAL
+        assert result.local is None
+        assert result.failed_nodes == ["my-book/secret.md"]
+        assert result.export_level == "pages"
+
+    def test_truly_empty_archive_still_returns_none(self, monkeypatch):
+        """Empty ledger + no tar = benign empty instance: behavior unchanged."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = False
+
+        result = run.exporter(config)
+
+        assert result is None

@@ -237,9 +237,18 @@ def exporter(config: ConfigNode, stop=None):
             log.info("Shutdown requested mid-cycle; discarding partial export")
             return None
 
-        # nothing was written to the tar (e.g. every node empty or all fetches failed):
-        # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
+        # nothing was written to the tar: with an empty ledger that is a benign
+        # empty instance (return None, exit 0); with failures recorded it is
+        # TOTAL content loss, the worst case of partial -- surface it, don't
+        # report an innocuous no-op.
         if not archive.has_exported_content:
+            if archive.failed_nodes or archive.failed_assets:
+                log.warning("No %s content was archived and fetch failures "
+                            "occurred", export_level)
+                return NotifyResult(status=ExportStatus.PARTIAL, local=None,
+                                    failed_nodes=archive.failed_nodes,
+                                    failed_assets=archive.failed_assets,
+                                    export_level=export_level)
             log.warning("No %s content was archived. Nothing to upload", export_level)
             return None
 
@@ -249,6 +258,11 @@ def exporter(config: ConfigNode, stop=None):
         # attempt every remote target, then derive status (raises only when no copy survives)
         outcomes = archive.archive_remote()
         status = archive.resolve_remote_status(outcomes)
+
+        # any dropped content (node export or asset download) makes the archive
+        # incomplete -- downgrade regardless of upload success
+        if archive.failed_nodes or archive.failed_assets:
+            status = ExportStatus.PARTIAL
 
         # Local retention pruning is housekeeping: at this point durable copies exist
         # (resolve_remote_status raised otherwise), so a failed local delete downgrades
@@ -267,7 +281,10 @@ def exporter(config: ConfigNode, stop=None):
         log.info("Created file archive: %s.tgz", archive.archive_dir)
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
-                            removed=removed, cleanup_error=cleanup_error)
+                            removed=removed, cleanup_error=cleanup_error,
+                            failed_nodes=archive.failed_nodes,
+                            failed_assets=archive.failed_assets,
+                            export_level=export_level)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
         # exception, one-shot KeyboardInterrupt). No-op on success: the tar is

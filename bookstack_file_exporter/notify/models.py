@@ -41,7 +41,7 @@ class UploadOutcome:
 
 
 @dataclass
-class NotifyResult:
+class NotifyResult:  # pylint: disable=too-many-instance-attributes
     """What an export run produced, for notifications."""
     status: ExportStatus = ExportStatus.SUCCESS
     local: str | None = None                            # local .tgz path, None if no archive
@@ -52,3 +52,6 @@ class NotifyResult:
     # skipped after fetch failures. Non-empty => status was downgraded to PARTIAL.
     failed_nodes: list[str] = field(default_factory=list)
     failed_assets: list[str] = field(default_factory=list)
+    # which node kind this run exported ("pages" | "books" | "chapters") -- lets
+    # the notifier say "2 page export(s) failed" instead of a generic "node"
+    export_level: str = "pages"
