@@ -1,4 +1,7 @@
 # pylint: disable=missing-function-docstring,missing-class-docstring
+import pytest
+from pydantic import ValidationError
+
 from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
 
 
@@ -30,6 +33,8 @@ def test_prefix_normalized_at_resolution(make_storage_entry):
     assert S3ProviderConfig(entry).prefix == "daily/exports"
 
 
-def test_none_prefix_resolves_empty(make_storage_entry):
-    entry = make_storage_entry(prefix=None)
-    assert S3ProviderConfig(entry).prefix == ""
+def test_none_prefix_rejected_at_construction(make_storage_entry):
+    # prefix is no longer Optional; explicit null now fails config validation
+    # instead of resolving to "" at S3ProviderConfig.
+    with pytest.raises(ValidationError):
+        make_storage_entry(prefix=None)

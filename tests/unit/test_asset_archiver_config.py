@@ -34,6 +34,15 @@ class TestPhase2AssetsModel:
         with pytest.raises(ValidationError, match="modify_links"):
             Assets(modify_markdown=True)
 
+    @pytest.mark.parametrize("field", [
+        "export_images", "export_attachments", "modify_links", "export_meta",
+    ])
+    def test_assets_rejects_explicit_null(self, field):
+        # bools are no longer Optional; explicit null must fail, not fall through
+        # to a falsy default that silently disables the toggle.
+        with pytest.raises(ValidationError):
+            Assets(**{field: None})
+
     def test_assets_rejects_modify_markdown_even_with_modify_links(self):
         # both keys present is still an error — the removed key must never be silently ignored
         with pytest.raises(ValidationError, match="modify_markdown"):

@@ -19,3 +19,10 @@ def test_body_format_accepts_markdown():
 def test_body_format_rejects_unknown():
     with pytest.raises(ValidationError):
         AppRiseNotifyConfig(service_urls=["json://localhost"], body_format="html")
+
+
+def test_on_success_rejects_explicit_null():
+    # bools are no longer Optional; explicit null must fail, not fall through
+    # to a falsy default that silently disables success notifications.
+    with pytest.raises(ValidationError):
+        AppRiseNotifyConfig(service_urls=["json://localhost"], on_success=None)

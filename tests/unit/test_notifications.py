@@ -32,11 +32,12 @@ class TestServiceUrlResolution:
         cfg = ResolvedAppriseConfig(_make_config(service_urls=["mailto://from-file"]))
         assert cfg.service_urls == ["mailto://from-file"]
 
-    def test_none_config_urls_resolve_to_empty_list(self, monkeypatch):
-        # caller's `or []` keeps the []-not-None guarantee the helper dropped
+    def test_none_service_urls_rejected_at_construction(self, monkeypatch):
+        # service_urls is no longer Optional; explicit null now fails config
+        # validation instead of reaching ResolvedAppriseConfig's `or []` guard.
         monkeypatch.delenv(_ENV_KEY, raising=False)
-        cfg = ResolvedAppriseConfig(_make_config(service_urls=None))
-        assert cfg.service_urls == []
+        with pytest.raises(ValidationError):
+            _make_config(service_urls=None)
 
     def test_env_parsed_even_with_config_path(self, monkeypatch):
         # env is resolved unconditionally now; config_path no longer suppresses it

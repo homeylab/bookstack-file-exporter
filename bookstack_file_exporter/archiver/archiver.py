@@ -215,8 +215,7 @@ class Archiver:
         n_ok = sum(1 for o in outcomes if o.dest is not None)
         if n_ok == len(outcomes) and not any(o.warning for o in outcomes):
             return ExportStatus.SUCCESS
-        if n_ok == 0 and self.config.user_inputs.keep_last is not None \
-                and self.config.user_inputs.keep_last < 0:
+        if n_ok == 0 and self.config.user_inputs.keep_last < 0:
             failed = ", ".join(o.label for o in outcomes)
             raise AggregateUploadError(
                 f"all upload targets failed and no local copy is kept "
