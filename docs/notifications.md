@@ -39,8 +39,26 @@ Uploaded to:
 Pruned:
 - local: 2 archive(s)
 - aws-s3: 1 archive(s)
+
+
+##### Partial Message #####
+{TITLE}: Bookstack File Exporter Partial
+{BODY}:
+Bookstack File Exporter completed with errors.
+
+Completed At: 2025-09-06 01:05:27
+Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
+
+Uploaded to:
+- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_010527.tgz
+
+Failed:
+- content: 2 page export(s) failed
+- assets: 115 asset download(s) failed
 ```
 The success body reports the archive details only when an archive is produced. `Archive:` shows the local `.tgz` path (with `(removed locally after upload)` when it was uploaded then deleted), `Uploaded to:` lists each successful target as a `- name: destination` bullet, and the `Pruned:` group shows how many old archives `keep_last` retention removed — `local` for the export directory plus one bullet per remote target that deleted objects (zero-count targets are omitted).
+
+The partial body adds a `Failed:` group. Content dropped during export (a page/book/chapter export or an asset download that failed after retries) is reported first as count-only bullets — `- content: N <level> export(s) failed` and `- assets: N asset download(s) failed` — followed by one bullet per failed upload target, if any. Full per-path detail is not included in the notification; it is in the run logs.
 
 ### Body Format
 By default the notification body is sent as plain text (`body_format: text`), as shown in the examples above. Set `apprise.body_format: markdown` to render the body as Markdown instead: the headline and the `Uploaded to:`/`Pruned:`/`Failed:`/`Warnings:` group headers become bold, each group renders as a real bullet list, and values like paths, destinations, and error messages are quoted in code spans.

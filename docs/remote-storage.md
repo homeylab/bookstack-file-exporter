@@ -157,7 +157,7 @@ interleave, and each is tagged with the target's `name`. The run outcome is one 
 | Outcome | When | Exit code | Notification |
 |---|---|---|---|
 | Success | all targets uploaded | `0` | "Success" (`on_success`) |
-| Partial | some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
+| Partial | some content failed to export (pages/books/chapters or assets), some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
 | Failure | the export itself failed, **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
 
 A *partial* run means at least one durable copy of the backup survived (a remote target, or the
@@ -172,6 +172,10 @@ fails also yields a **Partial** run — the backup is safely stored, but the fai
 The same applies locally: if pruning old local archives (top-level `keep_last`) fails after the
 export and uploads succeeded, the run is **Partial** — the backup is safe, the failed cleanup is
 surfaced in the notification, and stale local files are left for the next run to prune.
+
+Content loss — a page export or asset download that failed after retries — also yields a
+**Partial** run; the notification carries the failure counts, and per-path detail is in the run
+logs.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
