@@ -158,7 +158,7 @@ interleave, and each is tagged with the target's `name`. The run outcome is one 
 |---|---|---|---|
 | Success | all targets uploaded | `0` | "Success" (`on_success`) |
 | Partial | some content failed to export (pages/books/chapters or assets), some targets failed, **or** all failed but a local copy is kept (`keep_last >= 0`) | `3` | "Partial" (`on_failure`) |
-| Failure | the export itself failed, **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
+| Failure | the export itself failed (including when every fetch failed and nothing was archived), **or** all uploads failed with no local copy kept (`keep_last < 0`) | `1` | "Failed" (`on_failure`) |
 
 A *partial* run means the run finished but its result is degraded — the archive is missing
 content, or fewer durable copies exist than configured (for upload failures: at least one copy
@@ -177,8 +177,8 @@ surfaced in the notification, and stale local files are left for the next run to
 
 Content loss — a page export or asset download that failed after retries — also yields a
 **Partial** run; the notification carries the failure counts, and per-path detail is in the run
-logs. This includes the extreme case where every fetch failed and no archive was produced at
-all: the run is still Partial, never a silent no-op.
+logs. In the extreme case where every fetch failed and no archive was produced at all, no backup
+exists for the run, so it is a hard **Failure** (exit `1`), not Partial.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).

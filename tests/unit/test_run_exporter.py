@@ -566,9 +566,10 @@ class TestExporterContentLoss:
         assert not result.failed_nodes
         assert result.export_level == "pages"
 
-    def test_all_fetches_failed_returns_partial_not_none(self, monkeypatch):
-        """No tar written but the ledger has entries: that is total content loss,
-        not a benign empty instance -- must surface as PARTIAL, never None."""
+    def test_all_fetches_failed_raises_hard_failure(self, monkeypatch):
+        """No tar written but the ledger has entries: NO backup exists for this
+        run -- hard failure (exit 1 / failure notification), never Partial and
+        never a silent None."""
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
@@ -577,13 +578,12 @@ class TestExporterContentLoss:
         mock_archiver.has_exported_content = False
         mock_archiver.failed_nodes = ["my-book/secret.md"]
 
-        result = run.exporter(config)
+        with pytest.raises(run.NoContentArchivedError) as exc_info:
+            run.exporter(config)
 
-        assert isinstance(result, NotifyResult)
-        assert result.status is ExportStatus.PARTIAL
-        assert result.local is None
-        assert result.failed_nodes == ["my-book/secret.md"]
-        assert result.export_level == "pages"
+        # counts in the message: it becomes the failure notification body
+        assert "1 node export(s)" in str(exc_info.value)
+        assert "0 asset download(s)" in str(exc_info.value)
 
     def test_truly_empty_archive_still_returns_none(self, monkeypatch):
         """Empty ledger + no tar = benign empty instance: behavior unchanged."""

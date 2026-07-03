@@ -19,6 +19,13 @@ from bookstack_file_exporter.health.server import start_health_server
 log = logging.getLogger(__name__)
 
 
+class NoContentArchivedError(Exception):
+    """Every fetch failed and nothing was archived: no backup exists for this run.
+
+    A hard failure (exit 1 / failure notification / mark_failed), NOT Partial —
+    Partial promises some of the backup survived."""
+
+
 def entrypoint(args: argparse.Namespace) -> int:
     """Entrypoint for the export process. Returns an exit code."""
     try:
@@ -238,17 +245,15 @@ def exporter(config: ConfigNode, stop=None):
             return None
 
         # nothing was written to the tar: with an empty ledger that is a benign
-        # empty instance (return None, exit 0); with failures recorded it is
-        # TOTAL content loss, the worst case of partial -- surface it, don't
-        # report an innocuous no-op.
+        # empty instance (return None, exit 0); with failures recorded, NO backup
+        # exists for this run -- hard failure, not Partial (Partial promises some
+        # of the backup survived).
         if not archive.has_exported_content:
             if archive.failed_nodes or archive.failed_assets:
-                log.warning("No %s content was archived and fetch failures "
-                            "occurred", export_level)
-                return NotifyResult(status=ExportStatus.PARTIAL, local=None,
-                                    failed_nodes=archive.failed_nodes,
-                                    failed_assets=archive.failed_assets,
-                                    export_level=export_level)
+                raise NoContentArchivedError(
+                    f"no {export_level} content was archived: "
+                    f"{len(archive.failed_nodes)} node export(s) and "
+                    f"{len(archive.failed_assets)} asset download(s) failed")
             log.warning("No %s content was archived. Nothing to upload", export_level)
             return None
 
