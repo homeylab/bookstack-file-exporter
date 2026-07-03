@@ -119,7 +119,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({5: page})
 
@@ -149,7 +149,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>test</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({5: page})
 
@@ -184,7 +184,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({5: page})
 
@@ -233,7 +233,7 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"<html><body>content</body></html>",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({5: page})
 
@@ -316,7 +316,7 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
 
         written: dict = {}
 
-        def capture_write(_base_tar_dir: str, file_path: str, data: bytes) -> None:
+        def capture_write(file_path: str, data: bytes) -> None:
             written[file_path] = data
 
         parent = build_node(id=1, name="my-book", slug="my-book")
@@ -330,7 +330,7 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=self.PAGE_HTML.encode(),
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar",
+            "bookstack_file_exporter.archiver.util.TarStream.write",
             side_effect=capture_write,
         ):
             archiver.archive({self.PAGE_ID: page})

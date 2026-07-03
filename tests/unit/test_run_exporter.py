@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bookstack_file_exporter import run
+from bookstack_file_exporter.archiver.util import ArchiveWriteError
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 
 # ---------------------------------------------------------------------------
@@ -649,3 +650,33 @@ class TestExporterContentLoss:
 
         assert isinstance(result, NotifyResult)
         assert result.status is ExportStatus.EMPTY
+
+
+# ---------------------------------------------------------------------------
+# A poisoned archive stream must hard-fail the run, never publish as PARTIAL
+# ---------------------------------------------------------------------------
+
+class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
+    def test_poisoned_stream_fails_run_even_with_partial_content(self, monkeypatch):
+        """A poisoned archive stream must hard-fail the run, never publish as PARTIAL.
+
+        Earlier nodes succeeded (content_written True, ledger non-empty), so run.py
+        would otherwise downgrade to PARTIAL -- but create_archive (finalize) raises
+        because the stream is poisoned, and the finally block discards the partial.
+        """
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.failed_nodes = ["book/page.md (worker error)"]
+        mock_archiver.failed_assets = []
+        mock_archiver.content_written = True
+        mock_archiver.has_exported_content = True
+        mock_archiver.create_archive.side_effect = ArchiveWriteError("poisoned")
+
+        with pytest.raises(ArchiveWriteError):
+            run.exporter(config)
+
+        mock_archiver.discard_partial.assert_called_once()
+        mock_archiver.archive_remote.assert_not_called()

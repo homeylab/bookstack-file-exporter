@@ -59,9 +59,9 @@ class TestConstruction:
         archiver = _make_book_archiver(tmp_path)
         assert archiver.archive_file.endswith(".tgz")
 
-    def test_tar_file_ends_with_tar(self, tmp_path):
+    def test_partial_file_ends_with_tgz_partial(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)
-        assert archiver.tar_file.endswith(".tar")
+        assert archiver.partial_file.endswith(".tgz.partial")
 
     def test_archive_base_path_is_last_segment(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)
@@ -77,7 +77,7 @@ class TestConstruction:
 
 
 # ---------------------------------------------------------------------------
-# 2. N books × N formats → N*M write_tar calls
+# 2. N books × N formats → N*M stream write calls
 # ---------------------------------------------------------------------------
 
 class TestArchiveMultipleBooksAndFormats:
@@ -87,7 +87,7 @@ class TestArchiveMultipleBooksAndFormats:
         (2, ["pdf", "html"], 4),
         (3, ["markdown", "html", "pdf"], 9),
     ])
-    def test_write_tar_call_count(self, tmp_path, n_books, formats, expected_writes):
+    def test_stream_write_call_count(self, tmp_path, n_books, formats, expected_writes):
         archiver = _make_book_archiver(tmp_path, formats=formats)
         book_nodes = {
             i: _make_book_node(i, f"book-{i}") for i in range(1, n_books + 1)
@@ -96,10 +96,10 @@ class TestArchiveMultipleBooksAndFormats:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"book content",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive(book_nodes)
-        assert mock_write_tar.call_count == expected_writes
+        assert mock_stream_write.call_count == expected_writes
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ class TestExportUrl:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"data",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({42: book_node})
 
@@ -144,12 +144,12 @@ class TestHTTPErrorHandling:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=side_effect,
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive({10: book_node})
 
         # pdf skipped, html written — 1 write
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
 
     def test_all_formats_fail_but_meta_still_written(self, tmp_path):
         """All format fetches fail, but export_meta still writes a meta file to the tar."""
@@ -160,12 +160,12 @@ class TestHTTPErrorHandling:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=HTTPError("pdf failed"),
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive({10: book_node})
 
         # pdf skipped, but meta still written → 1 write
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +183,11 @@ class TestExportMeta:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"book data",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive(book_nodes)
         # 2 books × 1 format + 2 meta files = 4 writes
-        assert mock_write_tar.call_count == 4
+        assert mock_stream_write.call_count == 4
 
     def test_meta_not_written_when_disabled(self, tmp_path):
         archiver = _make_book_archiver(tmp_path, formats=["pdf"], export_meta=False)
@@ -196,11 +196,11 @@ class TestExportMeta:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"book data",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive(book_nodes)
         # 1 book × 1 format only
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -217,13 +217,13 @@ class TestEmptyBook:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"data",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive({99: empty_book, 100: non_empty_book})
 
         # empty book: no fetch, no write; full book: 1 fetch, 1 write
         assert mock_get_bytes.call_count == 1
-        assert mock_write_tar.call_count == 1
+        assert mock_stream_write.call_count == 1
 
     def test_all_empty_books_no_fetch_no_write(self, tmp_path):
         archiver = _make_book_archiver(tmp_path, formats=["pdf"])
@@ -235,12 +235,12 @@ class TestEmptyBook:
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive(empty_books)
 
         assert mock_get_bytes.call_count == 0
-        assert mock_write_tar.call_count == 0
+        assert mock_stream_write.call_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +253,11 @@ class TestEmptyInput:
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_stream_write:
             archiver.archive({})
         assert mock_get_bytes.call_count == 0
-        assert mock_write_tar.call_count == 0
+        assert mock_stream_write.call_count == 0
 
 
 # ---------------------------------------------------------------------------

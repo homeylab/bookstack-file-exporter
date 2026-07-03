@@ -87,8 +87,8 @@ def _run_once(config: ConfigNode) -> int:
     the default disposition for both signals so a second signal force-kills
     via the kernel. Exit code is 128+signum (SIGINT->130, SIGTERM->143).
 
-    A signal that lands after archiving (during gzip/upload/cleanup, which have
-    no checkpoints) lets the run finish, and the exit code reflects the run's
+    A signal that lands after archiving (during archive finalize/upload/cleanup,
+    which have no checkpoints) lets the run finish, and the exit code reflects the run's
     actual outcome -- matching scheduled mode finishing its cycle instead of
     force-stopping mid-upload.
     """
@@ -260,13 +260,13 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         # get all content for each node
         archive.get_bookstack_exports(nodes)
 
-        # Graceful shutdown requested mid-cycle: drop the partial tar and skip
-        # gzip/upload/cleanup so a cancelled cycle never produces an archive.
+        # Graceful shutdown requested mid-cycle: drop the partial archive and skip
+        # finalize/upload/cleanup so a cancelled cycle never produces an archive.
         if stop is not None and stop.is_set():
             log.info("Shutdown requested mid-cycle; discarding partial export")
             return None
 
-        # Gate on DOCUMENT content, not the tar file: assets/meta alone are not a
+        # Gate on DOCUMENT content, not the archive stream: assets/meta alone are not a
         # restorable backup. Failures recorded but zero node exports archived ->
         # hard failure, not Partial (Partial promises some of the backup
         # survived). Empty ledger + empty tar is a benign empty instance.
@@ -280,7 +280,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
             log.warning("No %s content was archived. Nothing to upload", export_level)
             return NotifyResult(status=ExportStatus.EMPTY, export_level=export_level)
 
-        # create tar if needed and gzip tar
+        # close the archive stream and publish the .tgz
         archive.create_archive()
 
         # attempt every remote target, then derive status (raises only when no copy survives)
@@ -315,7 +315,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
                             export_level=export_level)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
-        # exception). No-op on success: the tar is
-        # already consumed and the .partial renamed away. The run-start sweep is
-        # the backstop for SIGKILL, which kills the process before finally runs.
+        # exception). No-op on success: the stream is already closed and the
+        # .partial renamed away. The run-start sweep is the backstop for
+        # SIGKILL, which kills the process before finally runs.
         archive.discard_partial()
