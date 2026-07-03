@@ -245,7 +245,7 @@ class Archiver:
 
     @property
     def failed_assets(self) -> list[str]:
-        """Asset downloads skipped after fetch failures (archive-relative paths)."""
+        """Asset downloads skipped after fetch failures (prefix/page/name paths)."""
         return self._archiver.failed_asset_downloads
 
     @property

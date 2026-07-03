@@ -97,8 +97,9 @@ class NodeArchiver:
         # the signal handler only SETS this flag (it cannot safely raise across
         # arbitrary code), so the export must poll it to cancel.
         self._stop = None
-        # Content-loss ledger: archive-relative paths this run failed to produce
-        # (node exports) or download (assets). Merged only by the coordinating
+        # Content-loss ledger: paths this run failed to produce (node exports,
+        # archive-relative) or download (assets, prefix/page/name -- only ever
+        # counted, never resolved against the tar). Merged only by the coordinating
         # thread — the serial loop or the as_completed loop — from _export_node's
         # returned ContentFailures, so no lock is needed even with
         # export_workers > 1. A non-empty ledger downgrades the run to PARTIAL;
