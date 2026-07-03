@@ -81,8 +81,9 @@ class NodeArchiver:
         self.export_meta = export_meta
         # full path with .tgz extension
         self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
-        # intermediate tar before gzip
-        self.tar_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tar']}"
+        # streaming archive target; renamed to archive_file on finalize
+        self.partial_file = f"{self.archive_file}.partial"
+        self._tar_stream = archiver_util.TarStream(self.partial_file)
         # base folder name inside the tgz archive
         self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
@@ -302,7 +303,7 @@ class NodeArchiver:
     def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
                                image_map: dict[int, list],
                                attachment_map: dict[int, list]):
-        """Fan node fetches across a thread pool; writes serialize in write_tar.
+        """Fan node fetches across a thread pool; writes serialize inside TarStream.
 
         Memory stays ~= export_workers x fattest-node: only max_workers tasks run
         at once, and _export_node returns only the tiny ContentFailures ledger,
@@ -364,7 +365,7 @@ class NodeArchiver:
 
         Self-contained per node (no shared mutable state): safe to run in a
         worker thread when export_workers > 1. Writes go through write_data ->
-        write_tar, which serializes appends under a module lock. Returns only the
+        TarStream, which serializes appends under its internal lock. Returns only the
         tiny ContentFailures ledger, so completed pool futures retain no bulky
         payload (peak RAM ~= workers x fattest-node).
         """
@@ -442,24 +443,32 @@ class NodeArchiver:
                                       self.asset_archiver.update_asset_links_html)
 
     def write_data(self, file_path: str, data: bytes):
-        """Write data to a tar file.
+        """Write data into the streaming archive.
 
         Args:
-            :file_path: <str> path of file relative to tar file inner directory
-            :data: <bytes> data to write to that file_path within the tar
+            :file_path: <str> path of file relative to archive inner directory
+            :data: <bytes> data to write to that file_path within the archive
         """
-        archiver_util.write_tar(self.tar_file, file_path, data)
+        self._tar_stream.write(file_path, data)
 
-    def gzip_archive(self):
-        """Gzip the tar atomically: write to a .partial then rename to the final .tgz.
+    def finalize_archive(self):
+        """Close the stream and atomically publish .tgz.partial as the final .tgz.
 
-        Same-filesystem os.rename is atomic, so a consumer or the next run never
-        observes a half-written .tgz (a SIGKILL/crash mid-gzip leaves only the
-        .partial, which the run-start sweep removes).
+        Close-before-rename is load-bearing: a consumer or the next run never
+        observes a half-written .tgz (a SIGKILL/crash mid-run leaves only the
+        .partial, which the run-start sweep removes). finalize() raises if the
+        stream is poisoned or the closing flush fails, so a corrupt archive is
+        never renamed into place. The unconditional os.rename never sees a
+        missing .partial: run.py only calls create_archive() after its
+        has_exported_content / content_written gates proved a write happened —
+        do not call this on an empty run.
         """
-        partial = f"{self.archive_file}.partial"
-        archiver_util.create_gzip(self.tar_file, partial)
-        os.rename(partial, self.archive_file)
+        self._tar_stream.finalize()
+        os.rename(self.partial_file, self.archive_file)
+
+    def abort_archive(self):
+        """Close the stream best-effort so the discard path can unlink the .partial."""
+        self._tar_stream.abort()
 
     @property
     def file_extension_map(self) -> dict[str, str]:

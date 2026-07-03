@@ -92,7 +92,7 @@ class TestArchiveMultipleChaptersAndFormats:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"chapter content",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(chapter_nodes)
         assert mock_write_tar.call_count == expected_writes
@@ -113,7 +113,7 @@ class TestExportUrl:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"data",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({55: chapter_node})
 
@@ -141,7 +141,7 @@ class TestHTTPErrorHandling:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=side_effect,
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({10: chapter_node})
 
@@ -157,7 +157,7 @@ class TestHTTPErrorHandling:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=HTTPError("pdf failed"),
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({10: chapter_node})
 
@@ -181,7 +181,7 @@ class TestExportMeta:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"chapter data",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(chapter_nodes)
         # 2 chapters × 1 format + 2 meta files = 4 writes
@@ -195,7 +195,7 @@ class TestExportMeta:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"chapter data",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(chapter_nodes)
         assert mock_write_tar.call_count == 1
@@ -216,7 +216,7 @@ class TestEmptyChapter:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"data",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({99: empty_chapter, 100: full_chapter})
 
@@ -234,7 +234,7 @@ class TestEmptyChapter:
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(empty_chapters)
 
@@ -252,7 +252,7 @@ class TestEmptyInput:
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({})
         assert mock_get_bytes.call_count == 0

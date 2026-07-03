@@ -2,6 +2,7 @@
 """Happy-path unit tests for PageArchiver."""
 import logging
 import os
+import tarfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
@@ -11,7 +12,7 @@ import pytest
 from requests.exceptions import HTTPError
 
 from bookstack_file_exporter.archiver.node_archiver import NodeArchiver, PageArchiver
-from bookstack_file_exporter.archiver import util as archiver_util
+from bookstack_file_exporter.archiver.util import ArchiveWriteError
 from bookstack_file_exporter.exporter.node import Node
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
@@ -127,11 +128,12 @@ class TestConstruction:
                                 asset_archiver=MagicMock())
         assert archiver.archive_file == f"{archive_dir}.tgz"
 
-    def test_tar_file_ends_with_tar(self, tmp_path):
+    def test_partial_file_is_tgz_partial(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
         archiver = PageArchiver(archive_dir, _make_config(), MagicMock(),
                                 asset_archiver=MagicMock())
-        assert archiver.tar_file == f"{archive_dir}.tar"
+        assert archiver.partial_file == f"{archiver.archive_file}.partial"
+        assert archiver.archive_file.endswith(".tgz")
 
     def test_archive_base_path_is_last_segment(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
@@ -166,7 +168,7 @@ class TestExportUrl:
         with patch(
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response"
         ) as mock_get_bytes, patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             mock_get_bytes.return_value = b"page content"
             archiver.archive({42: page})
@@ -204,60 +206,45 @@ class TestFileExtensionMap:
 
 
 # ---------------------------------------------------------------------------
-# 4. gzip_archive delegates to archiver_util.create_gzip
+# 4. finalize_archive closes the stream then renames .tgz.partial -> .tgz
 # ---------------------------------------------------------------------------
+class TestFinalizeArchive:
 
-class TestGzipArchive:  # pylint: disable=too-few-public-methods  # test scaffolding stub
-    def test_create_gzip_called_with_tar_and_partial_then_renamed(self, page_archiver):
-        # gzip writes to the .partial path; os.rename promotes it to the final .tgz.
-        with patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.create_gzip"
-        ) as mock_create_gzip, patch(
-            "bookstack_file_exporter.archiver.node_archiver.os.rename"
-        ) as mock_rename:
-            page_archiver.gzip_archive()
-            partial = f"{page_archiver.archive_file}.partial"
-            mock_create_gzip.assert_called_once_with(page_archiver.tar_file, partial)
-            mock_rename.assert_called_once_with(partial, page_archiver.archive_file)
-
-
-class TestAtomicGzip:  # pylint: disable=too-few-public-methods
-    def test_gzip_writes_via_partial_then_renames(self, page_archiver, tmp_path, monkeypatch):
-
-        tar = tmp_path / "bkps_2026.tar"
-        tar.write_bytes(b"tar-bytes")
-        page_archiver.tar_file = str(tar)
-        page_archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
-
-        seen_target = {}
-        real_create_gzip = archiver_util.create_gzip
-        def spy(file_path, gzip_file, remove_old=True):
-            seen_target["gzip_file"] = gzip_file
-            return real_create_gzip(file_path, gzip_file, remove_old)
-        monkeypatch.setattr(archiver_util, "create_gzip", spy)
-
-        page_archiver.gzip_archive()
-
-        # gzip was written to the .partial path, not the final name
-        assert seen_target["gzip_file"].endswith(".tgz.partial")
-        # final archive exists; no partial left behind
+    def test_finalize_renames_partial_to_final(self, page_archiver):
+        page_archiver.write_data("notes/page.md", b"# hi")
+        page_archiver.finalize_archive()
         assert os.path.exists(page_archiver.archive_file)
-        assert not os.path.exists(page_archiver.archive_file + ".partial")
+        assert not os.path.exists(page_archiver.partial_file)
+        with tarfile.open(page_archiver.archive_file, "r:gz") as tar:
+            assert tar.getnames() == ["notes/page.md"]
+
+    def test_finalize_close_failure_does_not_publish(self, page_archiver, monkeypatch):
+        page_archiver.write_data("notes/page.md", b"# hi")
+
+        def boom():
+            raise OSError("flush failed")
+        monkeypatch.setattr(page_archiver._tar_stream._tar, "close", boom)
+        with pytest.raises(ArchiveWriteError):
+            page_archiver.finalize_archive()
+        assert not os.path.exists(page_archiver.archive_file)
+
+    def test_abort_archive_never_raises(self, page_archiver):
+        page_archiver.write_data("notes/page.md", b"# hi")
+        page_archiver.abort_archive()
+        page_archiver.abort_archive()
 
 
 # ---------------------------------------------------------------------------
-# 5. write_data delegates to archiver_util.write_tar
+# 5. write_data delegates to TarStream.write
 # ---------------------------------------------------------------------------
 
 class TestWriteData:  # pylint: disable=too-few-public-methods  # test scaffolding stub
-    def test_write_tar_called_with_correct_args(self, page_archiver):
+    def test_write_data_delegates_to_stream(self, page_archiver):
         with patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
-        ) as mock_write_tar:
-            page_archiver.write_data("some/path/file.md", b"content")
-            mock_write_tar.assert_called_once_with(
-                page_archiver.tar_file, "some/path/file.md", b"content"
-            )
+            "bookstack_file_exporter.archiver.util.TarStream.write"
+        ) as mock_write:
+            page_archiver.write_data("some/file.md", b"content")
+        mock_write.assert_called_once_with("some/file.md", b"content")
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +275,7 @@ class TestArchivePages:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"page bytes",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(page_nodes)
 
@@ -313,7 +300,7 @@ class TestArchivePages:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"content",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive(page_nodes)
 
@@ -342,7 +329,7 @@ class TestArchivePages:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=_byte_response,
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({30: good, 3: forbidden})  # must not raise
 
@@ -802,7 +789,7 @@ class TestFailureLedger:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=_byte_response,
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({30: good, 3: forbidden})
 
@@ -843,7 +830,7 @@ class TestFailureLedger:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"page bytes",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({40: page})
 
@@ -872,7 +859,7 @@ class TestFailureLedger:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=_byte_response,
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({50: good, 51: crasher})
 
@@ -895,7 +882,7 @@ class TestFailureLedger:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             side_effect=HTTPError("500"),
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ) as mock_write_tar:
             archiver.archive({60: page})
 
@@ -918,7 +905,7 @@ class TestFailureLedger:
             "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
             return_value=b"page bytes",
         ), patch(
-            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+            "bookstack_file_exporter.archiver.util.TarStream.write"
         ):
             archiver.archive({61: page})
 
