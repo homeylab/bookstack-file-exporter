@@ -18,9 +18,9 @@ class ResolvedAppriseConfig:
     """
     def __init__(self, config: models.AppRiseNotifyConfig):
         # env (JSON array string) wins over the config-file list; resolved +
-        # validated once here. `or []` keeps the []-not-None guarantee.
+        # validated once here.
         self.service_urls = resolve_env_json(_APPRISE_FIELDS["urls"], list[str],
-                                             config.service_urls or [])
+                                             config.service_urls)
         self.config_path = config.config_path
         self.plugin_paths = config.plugin_paths
         self.storage_path = config.storage_path
