@@ -33,6 +33,29 @@ def _pruned_bullets(result: NotifyResult, local_abs: str, removed_abs: set[str],
             bullets.append(f"- {label}: {outcome.pruned} archive(s)")
     return bullets
 
+# export_level -> singular noun for the content-failure bullet. Explicit map
+# (not level[:-1]) so an unexpected value degrades to a readable fallback.
+_LEVEL_SINGULAR = {"pages": "page", "books": "book", "chapters": "chapter"}
+
+
+def _content_failure_bullets(result: NotifyResult | None) -> list[str]:
+    """Count-only bullets for content dropped from the archive, shared by both
+    renderers. These seed the Failed: group FIRST: missing content outranks a
+    failed upload. Counts only -- the per-path detail is already in the run logs
+    and in the NotifyResult fields; nothing untrusted is interpolated here, so
+    the markdown renderer needs no _md_code wrapping."""
+    if result is None:
+        return []
+    bullets = []
+    if result.failed_nodes:
+        label = _LEVEL_SINGULAR.get(result.export_level, "node")
+        bullets.append(
+            f"- content: {len(result.failed_nodes)} {label} export(s) failed")
+    if result.failed_assets:
+        bullets.append(
+            f"- assets: {len(result.failed_assets)} asset download(s) failed")
+    return bullets
+
 # pylint: disable=too-few-public-methods
 class AppRiseNotify:
     """
@@ -111,7 +134,7 @@ class AppRiseNotify:
         # header; per-target retention warnings and a local cleanup failure share one
         # "Warnings:" header (one visual language for "non-fatal"). Plain "- " bullets
         # render sensibly in both text and markdown notification targets.
-        failed: list[str] = []
+        failed: list[str] = _content_failure_bullets(result)
         warnings: list[str] = []
         if result is not None and result.local is not None:
             local_abs = os.path.abspath(result.local)
@@ -166,7 +189,7 @@ class AppRiseNotify:
                     if partial else
                     "**Bookstack File Exporter completed successfully.**")
         lines = ["", headline, "", f"Completed At: {timestamp}"]
-        failed: list[str] = []
+        failed: list[str] = _content_failure_bullets(result)
         warnings: list[str] = []
         if result is not None and result.local is not None:
             local_abs = os.path.abspath(result.local)
