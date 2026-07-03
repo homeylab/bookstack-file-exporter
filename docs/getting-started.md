@@ -187,7 +187,7 @@ Where they differ is the exit code. Scheduled mode exits `0` on a clean shutdown
 means the process stopped cleanly, **not** that the last cycle succeeded; alert on
 notifications or `/healthz`, not on the exit code. One-shot mode has no next cycle to
 fall back on, so an interrupted run exits `130`/`143` (128+signal) instead. A signal that
-lands after archiving finishes, during gzip/upload/cleanup (no checkpoints there), lets
+lands after archiving finishes, during archive finalize/upload/cleanup (no checkpoints there), lets
 the run complete and the exit code reflects its actual outcome in either mode.
 
 A single in-flight export call (e.g. a large-book PDF render) cannot be interrupted

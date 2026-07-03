@@ -53,51 +53,35 @@ class TestSetStop:
 
 
 class TestDiscardPartial:
-    def test_removes_tar_and_partial_when_present(self, archiver_instance, tmp_path):
-        tar = tmp_path / "bkps_2026.tar"
+    """discard_partial aborts the stream and removes only this run's .partial."""
+
+    def test_removes_partial_and_leaves_final_tgz(self, archiver_instance, tmp_path):
         partial = tmp_path / "bkps_2026.tgz.partial"
-        tar.write_bytes(b"x")
-        partial.write_bytes(b"y")
-        archiver_instance._archiver.tar_file = str(tar)
-        archiver_instance._archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
-
-        archiver_instance.discard_partial()
-
-        assert not tar.exists()
-        assert not partial.exists()
-
-    def test_logs_each_removed_path(self, archiver_instance, tmp_path, caplog):
-        tar = tmp_path / "bkps_2026.tar"
-        tar.write_bytes(b"x")
-        archiver_instance._archiver.tar_file = str(tar)
-        archiver_instance._archiver.archive_file = str(tmp_path / "bkps_2026.tgz")
-
-        with caplog.at_level(logging.INFO):
-            archiver_instance.discard_partial()
-
-        assert any(str(tar) in r.message and "partial" in r.message.lower()
-                   for r in caplog.records)
-
-    def test_no_log_when_nothing_to_discard(self, archiver_instance, tmp_path, caplog):
-        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
-        archiver_instance._archiver.archive_file = str(tmp_path / "absent.tgz")
-        with caplog.at_level(logging.INFO):
-            archiver_instance.discard_partial()
-        assert not any("partial" in r.message.lower() for r in caplog.records)
-
-    def test_no_error_when_nothing_to_discard(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
-        archiver_instance._archiver.archive_file = str(tmp_path / "absent.tgz")
-        # must not raise (all-empty cycle writes no tar)
-        archiver_instance.discard_partial()
-
-    def test_does_not_touch_final_tgz(self, archiver_instance, tmp_path):
         final = tmp_path / "bkps_2026.tgz"
-        final.write_bytes(b"done")
-        archiver_instance._archiver.tar_file = str(tmp_path / "bkps_2026.tar")
-        archiver_instance._archiver.archive_file = str(final)
+        partial.write_bytes(b"partial")
+        final.write_bytes(b"final")
+        archiver_instance._archiver.partial_file = str(partial)
         archiver_instance.discard_partial()
+        assert not partial.exists()
         assert final.exists()
+
+    def test_noop_when_nothing_on_disk(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
+        archiver_instance.discard_partial()  # no raise
+
+    def test_aborts_stream_before_unlink(self, archiver_instance, tmp_path):
+        # The archiver_instance fixture injects a MagicMock node archiver,
+        # so assert the ORDERING contract on the mock:
+        # abort_archive must run while the .partial is still on disk.
+        partial = tmp_path / "bkps_2026.tgz.partial"
+        partial.write_bytes(b"stream")
+        archiver_instance._archiver.partial_file = str(partial)
+        order = []
+        archiver_instance._archiver.abort_archive.side_effect = (
+            lambda: order.append(("abort", partial.exists())))
+        archiver_instance.discard_partial()
+        assert order == [("abort", True)]
+        assert not partial.exists()
 
 
 class TestSweepOrphans:
@@ -140,16 +124,16 @@ class TestSweepOrphans:
 
 
 class TestHasExportedContent:
-    """has_exported_content reflects whether the intermediate tar exists on disk."""
+    """has_exported_content reflects whether the streaming .partial exists on disk."""
 
-    def test_false_when_tar_missing(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.tar_file = str(tmp_path / "absent.tar")
+    def test_false_when_no_partial(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
         assert archiver_instance.has_exported_content is False
 
-    def test_true_when_tar_exists(self, archiver_instance, tmp_path):
-        tar_path = tmp_path / "present.tar"
-        tar_path.write_bytes(b"data")
-        archiver_instance._archiver.tar_file = str(tar_path)
+    def test_true_when_partial_exists(self, archiver_instance, tmp_path):
+        partial = tmp_path / "bkps_2026.tgz.partial"
+        partial.write_bytes(b"stream")
+        archiver_instance._archiver.partial_file = str(partial)
         assert archiver_instance.has_exported_content is True
 
 

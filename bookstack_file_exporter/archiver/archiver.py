@@ -110,17 +110,19 @@ class Archiver:
         self._archiver.set_stop(stop)
 
     def discard_partial(self):
-        """Remove this run's intermediate tar and any .tgz.partial; never the final .tgz.
+        """Abort the archive stream and remove this run's .tgz.partial; never the final .tgz.
 
-        Idempotent and missing-file tolerant: an all-empty cycle writes no tar, and
-        a successful run has already consumed the tar and renamed the .partial away,
-        so this is a no-op on the success path.
+        Abort-then-unlink: the stream handle is closed (best-effort) before the
+        file is removed, and abort poisons the stream so no straggler write can
+        recreate the .partial after cleanup. Idempotent and missing-file
+        tolerant: on the success path finalize() already detached the handle and
+        renamed the .partial away, so this is a no-op.
         """
-        partial = f"{self._archiver.archive_file}.partial"
-        for path in (self._archiver.tar_file, partial):
-            if os.path.exists(path):
-                log.info("Cleaning up partial archive: %s", path)
-                util.remove_file(path)
+        self._archiver.abort_archive()
+        partial = self._archiver.partial_file
+        if os.path.exists(partial):
+            log.info("Cleaning up partial archive: %s", partial)
+            util.remove_file(partial)
 
     def sweep_orphans(self):
         """Delete prior-run .tar / .tgz.partial orphans (SIGKILL backstop).
@@ -136,7 +138,8 @@ class Archiver:
         level, so `bkps_*` clears partials stranded by prior runs at any level. The
         `bkps_` prefix still anchors the scan so unrelated files are never touched.
         (keep_last retention deliberately stays level-scoped — those are deliverables.)
-        Also retro-cleans .tar orphans from past failed cycles.
+        Also retro-cleans .tar orphans stranded by pre-v3 versions (which staged
+        an intermediate .tar before gzipping) and by past failed cycles.
         """
         tgz_ext = self._archiver.file_extension_map['tgz']
         for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.partial"):
@@ -150,16 +153,18 @@ class Archiver:
 
     @property
     def has_exported_content(self) -> bool:
-        """True if the intermediate tar exists, i.e. at least one file was written.
+        """True if the streaming .partial exists, i.e. at least one file was written.
 
-        Checked against the tar on disk (ground truth) rather than a flag threaded
-        up from the archivers, so it cannot drift from what was actually archived.
+        Checked against the archive on disk (ground truth) rather than a flag
+        threaded up from the archivers, so it cannot drift from what was actually
+        archived. The stream opens lazily on the first write, so mere Archiver
+        construction never creates the file.
         """
-        return os.path.exists(self._archiver.tar_file)
+        return os.path.exists(self._archiver.partial_file)
 
     def create_archive(self):
-        """create tgz archive"""
-        self._archiver.gzip_archive()
+        """finalize the streaming archive: close and atomically rename to .tgz"""
+        self._archiver.finalize_archive()
 
     # send to remote systems
     def archive_remote(self) -> list[UploadOutcome]:
