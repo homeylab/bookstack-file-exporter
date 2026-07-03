@@ -52,14 +52,14 @@ class S3StorageConfig(StrictModel):
     name: str
     endpoint: str | None = None
     bucket: str
-    prefix: str | None = ""
+    prefix: str = ""
     region: str | None = None
     secure: bool = True
     addressing_style: Literal["path", "virtual", "auto"] | None = None  # None => inferred
     ambient_auth: bool = False
-    keep_last: int | None = 0
-    access_key: str | None = ""
-    secret_key: str | None = ""
+    keep_last: int = 0
+    access_key: str = ""
+    secret_key: str = ""
     access_key_env: str | None = None
     secret_key_env: str | None = None
 
@@ -137,16 +137,16 @@ class S3StorageConfig(StrictModel):
 # pylint: disable=too-few-public-methods
 class BookstackAccess(StrictModel):
     """YAML schema for bookstack access credentials"""
-    token_id: str | None = ""
-    token_secret: str | None = ""
+    token_id: str = ""
+    token_secret: str = ""
 
 # pylint: disable=too-few-public-methods
 class Assets(StrictModel):
     """YAML schema for bookstack markdown asset(pages/images/attachments) configuration"""
-    export_images: bool | None = False
-    export_attachments: bool | None = False
-    modify_links: bool | None = False
-    export_meta: bool | None = False
+    export_images: bool = False
+    export_attachments: bool = False
+    modify_links: bool = False
+    export_meta: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -162,23 +162,23 @@ class Assets(StrictModel):
 
 class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
-    verify_ssl: bool | None = False
-    timeout: int | None = 30
-    backoff_factor: float | None = 2.5
-    retry_codes: list[int] | None = [413, 429, 500, 502, 503, 504]
-    retry_count: int | None = 5
-    additional_headers: dict[str, str] | None = {}
+    verify_ssl: bool = False
+    timeout: int = 30
+    backoff_factor: float = 2.5
+    retry_codes: list[int] = [413, 429, 500, 502, 503, 504]
+    retry_count: int = 5
+    additional_headers: dict[str, str] = {}
 
 class AppRiseNotifyConfig(StrictModel):
     """YAML schema for user provided app rise settings"""
-    service_urls: list[str] | None = []
-    config_path: str | None = ""
-    plugin_paths: list[str] | None = []
-    storage_path: str | None = ""
-    custom_title: str | None = ""
-    custom_attachment_path: str | None = ""
-    on_success: bool | None = False
-    on_failure: bool | None = True
+    service_urls: list[str] = []
+    config_path: str = ""
+    plugin_paths: list[str] = []
+    storage_path: str = ""
+    custom_title: str = ""
+    custom_attachment_path: str = ""
+    on_success: bool = False
+    on_failure: bool = True
     body_format: Literal["text", "markdown"] = "text"
 
 class Notifications(StrictModel):
@@ -232,18 +232,18 @@ class Filters(StrictModel):
 class UserInput(StrictModel):
     """YAML schema for user provided configuration file"""
     host: str
-    credentials: BookstackAccess | None = BookstackAccess()
+    credentials: BookstackAccess = BookstackAccess()
     formats: list[Literal["markdown", "html", "pdf", "plaintext", "zip"]]
-    output_path: str | None = ""
+    output_path: str = ""
     # Export granularity: "pages" = one file per page (default),
     # "books" = one combined file per book, "chapters" = one combined file per chapter.
     # Note: assets.export_images/attachments/modify_links apply at all levels;
     # for book/chapter, modify_links localizes assets in markdown exports
     # (html/pdf embed assets server-side and are not rewritten at these levels).
     export_level: Literal["pages", "books", "chapters"] = "pages"
-    assets: Assets | None = Assets()
+    assets: Assets = Assets()
     object_storage: list[S3StorageConfig] | None = None
-    keep_last: int | None = 0
+    keep_last: int = 0
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
     # nonsense at config-parse time, not mid-run. No hard upper bound: huge values
@@ -251,12 +251,12 @@ class UserInput(StrictModel):
     # concurrent API requests; BookStack rate-limits (API_REQUESTS_PER_MIN, default
     # 180/min/user -> HTTP 429). If you raise it and see 429s, raise that .env value.
     export_workers: int = Field(default=1, ge=1)
-    run_interval: int | None = 0
+    run_interval: int = 0
     run_schedule: str | None = None
     # opt-in scheduled-mode health endpoint; no server unless health_port is set
     health_port: int | None = None
-    health_host: str | None = "0.0.0.0"
-    http_config: HttpConfig | None = HttpConfig()
+    health_host: str = "0.0.0.0"
+    http_config: HttpConfig = HttpConfig()
     notifications: Notifications | None = None
     filters: Filters | None = None
 
@@ -276,12 +276,13 @@ class UserInput(StrictModel):
     @classmethod
     def _null_composite_to_default(cls, value):
         """A key present with an explicit YAML null (e.g. children commented out
-        under 'credentials:') validates straight to None, and downstream code
-        unconditionally dereferences these three (.credentials.token_id,
-        .http_config.additional_headers, assets usage in node_archiver) -- so a
-        null here must become the default instance, not None. '{}' re-validates
-        into that default since BookstackAccess/Assets/HttpConfig all have
-        defaults for every field."""
+        under 'credentials:') is otherwise rejected by these three fields' now
+        non-Optional annotations, but downstream code unconditionally dereferences
+        them (.credentials.token_id, .http_config.additional_headers, assets usage
+        in node_archiver) -- so a null here must become the default instance
+        instead of failing validation. This before-validator runs ahead of type
+        validation and rewrites null to '{}', which re-validates into that default
+        since BookstackAccess/Assets/HttpConfig all have defaults for every field."""
         return {} if value is None else value
 
     @model_validator(mode="after")

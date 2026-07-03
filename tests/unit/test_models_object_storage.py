@@ -22,6 +22,13 @@ def test_entry_defaults():
     assert cfg.keep_last == 0
 
 
+def test_keep_last_rejects_explicit_null():
+    # keep_last is no longer Optional; explicit null must fail, not fall through
+    # to a default retention value.
+    with pytest.raises(ValidationError):
+        S3StorageConfig(**_entry(access_key="a", secret_key="s", keep_last=None))
+
+
 def test_is_aws_discriminant():
     """Single source for 'no endpoint => AWS': validators and resolvers read this."""
     custom = S3StorageConfig(**_entry(access_key="a", secret_key="s"))
