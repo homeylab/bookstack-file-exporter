@@ -256,7 +256,8 @@ class TestExporterNodeFilterWiring:
 class TestRunNotificationOnEarlyReturn:
     def test_empty_nodes_early_return_fires_success_notification(self, monkeypatch):
         """When notifications are configured and exporter() hits an empty-nodes
-        early return, run() must still call do_notify() with no error argument."""
+        early return, run() must still call do_notify() with an EMPTY result
+        (not None -- None is reserved for shutdown cancellation)."""
         config = _make_exporter_config("pages")
         config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
 
@@ -271,12 +272,16 @@ class TestRunNotificationOnEarlyReturn:
 
         run.run(config)
 
-        mock_notif_instance.do_notify.assert_called_once_with(result=None)
+        mock_notif_instance.do_notify.assert_called_once()
+        result_arg = mock_notif_instance.do_notify.call_args.kwargs.get("result")
+        assert isinstance(result_arg, NotifyResult)
+        assert result_arg.status is ExportStatus.EMPTY
+        assert result_arg.export_level == "pages"
 
     def test_empty_archive_early_return_fires_success_notification(self, monkeypatch):
         """Second early-return site: nodes existed but nothing landed in the tar
-        (has_exported_content False). run() must still call do_notify() with no
-        error argument, and the downstream archive steps must be skipped."""
+        (has_exported_content False). run() must still call do_notify() with an
+        EMPTY result, and the downstream archive steps must be skipped."""
         config = _make_exporter_config("pages")
         config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
 
@@ -293,26 +298,52 @@ class TestRunNotificationOnEarlyReturn:
         run.run(config)
 
         mock_archiver.create_archive.assert_not_called()
-        mock_notif_instance.do_notify.assert_called_once_with(result=None)
+        mock_notif_instance.do_notify.assert_called_once()
+        result_arg = mock_notif_instance.do_notify.call_args.kwargs.get("result")
+        assert isinstance(result_arg, NotifyResult)
+        assert result_arg.status is ExportStatus.EMPTY
+
+    def test_cancelled_run_does_not_notify(self, monkeypatch):
+        """exporter() returning None means the cycle was cancelled by shutdown,
+        not that it produced an outcome -- run() must skip notification
+        entirely rather than report a cancellation as a success."""
+        config = _make_exporter_config("pages")
+        config.user_inputs.notifications = {"apprise_urls": ["mock://notify"]}
+
+        monkeypatch.setattr("bookstack_file_exporter.run.exporter", lambda cfg, stop=None: None)
+
+        mock_notif_instance = MagicMock()
+        mock_notif_cls = MagicMock(return_value=mock_notif_instance)
+        monkeypatch.setattr("bookstack_file_exporter.run.NotifyHandler", mock_notif_cls)
+
+        result = run.run(config)
+
+        assert result is None
+        mock_notif_instance.do_notify.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# exporter() return value: None on early returns, NotifyResult on success
+# exporter() return value: EMPTY NotifyResult on nothing-to-archive early
+# returns, populated NotifyResult on success. None is reserved exclusively for
+# shutdown cancellation (see TestExporterStopWiring below).
 # ---------------------------------------------------------------------------
 
 class TestExporterReturnValue:
-    def test_empty_nodes_returns_none(self, monkeypatch):
-        """empty nodes early return → exporter() returns None."""
+    def test_empty_nodes_returns_empty_status(self, monkeypatch):
+        """empty nodes early return → exporter() returns an EMPTY NotifyResult."""
         config = _make_exporter_config("pages")
         _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
             chapter_nodes={}, page_nodes={}
         )
         result = run.exporter(config)
-        assert result is None
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.EMPTY
+        assert result.export_level == "pages"
 
-    def test_no_exported_content_returns_none(self, monkeypatch):
-        """has_exported_content=False early return → exporter() returns None."""
+    def test_no_exported_content_returns_empty_status(self, monkeypatch):
+        """has_exported_content=False early return → exporter() returns an
+        EMPTY NotifyResult."""
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
@@ -320,7 +351,9 @@ class TestExporterReturnValue:
         )
         mock_archiver.has_exported_content = False
         result = run.exporter(config)
-        assert result is None
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.EMPTY
+        assert result.export_level == "pages"
 
     def test_success_returns_notify_result(self, monkeypatch):
         """Happy path → exporter() returns a populated NotifyResult."""
@@ -603,8 +636,8 @@ class TestExporterContentLoss:
         with pytest.raises(run.NoContentArchivedError):
             run.exporter(config)
 
-    def test_truly_empty_archive_still_returns_none(self, monkeypatch):
-        """Empty ledger + no tar = benign empty instance: behavior unchanged."""
+    def test_truly_empty_archive_still_returns_empty_status(self, monkeypatch):
+        """Empty ledger + no tar = benign empty instance: EMPTY status, not None."""
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
             monkeypatch, config, book_nodes={1: MagicMock()},
@@ -614,4 +647,5 @@ class TestExporterContentLoss:
 
         result = run.exporter(config)
 
-        assert result is None
+        assert isinstance(result, NotifyResult)
+        assert result.status is ExportStatus.EMPTY
