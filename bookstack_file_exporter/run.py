@@ -44,41 +44,69 @@ def entrypoint(args: argparse.Namespace) -> int:
     return _run_scheduled(config, lambda: inputs.run_interval)
 
 
-def _run_once(config: ConfigNode) -> int:
-    """Run the export exactly once and return an exit code.
+def _install_signal_handlers(stop: threading.Event) -> dict:
+    """Install SIGTERM/SIGINT handlers for cooperative shutdown in both run modes.
 
-    A SIGTERM/SIGINT mid-run raises KeyboardInterrupt so the export's finally
-    block discards any partial archive before exiting. This matters for ephemeral
-    one-shot containers (`docker run --rm`, a k8s Job) where no later run exists
-    to sweep a stranded `.tgz.partial` off the output volume. Raising mid-write is
-    safe here because the only local artifacts are the tar/.partial, which
-    discard_partial removes (a signal during a remote upload may still leave a
-    partial object on the remote — same as any interrupted upload, not specific to
-    this path). The first signal also restores the default
-    disposition for both signals so a second signal force-kills via the kernel.
-    Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+    Signal handlers run in the main thread between bytecodes, mid-anything;
+    raising across arbitrary code is unsafe and SIGTERM has no default
+    exception. So the handler only SETS the stop flag (which also breaks
+    scheduled mode's interruptible stop.wait()); the export polls it at
+    checkpoints to cancel. It also restores the default disposition for BOTH
+    catchable signals so that ANY second signal -- not only an identical
+    repeat -- force-kills via the kernel with its conventional exit code
+    (SIGINT->130, SIGTERM->143). This is an operator escape hatch if a slow
+    in-flight download won't drain inside the grace window (e.g. `docker stop`
+    then an impatient Ctrl-C).
+
+    Returns the dict the handler records the signal number into; one-shot mode
+    reads it to derive its 128+signum exit code (scheduled mode exits 0).
     """
     received = {}
 
     def _handle_signal(signum, _frame):
         received["signum"] = signum
+        log.info("Received signal %s, shutting down (signal again to force)", signum)
+        stop.set()
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
-        raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
+    return received
+
+
+def _run_once(config: ConfigNode) -> int:
+    """Run the export exactly once and return an exit code.
+
+    Cancellation is cooperative via a shared threading.Event -- the same
+    mechanism scheduled mode uses. The export polls it at checkpoints (fetch,
+    node, per-format, per-asset boundaries) and bails; the exporter's `finally`
+    still runs discard_partial, which matters for ephemeral one-shot containers
+    (`docker run --rm`, a k8s Job) where no later run exists to sweep a
+    stranded `.tgz.partial` off the output volume. The first signal restores
+    the default disposition for both signals so a second signal force-kills
+    via the kernel. Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+
+    A signal that lands after archiving (during gzip/upload/cleanup, which have
+    no checkpoints) lets the run finish, and the exit code reflects the run's
+    actual outcome -- matching scheduled mode finishing its cycle instead of
+    force-stopping mid-upload.
+    """
+    stop = threading.Event()
+    received = _install_signal_handlers(stop)
 
     try:
-        result = run(config)
+        result = run(config, stop)
         if result is None:
-            # Defensive/unreachable: None only comes from run.py's shutdown
-            # paths, which require a stop flag -- one-shot mode never passes
-            # one, so run() can't return None here. Kept as a safe default (0)
-            # rather than a KeyError if that ever changes.
-            return 0
+            # Cycle cancelled by the shutdown signal (exporter's
+            # shutdown-during-fetch / shutdown-mid-cycle paths).
+            signum = int(received.get("signum", signal.SIGINT))
+            log.info("Interrupted by signal %s, exiting", signum)
+            return 128 + signum
         return STATUS_EFFECTS[result.status].exit_code
     except KeyboardInterrupt:
+        # Backstop only: a Ctrl-C landing in the brief window before the
+        # handlers above are installed still raises normally.
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
         return 128 + signum
@@ -91,24 +119,7 @@ def _run_once(config: ConfigNode) -> int:
 def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     """Run the export on a repeating schedule until a stop signal is received."""
     stop = threading.Event()
-
-    def _handle_signal(signum, _frame):
-        # Signal handlers run in the main thread between bytecodes, mid-anything;
-        # raising across arbitrary code is unsafe and SIGTERM has no default
-        # exception. So we only SET a flag (also breaks the interruptible
-        # stop.wait() below); the export polls it at checkpoints to cancel.
-        log.info("Received signal %s, shutting down (signal again to force)", signum)
-        stop.set()
-        # Restore the default disposition for BOTH catchable signals so that ANY
-        # second signal — not only an identical repeat — force-kills via the
-        # kernel with its conventional exit code (SIGINT->130, SIGTERM->143). This
-        # is an operator escape hatch if a slow in-flight download won't drain
-        # inside the grace window (e.g. `docker stop` then an impatient Ctrl-C).
-        signal.signal(signal.SIGTERM, signal.SIG_DFL)
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    _install_signal_handlers(stop)
 
     status = None
     server = None
@@ -156,7 +167,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     return 0
 
 
-def run(config: ConfigNode, stop=None):
+def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """run export process with error handling and notification support"""
     try:
         result = exporter(config, stop)
@@ -184,7 +195,7 @@ def run(config: ConfigNode, stop=None):
         # raise original error instead of notification error
         raise run_err
 
-def exporter(config: ConfigNode, stop=None):
+def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """export bookstack nodes and archive locally and/or remotely"""
 
     #### Export Data #####
@@ -210,7 +221,8 @@ def exporter(config: ConfigNode, stop=None):
     ## Build archiver before the level branch (shared for all levels)
     archive: Archiver = Archiver(config, http_client)
 
-    # Inject the cooperative-shutdown flag (None in one-shot mode = no-op).
+    # Inject the cooperative-shutdown flag. Both modes pass a real Event now;
+    # stop is None only when run()/exporter() are called directly (tests/library use).
     archive.set_stop(stop)
 
     # create export directory if not exists
@@ -303,7 +315,7 @@ def exporter(config: ConfigNode, stop=None):
                             export_level=export_level)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
-        # exception, one-shot KeyboardInterrupt). No-op on success: the tar is
+        # exception). No-op on success: the tar is
         # already consumed and the .partial renamed away. The run-start sweep is
         # the backstop for SIGKILL, which kills the process before finally runs.
         archive.discard_partial()

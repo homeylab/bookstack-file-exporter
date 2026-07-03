@@ -92,9 +92,9 @@ class NodeArchiver:
             else self._default_asset_archiver(api_urls, http_client)
         )
         self.modify_links: bool = self._check_links_modify()
-        # Cooperative-shutdown flag, injected by Archiver.set_stop() in scheduled
-        # mode (stays None in one-shot mode). Polled at export checkpoints below;
-        # the signal handler only SETS this flag (it cannot safely raise across
+        # Cooperative-shutdown flag, injected by Archiver.set_stop() in both
+        # one-shot and scheduled mode. Polled at export checkpoints below; the
+        # signal handler only SETS this flag (it cannot safely raise across
         # arbitrary code), so the export must poll it to cancel.
         self._stop = None
         # Content-loss ledger: paths this run failed to produce (node exports,

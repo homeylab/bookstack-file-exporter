@@ -179,15 +179,16 @@ Pass `--run-once` to force a single run regardless of `run_interval` or `run_sch
 
 ## Graceful Shutdown And Grace Periods
 
-In scheduled mode `SIGTERM`/`SIGINT` shuts down gracefully: the exporter stops at the
-next asset/format/node boundary, discards any partial archive, and exits `0`. A second
-signal force-kills immediately (`130` for SIGINT, `143` for SIGTERM). Exit `0` means a
-clean shutdown, **not** that the last cycle succeeded — alert on notifications or
-`/healthz`, not on the exit code.
+Both modes handle `SIGTERM`/`SIGINT` the same cooperative way: the exporter stops at the
+next asset/format/node boundary and discards any partial archive. A second signal
+force-kills immediately (`130` for SIGINT, `143` for SIGTERM) in both modes.
 
-One-shot mode (`--run-once`, or no `run_interval`/`run_schedule`) aborts the current run
-on a signal rather than draining, but still discards any partial archive and exits
-`130`/`143`.
+Where they differ is the exit code. Scheduled mode exits `0` on a clean shutdown — that
+means the process stopped cleanly, **not** that the last cycle succeeded; alert on
+notifications or `/healthz`, not on the exit code. One-shot mode has no next cycle to
+fall back on, so an interrupted run exits `130`/`143` (128+signal) instead. A signal that
+lands after archiving finishes, during gzip/upload/cleanup (no checkpoints there), lets
+the run complete and the exit code reflects its actual outcome in either mode.
 
 A single in-flight export call (e.g. a large-book PDF render) cannot be interrupted
 mid-request, so give the container time to drain:
