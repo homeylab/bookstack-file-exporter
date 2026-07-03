@@ -120,6 +120,10 @@ class NodeArchiver:
                 self.export_workers,
             )
 
+    def set_stop(self, stop) -> None:
+        """Inject the shutdown flag (threading.Event) for cooperative cancel."""
+        self._stop = stop
+
     def _stop_requested(self) -> bool:
         """True when a shutdown signal has flagged this run for cancellation."""
         return self._stop is not None and self._stop.is_set()

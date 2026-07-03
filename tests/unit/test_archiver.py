@@ -49,7 +49,7 @@ class TestSetStop:
     def test_set_stop_forwards_to_node_archiver(self, archiver_instance):
         ev = threading.Event()
         archiver_instance.set_stop(ev)
-        assert archiver_instance._archiver._stop is ev
+        archiver_instance._archiver.set_stop.assert_called_once_with(ev)
 
 
 class TestDiscardPartial:
