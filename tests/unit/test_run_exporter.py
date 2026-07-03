@@ -536,7 +536,7 @@ class TestExporterContentLoss:
 
         assert result.status is ExportStatus.PARTIAL
         assert result.failed_nodes == ["my-book/secret.md"]
-        assert result.failed_assets == []  # pylint: disable=use-implicit-booleaness-not-comparison
+        assert not result.failed_assets
 
     def test_failed_assets_downgrade_to_partial(self, monkeypatch):
         config = _make_exporter_config("pages")
@@ -563,7 +563,7 @@ class TestExporterContentLoss:
         result = run.exporter(config)
 
         assert result.status is ExportStatus.SUCCESS
-        assert result.failed_nodes == []  # pylint: disable=use-implicit-booleaness-not-comparison
+        assert not result.failed_nodes
         assert result.export_level == "pages"
 
     def test_all_fetches_failed_returns_partial_not_none(self, monkeypatch):
