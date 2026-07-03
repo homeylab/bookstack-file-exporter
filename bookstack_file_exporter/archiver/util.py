@@ -32,9 +32,8 @@ class TarStream:
     .tgz.partial path), so an empty run never creates a file. All writes
     serialize under an internal lock — single-writer safety is structural,
     not a convention callers must remember. Compression runs inside the
-    lock: concurrent WRITERS serialize
-    on compress time, but fetching threads are unaffected (zlib releases the
-    GIL during compression).
+    lock: concurrent WRITERS serialize on compress time, but fetching
+    threads are unaffected (zlib releases the GIL during compression).
 
     Poisoning: a gzip stream, unlike an append-mode tar, is corrupted for all
     later members by one failed addfile. The first write error therefore
