@@ -163,7 +163,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     return 0
 
 
-def run(config: ConfigNode, stop=None):
+def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """run export process with error handling and notification support"""
     try:
         result = exporter(config, stop)
@@ -191,7 +191,7 @@ def run(config: ConfigNode, stop=None):
         # raise original error instead of notification error
         raise run_err
 
-def exporter(config: ConfigNode, stop=None):
+def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """export bookstack nodes and archive locally and/or remotely"""
 
     #### Export Data #####
