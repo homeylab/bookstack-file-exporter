@@ -26,10 +26,11 @@ class NodeExporter():
         self.api_urls = api_urls
         self.http_client = http_client
         self._node_filter = node_filter
-        # Cooperative-cancel flag (threading.Event). None in one-shot mode so the
-        # checks below are no-ops. Scheduled mode injects its shutdown Event so a
-        # signal mid-fetch halts the tree walk at the next node boundary instead of
-        # fetching the entire tree first. Twin of NodeArchiver._stop (archive phase).
+        # Cooperative-cancel flag (threading.Event), injected by both one-shot and
+        # scheduled mode so a signal mid-fetch halts the tree walk at the next node
+        # boundary instead of fetching the entire tree first. None (checks below are
+        # no-ops) only when run()/exporter() are called directly (tests/library use).
+        # Twin of NodeArchiver._stop (archive phase).
         self._stop = stop
         # Tracks book IDs belonging to dropped shelves; consumed in get_unassigned_books.
         # Populated in get_all_shelves, pruned in get_all_books before unassigned check.

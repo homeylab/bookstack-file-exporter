@@ -58,7 +58,7 @@ class TestRunOncePath:
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run", return_value=None):
+             patch.object(run, "run", return_value=NotifyResult(status=ExportStatus.SUCCESS)):
             result = run.entrypoint(args=_args())
         assert result == 0
 
@@ -92,7 +92,8 @@ class TestRunOncePath:
         assert result == 130
 
     def test_sigterm_during_run_cleans_up_and_returns_143(self):
-        """SIGTERM mid-run -> KeyboardInterrupt -> finally cleanup -> exit 143."""
+        """SIGTERM mid-run -> handler sets the stop event (no raise) -> run()
+        returns None (cycle cancelled) -> exit 143."""
         cfg = self._cfg_no_interval()
         captured = {}
 
@@ -102,6 +103,7 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGTERM](signal.SIGTERM, None)
+            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -110,6 +112,8 @@ class TestRunOncePath:
         assert result == 143
 
     def test_sigint_during_run_returns_130(self):
+        """SIGINT mid-run -> handler sets the stop event (no raise) -> run()
+        returns None (cycle cancelled) -> exit 130."""
         cfg = self._cfg_no_interval()
         captured = {}
 
@@ -119,6 +123,7 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGINT](signal.SIGINT, None)
+            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -139,6 +144,7 @@ class TestRunOncePath:
 
         def _signal_mid_run(_config, _stop=None):
             captured[signal.SIGTERM](signal.SIGTERM, None)
+            return None
 
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
@@ -147,6 +153,67 @@ class TestRunOncePath:
 
         assert (signal.SIGTERM, signal.SIG_DFL) in calls
         assert (signal.SIGINT, signal.SIG_DFL) in calls
+
+    def test_stop_event_passed_to_run(self):
+        """_run_once must pass a real threading.Event to run(), same mechanism
+        as scheduled mode, so the cooperative checkpoints are live."""
+        cfg = self._cfg_no_interval()
+        captured_stop = {}
+
+        def _capture_stop(_config, _stop=None):
+            captured_stop["stop"] = _stop
+            return NotifyResult(status=ExportStatus.SUCCESS)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch.object(run, "run", side_effect=_capture_stop):
+            run.entrypoint(args=_args())
+
+        assert isinstance(captured_stop["stop"], threading.Event)
+
+    def test_handler_sets_the_stop_event(self):
+        """The signal handler must actually flip the event it was given, not
+        just record the signum."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        captured_stop = {}
+
+        def _signal_mid_run(_config, _stop=None):
+            captured_stop["stop"] = _stop
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+            return None
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_mid_run):
+            run.entrypoint(args=_args())
+
+        assert captured_stop["stop"].is_set()
+
+    def test_signal_during_run_that_still_completes_returns_result_exit_code(self):
+        """A signal landing during a phase with no checkpoint (e.g. upload) lets
+        the run finish; the exit code reflects the run's outcome, not 128+signum."""
+        cfg = self._cfg_no_interval()
+        captured = {}
+
+        def _capture(signum, handler):
+            if callable(handler):
+                captured[signum] = handler
+
+        def _signal_then_finish(_config, _stop=None):
+            captured[signal.SIGTERM](signal.SIGTERM, None)
+            return NotifyResult(status=ExportStatus.SUCCESS)
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch("bookstack_file_exporter.run.signal.signal", side_effect=_capture), \
+             patch.object(run, "run", side_effect=_signal_then_finish):
+            result = run.entrypoint(args=_args())
+        assert result == 0
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +225,8 @@ class TestRunOnceFlag:
         cfg = _config(run_interval=60)
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run", return_value=None) as mock_run:
+             patch.object(run, "run",
+                          return_value=NotifyResult(status=ExportStatus.SUCCESS)) as mock_run:
             result = run.entrypoint(args=_args(run_once=True))
         assert result == 0
         assert mock_run.call_count == 1
@@ -167,7 +235,8 @@ class TestRunOnceFlag:
         cfg = _config(run_interval=0)
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run", return_value=None) as mock_run:
+             patch.object(run, "run",
+                          return_value=NotifyResult(status=ExportStatus.SUCCESS)) as mock_run:
             result = run.entrypoint(args=_args(run_once=False))
         assert result == 0
         assert mock_run.call_count == 1
@@ -310,7 +379,9 @@ class TestRunScheduledPath:
 def test_entrypoint_runs_once_when_no_interval():
     cfg = _config(run_interval=0)
     with patch.object(run, "ConfigNode", return_value=cfg), \
-         patch.object(run, "run", return_value=None) as mock_run:
+         patch("bookstack_file_exporter.run.signal.signal"), \
+         patch.object(run, "run",
+                      return_value=NotifyResult(status=ExportStatus.SUCCESS)) as mock_run:
         result = run.entrypoint(args=_args())
     assert result == 0
     assert mock_run.call_count == 1
@@ -616,13 +687,12 @@ def test_run_once_returns_one_on_exception():
         assert run._run_once(MagicMock()) == 1
 
 
-def test_run_once_returns_zero_when_result_none():
-    """Defensive guard only: one-shot mode never passes a stop flag, so run()
-    cannot actually return None here (that path requires cooperative shutdown).
-    The guard exists purely to avoid a KeyError if that ever changes."""
+def test_run_once_returns_130_when_result_none():
+    """None means the cycle was cancelled by the shutdown signal; with no
+    signum recorded, received.get falls back to SIGINT (130)."""
     with patch("bookstack_file_exporter.run.signal.signal"), \
          patch.object(run, "run", return_value=None):
-        assert run._run_once(MagicMock()) == 0
+        assert run._run_once(MagicMock()) == 130
 
 
 def test_run_once_returns_zero_on_empty():

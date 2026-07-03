@@ -47,38 +47,45 @@ def entrypoint(args: argparse.Namespace) -> int:
 def _run_once(config: ConfigNode) -> int:
     """Run the export exactly once and return an exit code.
 
-    A SIGTERM/SIGINT mid-run raises KeyboardInterrupt so the export's finally
-    block discards any partial archive before exiting. This matters for ephemeral
-    one-shot containers (`docker run --rm`, a k8s Job) where no later run exists
-    to sweep a stranded `.tgz.partial` off the output volume. Raising mid-write is
-    safe here because the only local artifacts are the tar/.partial, which
-    discard_partial removes (a signal during a remote upload may still leave a
-    partial object on the remote — same as any interrupted upload, not specific to
-    this path). The first signal also restores the default
-    disposition for both signals so a second signal force-kills via the kernel.
-    Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+    Cancellation is cooperative via a shared threading.Event -- the same
+    mechanism scheduled mode uses. The export polls it at checkpoints (fetch,
+    node, per-format, per-asset boundaries) and bails; the exporter's `finally`
+    still runs discard_partial, which matters for ephemeral one-shot containers
+    (`docker run --rm`, a k8s Job) where no later run exists to sweep a
+    stranded `.tgz.partial` off the output volume. The first signal restores
+    the default disposition for both signals so a second signal force-kills
+    via the kernel. Exit code is 128+signum (SIGINT->130, SIGTERM->143).
+
+    A signal that lands after archiving (during gzip/upload/cleanup, which have
+    no checkpoints) lets the run finish, and the exit code reflects the run's
+    actual outcome -- matching scheduled mode finishing its cycle instead of
+    force-stopping mid-upload.
     """
     received = {}
+    stop = threading.Event()
 
     def _handle_signal(signum, _frame):
         received["signum"] = signum
+        log.info("Received signal %s, shutting down (signal again to force)", signum)
+        stop.set()
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.SIG_DFL)
-        raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
     try:
-        result = run(config)
+        result = run(config, stop)
         if result is None:
-            # Defensive/unreachable: None only comes from run.py's shutdown
-            # paths, which require a stop flag -- one-shot mode never passes
-            # one, so run() can't return None here. Kept as a safe default (0)
-            # rather than a KeyError if that ever changes.
-            return 0
+            # Cycle cancelled by the shutdown signal (exporter's
+            # shutdown-during-fetch / shutdown-mid-cycle paths).
+            signum = int(received.get("signum", signal.SIGINT))
+            log.info("Interrupted by signal %s, exiting", signum)
+            return 128 + signum
         return STATUS_EFFECTS[result.status].exit_code
     except KeyboardInterrupt:
+        # Backstop only: a Ctrl-C landing in the brief window before the
+        # handlers above are installed still raises normally.
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
         return 128 + signum
@@ -210,7 +217,8 @@ def exporter(config: ConfigNode, stop=None):
     ## Build archiver before the level branch (shared for all levels)
     archive: Archiver = Archiver(config, http_client)
 
-    # Inject the cooperative-shutdown flag (None in one-shot mode = no-op).
+    # Inject the cooperative-shutdown flag. Both modes pass a real Event now;
+    # stop is None only when run()/exporter() are called directly (tests/library use).
     archive.set_stop(stop)
 
     # create export directory if not exists
@@ -303,7 +311,7 @@ def exporter(config: ConfigNode, stop=None):
                             export_level=export_level)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
-        # exception, one-shot KeyboardInterrupt). No-op on success: the tar is
+        # exception). No-op on success: the tar is
         # already consumed and the .partial renamed away. The run-start sweep is
         # the backstop for SIGKILL, which kills the process before finally runs.
         archive.discard_partial()
