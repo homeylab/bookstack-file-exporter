@@ -248,6 +248,11 @@ class Archiver:
         """Asset downloads skipped after fetch failures (archive-relative paths)."""
         return self._archiver.failed_asset_downloads
 
+    @property
+    def content_written(self) -> bool:
+        """True once at least one node (document) export landed in the tar."""
+        return self._archiver.content_written
+
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already

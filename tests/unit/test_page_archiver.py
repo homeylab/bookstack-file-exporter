@@ -880,3 +880,49 @@ class TestFailureLedger:
             archiver.archive({50: good, 51: crasher})
 
         assert archiver.failed_node_exports == [f"{crasher.file_path} (worker error)"]
+
+    def test_content_written_false_when_all_formats_fail_meta_only(self, tmp_path, build_node):
+        """Meta sidecars land in the tar even when every format fetch fails; the
+        content flag must stay False so upstream treats the run as a hard
+        failure, not a partial backup of metadata."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=True)
+        archiver = PageArchiver(str(tmp_path / "bookstack-meta-only"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=60, name="doomed", slug="doomed", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=HTTPError("500"),
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ) as mock_write_tar:
+            archiver.archive({60: page})
+
+        # meta WAS written (tar exists) but no document content did
+        assert mock_write_tar.call_count == 1
+        assert archiver.content_written is False
+        assert archiver.failed_node_exports == [f"{page.file_path}.md"]
+
+    def test_content_written_true_when_any_format_lands(self, tmp_path, build_node):
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-content"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=61, name="fine", slug="fine", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"page bytes",
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({61: page})
+
+        assert archiver.content_written is True

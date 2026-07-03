@@ -244,16 +244,17 @@ def exporter(config: ConfigNode, stop=None):
             log.info("Shutdown requested mid-cycle; discarding partial export")
             return None
 
-        # nothing was written to the tar: with an empty ledger that is a benign
-        # empty instance (return None, exit 0); with failures recorded, NO backup
-        # exists for this run -- hard failure, not Partial (Partial promises some
-        # of the backup survived).
-        if not archive.has_exported_content:
-            if archive.failed_nodes or archive.failed_assets:
+        # Gate on DOCUMENT content, not the tar file: assets/meta alone are not a
+        # restorable backup. Failures recorded but zero node exports archived ->
+        # hard failure, not Partial (Partial promises some of the backup
+        # survived). Empty ledger + empty tar is a benign empty instance.
+        if archive.failed_nodes or archive.failed_assets:
+            if not archive.content_written:
                 raise NoContentArchivedError(
                     f"no {export_level} content was archived: "
                     f"{len(archive.failed_nodes)} node export(s) and "
                     f"{len(archive.failed_assets)} asset download(s) failed")
+        elif not archive.has_exported_content:
             log.warning("No %s content was archived. Nothing to upload", export_level)
             return None
 

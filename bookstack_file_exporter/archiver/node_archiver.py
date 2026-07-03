@@ -41,13 +41,17 @@ _EXPORT_WORKERS_SOFT_MAX = 16
 
 @dataclass
 class ContentFailures:
-    """Archive-relative paths of files ONE node's export failed to produce.
+    """Per-node export outcome for the run ledger.
 
     Returned by _export_node so failures ride the existing return path back to
     the coordinating thread instead of workers mutating shared archiver state.
     """
     nodes: list[str] = field(default_factory=list)   # node exports (path + format ext)
     assets: list[str] = field(default_factory=list)  # asset downloads (get_relative_path)
+    # True once at least one format export for this node landed in the tar.
+    # Deliberately NOT set by asset/meta writes: documents are the deliverable,
+    # and assets without any document content are not a restorable backup.
+    wrote_content: bool = False
 
 
 # pylint: disable=too-many-instance-attributes
@@ -97,9 +101,12 @@ class NodeArchiver:
         # (node exports) or download (assets). Merged only by the coordinating
         # thread — the serial loop or the as_completed loop — from _export_node's
         # returned ContentFailures, so no lock is needed even with
-        # export_workers > 1. A non-empty ledger downgrades the run to PARTIAL.
+        # export_workers > 1. A non-empty ledger downgrades the run to PARTIAL;
+        # a non-empty ledger with content_written still False means no document
+        # was archived at all (a hard failure upstream).
         self.failed_node_exports: list[str] = []
         self.failed_asset_downloads: list[str] = []
+        self.content_written: bool = False
         # Opt-in node-level fetch parallelism (default 1 = serial, today's behavior).
         self.export_workers = export_workers
         if self.export_workers > _EXPORT_WORKERS_SOFT_MAX:
@@ -117,9 +124,10 @@ class NodeArchiver:
         return self._stop is not None and self._stop.is_set()
 
     def _merge_failures(self, failures: ContentFailures) -> None:
-        """Fold one node's failures into the run ledger (coordinating thread only)."""
+        """Fold one node's outcome into the run ledger (coordinating thread only)."""
         self.failed_node_exports.extend(failures.nodes)
         self.failed_asset_downloads.extend(failures.assets)
+        self.content_written = self.content_written or failures.wrote_content
 
     def _default_asset_archiver(self, api_urls: dict[str, str], http_client: HttpHelper):
         """Build an AssetArchiver when no double is injected, or return None if assets disabled."""
@@ -377,6 +385,7 @@ class NodeArchiver:
             elif fmt == "html" and self.modify_links:
                 data = self._rewrite_combined_html(data, assets_by_page)
             self._archive_node(node, fmt, data)
+            failures.wrote_content = True
         if self.export_meta:
             self._archive_node_meta(node, node.meta)
         return failures
