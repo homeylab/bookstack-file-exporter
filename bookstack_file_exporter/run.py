@@ -125,8 +125,8 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         try:
             result = run(config, stop)
             # None = cycle cancelled by shutdown; the loop breaks right after
-            # anyway (stop.is_set() below), so health keeps its last real
-            # state instead of being marked for a cycle that never finished.
+            # (stop.is_set() below) and the server shuts down, so the cycle is
+            # never marked success/degraded for work that didn't finish.
             if status and result is not None:
                 if STATUS_EFFECTS[result.status].health_degraded:
                     status.mark_degraded(result)

@@ -512,6 +512,32 @@ class TestScheduledHealthServer:
         fake_status.mark_success.assert_called_once_with(empty_result)
         fake_status.mark_degraded.assert_not_called()
 
+    def test_partial_cycle_marks_degraded(self):
+        """A PARTIAL cycle (content loss, archive survived) must degrade health,
+        never mark_success."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+        partial_result = NotifyResult(status=ExportStatus.PARTIAL, local="bkps/a.tgz",
+                                      failed_assets=["images/a.png"], export_level="pages")
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()
+            return partial_result
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0
+        fake_status.mark_degraded.assert_called_once_with(partial_result)
+        fake_status.mark_success.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _run_scheduled() — double-signal force-kill (SIG_DFL restore)
