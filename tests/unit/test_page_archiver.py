@@ -234,6 +234,22 @@ class TestFinalizeArchive:
         page_archiver.abort_archive()
 
 
+class TestPoisonedStreamChain:
+    """Mid-run write failure poisons the stream; finalize refuses to publish."""
+
+    def test_poison_then_finalize_refuses_publish(self, page_archiver, monkeypatch):
+        page_archiver.write_data("book/page1.md", b"# ok")   # node 1 landed
+
+        def boom(*_args, **_kwargs):
+            raise OSError("disk full")
+        monkeypatch.setattr(page_archiver._tar_stream._tar, "addfile", boom)
+        with pytest.raises(ArchiveWriteError):
+            page_archiver.write_data("book/page2.md", b"# fails")   # node 2 poisons
+        with pytest.raises(ArchiveWriteError):
+            page_archiver.finalize_archive()                        # publish refused
+        assert not os.path.exists(page_archiver.archive_file)
+
+
 # ---------------------------------------------------------------------------
 # 5. write_data delegates to TarStream.write
 # ---------------------------------------------------------------------------
