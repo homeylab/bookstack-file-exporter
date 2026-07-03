@@ -394,3 +394,69 @@ class TestNotifyBodyFormat:
         notifier.notify(result=NotifyResult(local=None, uploads=[], removed=[]))
         kwargs = notifier._client.notify.call_args.kwargs
         assert kwargs["body_format"] == NotifyFormat.MARKDOWN
+
+
+class TestContentFailureBullets:
+    """Content-loss ledger renders as count-only Failed: bullets."""
+
+    def test_text_body_counts_failed_nodes_and_assets(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local="/bkps/export.tgz",
+                              failed_nodes=["my-book/secret.md"],
+                              failed_assets=["images/gallery/a.png",
+                                             "images/gallery/b.png"],
+                              export_level="pages")
+        body = notifier._text_body(None, result)
+        assert "Failed:" in body
+        assert "- content: 1 page export(s) failed" in body
+        assert "- assets: 2 asset download(s) failed" in body
+        assert "completed with errors" in body
+        # counts only: paths stay in logs, never in the notification body
+        assert "my-book/secret.md" not in body
+        assert "images/gallery/a.png" not in body
+
+    def test_content_bullet_names_the_export_level(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local="/bkps/export.tgz",
+                              failed_nodes=["shelf/infra.pdf"],
+                              export_level="books")
+        body = notifier._text_body(None, result)
+        assert "- content: 1 book export(s) failed" in body
+
+    def test_unknown_export_level_falls_back_to_node(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local="/bkps/export.tgz",
+                              failed_nodes=["x.md"], export_level="weird")
+        body = notifier._text_body(None, result)
+        assert "- content: 1 node export(s) failed" in body
+
+    def test_no_bullets_when_ledger_empty(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.SUCCESS, local="/bkps/export.tgz")
+        body = notifier._text_body(None, result)
+        assert "export(s) failed" not in body
+        assert "download(s) failed" not in body
+
+    def test_markdown_body_same_bullets(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local="/bkps/export.tgz",
+                              failed_nodes=["my-book/secret.md"],
+                              failed_assets=["images/gallery/a.png"],
+                              export_level="pages")
+        body = notifier._markdown_body(None, result)
+        assert "**Failed:**" in body
+        assert "- content: 1 page export(s) failed" in body
+        assert "- assets: 1 asset download(s) failed" in body
+
+    def test_partial_without_archive_renders(self):
+        """Total content loss: local=None, ledger populated -- body must still
+        carry the error headline and the Failed: group."""
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.PARTIAL, local=None,
+                              failed_nodes=["my-book/secret.md"],
+                              export_level="pages")
+        body = notifier._text_body(None, result)
+        assert "completed with errors" in body
+        assert "- content: 1 page export(s) failed" in body
+        md_body = notifier._markdown_body(None, result)
+        assert "**Failed:**" in md_body

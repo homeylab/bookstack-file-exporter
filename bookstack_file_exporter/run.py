@@ -12,11 +12,18 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus
+from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
 log = logging.getLogger(__name__)
+
+
+class NoContentArchivedError(Exception):
+    """Every fetch failed and nothing was archived: no backup exists for this run.
+
+    A hard failure (exit 1 / failure notification / mark_failed), NOT Partial —
+    Partial promises some of the backup survived."""
 
 
 def entrypoint(args: argparse.Namespace) -> int:
@@ -64,9 +71,10 @@ def _run_once(config: ConfigNode) -> int:
 
     try:
         result = run(config)
-        if result is not None and result.status is ExportStatus.PARTIAL:
-            return 3
-        return 0
+        if result is None:
+            # nothing to archive (empty instance) is a clean no-op, not a failure
+            return 0
+        return STATUS_EFFECTS[result.status].exit_code
     except KeyboardInterrupt:
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
@@ -114,7 +122,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         try:
             result = run(config, stop)
             if status:
-                if result is not None and result.status is ExportStatus.PARTIAL:
+                if result is not None and STATUS_EFFECTS[result.status].health_degraded:
                     status.mark_degraded(result)
                 else:
                     status.mark_success(result)
@@ -236,9 +244,17 @@ def exporter(config: ConfigNode, stop=None):
             log.info("Shutdown requested mid-cycle; discarding partial export")
             return None
 
-        # nothing was written to the tar (e.g. every node empty or all fetches failed):
-        # skip gzip/upload/cleanup so we don't crash gzipping a non-existent tar.
-        if not archive.has_exported_content:
+        # Gate on DOCUMENT content, not the tar file: assets/meta alone are not a
+        # restorable backup. Failures recorded but zero node exports archived ->
+        # hard failure, not Partial (Partial promises some of the backup
+        # survived). Empty ledger + empty tar is a benign empty instance.
+        if archive.failed_nodes or archive.failed_assets:
+            if not archive.content_written:
+                raise NoContentArchivedError(
+                    f"no {export_level} content was archived: "
+                    f"{len(archive.failed_nodes)} node export(s) and "
+                    f"{len(archive.failed_assets)} asset download(s) failed")
+        elif not archive.has_exported_content:
             log.warning("No %s content was archived. Nothing to upload", export_level)
             return None
 
@@ -248,6 +264,11 @@ def exporter(config: ConfigNode, stop=None):
         # attempt every remote target, then derive status (raises only when no copy survives)
         outcomes = archive.archive_remote()
         status = archive.resolve_remote_status(outcomes)
+
+        # any dropped content (node export or asset download) makes the archive
+        # incomplete -- downgrade regardless of upload success
+        if archive.failed_nodes or archive.failed_assets:
+            status = ExportStatus.PARTIAL
 
         # Local retention pruning is housekeeping: at this point durable copies exist
         # (resolve_remote_status raised otherwise), so a failed local delete downgrades
@@ -266,7 +287,10 @@ def exporter(config: ConfigNode, stop=None):
         log.info("Created file archive: %s.tgz", archive.archive_dir)
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
-                            removed=removed, cleanup_error=cleanup_error)
+                            removed=removed, cleanup_error=cleanup_error,
+                            failed_nodes=archive.failed_nodes,
+                            failed_assets=archive.failed_assets,
+                            export_level=export_level)
     finally:
         # Eager cleanup of THIS cycle's partial on every terminal path (stop,
         # exception, one-shot KeyboardInterrupt). No-op on success: the tar is

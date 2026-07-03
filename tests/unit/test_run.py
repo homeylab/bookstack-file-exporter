@@ -58,7 +58,7 @@ class TestRunOncePath:
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run"):
+             patch.object(run, "run", return_value=None):
             result = run.entrypoint(args=_args())
         assert result == 0
 
@@ -158,7 +158,7 @@ class TestRunOnceFlag:
         cfg = _config(run_interval=60)
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run") as mock_run:
+             patch.object(run, "run", return_value=None) as mock_run:
             result = run.entrypoint(args=_args(run_once=True))
         assert result == 0
         assert mock_run.call_count == 1
@@ -167,7 +167,7 @@ class TestRunOnceFlag:
         cfg = _config(run_interval=0)
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run") as mock_run:
+             patch.object(run, "run", return_value=None) as mock_run:
             result = run.entrypoint(args=_args(run_once=False))
         assert result == 0
         assert mock_run.call_count == 1
@@ -310,7 +310,7 @@ class TestRunScheduledPath:
 def test_entrypoint_runs_once_when_no_interval():
     cfg = _config(run_interval=0)
     with patch.object(run, "ConfigNode", return_value=cfg), \
-         patch.object(run, "run") as mock_run:
+         patch.object(run, "run", return_value=None) as mock_run:
         result = run.entrypoint(args=_args())
     assert result == 0
     assert mock_run.call_count == 1

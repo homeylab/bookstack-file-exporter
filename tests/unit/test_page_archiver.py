@@ -74,7 +74,7 @@ class TestCooperativeCancellation:
     def test_export_nodes_stops_between_nodes(self, page_archiver):
         ev = threading.Event()
         page_archiver._stop = ev
-        page_archiver._download_node_assets = MagicMock(return_value={})
+        page_archiver._download_node_assets = MagicMock(return_value=({}, []))
         # set the flag the moment the first node's data is fetched
         page_archiver._get_node_data = MagicMock(side_effect=lambda url: ev.set() or b"data")
         page_archiver._archive_node = MagicMock()
@@ -102,7 +102,7 @@ class TestCooperativeCancellation:
             MagicMock(), {1: ["img"]}, {1: ["att"]})
 
         page_archiver._archive_node_assets.assert_not_called()
-        assert result == {"images": {}, "attachments": {}}
+        assert result == ({"images": {}, "attachments": {}}, [])
 
     def test_archive_node_assets_breaks_asset_loop_when_stopped(self, page_archiver):
         ev = threading.Event()
@@ -772,3 +772,157 @@ class TestParallelExport:
 
         assert not collected  # no node written
         assert not fetched    # no node even fetched
+
+
+# ---------------------------------------------------------------------------
+# 15. Content-loss ledger: failed node exports / asset downloads are recorded
+# ---------------------------------------------------------------------------
+
+class TestFailureLedger:
+    def test_ledgers_start_empty(self, page_archiver):
+        assert page_archiver.failed_node_exports == []
+        assert page_archiver.failed_asset_downloads == []
+
+    def test_failed_node_format_recorded_as_archive_path(self, tmp_path, build_node):
+        """The skipped page-format export lands in the ledger as its would-be
+        archive path (extension identifies the format)."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-ledger"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        good = build_node(id=30, name="ok", slug="ok", parent=parent_node)
+        forbidden = build_node(id=3, name="secret", slug="secret", parent=parent_node)
+
+        def _byte_response(url, http_client):
+            if "/pages/3/" in url:
+                raise HTTPError("403 Forbidden")
+            return b"page bytes"
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({30: good, 3: forbidden})
+
+        # PageArchiver._node_output_path is node.file_path; markdown ext is .md
+        assert archiver.failed_node_exports == [f"{forbidden.file_path}.md"]
+        assert not archiver.failed_asset_downloads
+
+    def test_failed_asset_download_recorded_as_relative_path(self, tmp_path, build_node):
+        """An asset whose download raises is recorded via get_relative_path
+        (images/<page>/<name> — the prefix identifies the asset kind); survivors
+        are not recorded."""
+        config = _make_config(formats=["markdown"], export_images=True,
+                              export_attachments=False, export_meta=False)
+        mock_asset_archiver = MagicMock()
+        archiver = PageArchiver(str(tmp_path / "bookstack-assets"), config, MagicMock(),
+                                asset_archiver=mock_asset_archiver)
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=40, name="gallery", slug="gallery", parent=parent_node)
+
+        bad = MagicMock()
+        bad.id_ = 100
+        bad.get_relative_path.return_value = "images/gallery/broken.png"
+        ok = MagicMock()
+        ok.id_ = 101
+        ok.get_relative_path.return_value = "images/gallery/fine.png"
+
+        mock_asset_archiver.get_asset_nodes.return_value = {40: [bad, ok]}
+
+        def _get_bytes(asset_type, url):
+            if url is bad.download_url:
+                raise HTTPError("404")
+            return b"img"
+
+        mock_asset_archiver.get_asset_bytes.side_effect = _get_bytes
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"page bytes",
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({40: page})
+
+        assert archiver.failed_asset_downloads == ["images/gallery/broken.png"]
+        assert not archiver.failed_node_exports
+
+    def test_parallel_worker_exception_records_node(self, tmp_path, build_node):
+        """A non-HTTP worker crash names the lost node in the ledger."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False,
+                              export_workers=2)
+        archiver = PageArchiver(str(tmp_path / "bookstack-par"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        good = build_node(id=50, name="fine", slug="fine", parent=parent_node)
+        crasher = build_node(id=51, name="doomed", slug="doomed", parent=parent_node)
+
+        def _byte_response(url, http_client):
+            if "/pages/51/" in url:
+                raise RuntimeError("worker boom")  # non-HTTP: not swallowed per-format
+            return b"page bytes"
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({50: good, 51: crasher})
+
+        assert archiver.failed_node_exports == [f"{crasher.file_path} (worker error)"]
+
+    def test_content_written_false_when_all_formats_fail_meta_only(self, tmp_path, build_node):
+        """Meta sidecars land in the tar even when every format fetch fails; the
+        content flag must stay False so upstream treats the run as a hard
+        failure, not a partial backup of metadata."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=True)
+        archiver = PageArchiver(str(tmp_path / "bookstack-meta-only"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=60, name="doomed", slug="doomed", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=HTTPError("500"),
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ) as mock_write_tar:
+            archiver.archive({60: page})
+
+        # meta WAS written (tar exists) but no document content did
+        assert mock_write_tar.call_count == 1
+        assert archiver.content_written is False
+        assert archiver.failed_node_exports == [f"{page.file_path}.md"]
+
+    def test_content_written_true_when_any_format_lands(self, tmp_path, build_node):
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-content"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=61, name="fine", slug="fine", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"page bytes",
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.write_tar"
+        ):
+            archiver.archive({61: page})
+
+        assert archiver.content_written is True
