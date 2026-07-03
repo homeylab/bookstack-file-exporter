@@ -407,6 +407,51 @@ class TestNotifyBodyFormat:
         assert kwargs["body_format"] == NotifyFormat.MARKDOWN
 
 
+class TestEmptyStatusBody:
+    """EMPTY (nothing to archive) renders an archive-less body in both formats."""
+
+    def test_text_body_says_nothing_to_archive_no_sections(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+        body = notifier._text_body(None, result)
+        assert "nothing to archive" in body
+        assert "Completed At:" in body
+        assert "No pages content was found to export." in body
+        assert "Archive:" not in body
+        assert "Uploaded to:" not in body
+        assert "Pruned" not in body
+        assert "Failed:" not in body
+
+    def test_text_body_names_the_export_level(self):
+        notifier = _make_notifier()
+        result = NotifyResult(status=ExportStatus.EMPTY, export_level="books")
+        body = notifier._text_body(None, result)
+        assert "No books content was found to export." in body
+
+    def test_markdown_body_says_nothing_to_archive_no_sections(self):
+        notifier = _make_notifier(body_format="markdown")
+        result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+        body = notifier._markdown_body(None, result)
+        assert "**Bookstack File Exporter completed - nothing to archive.**" in body
+        assert "Completed At:" in body
+        assert "No pages content was found to export." in body
+        assert "Archive:" not in body
+        assert "Uploaded to:" not in body
+        assert "Pruned" not in body
+        assert "Failed:" not in body
+
+    def test_get_message_text_dispatches_empty_to_markdown(self):
+        notifier = _make_notifier(body_format="markdown")
+        result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+        body = notifier._get_message_text(None, result)
+        assert "**Bookstack File Exporter completed - nothing to archive.**" in body
+
+    def test_title_stays_success_for_empty(self):
+        inst = _notifier()
+        result = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+        assert inst._get_title(None, result).endswith("Success")
+
+
 class TestContentFailureBullets:
     """Content-loss ledger renders as count-only Failed: bullets."""
 
