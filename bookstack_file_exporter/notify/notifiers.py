@@ -87,7 +87,10 @@ class AppRiseNotify:
         client = Apprise(asset=asset)
 
         if self.config.config_path:
-            app_config = AppriseConfig()
+            # same asset must be threaded into AppriseConfig too -- otherwise
+            # config-file-loaded plugins get AppriseConfig's own default asset
+            # instead of the storage_path/plugin_paths built above.
+            app_config = AppriseConfig(asset=asset)
             app_config.add(self.config.config_path)
             client.add(app_config)
         else:
