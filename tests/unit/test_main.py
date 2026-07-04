@@ -50,6 +50,16 @@ class TestLogLevelWiring:
             main(("-v", "error", "--log-format", "text"))
         assert mock_bc.call_args.kwargs["level"] == "ERROR"
 
+    def test_main_configures_logging_with_force(self):
+        """basicConfig must be called with force=True so a second in-process
+        main() call (test harness / supervisor) reconfigures the root logger
+        instead of silently keeping the first call's level/format.
+        """
+        with patch.object(run, "entrypoint", return_value=0), \
+             patch("bookstack_file_exporter.__main__.logging.basicConfig") as mock_bc:
+            main(_ARGV)
+        assert mock_bc.call_args.kwargs["force"] is True
+
 
 class TestSysExitWiring:
     def test_sys_exit_receives_main_return_value(self):

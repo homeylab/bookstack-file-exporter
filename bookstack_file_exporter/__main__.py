@@ -12,7 +12,8 @@ def main(argv=None) -> int:
     args: argparse.Namespace = run_args.get_args(argv)
     logging.basicConfig(
         level=run_args.resolve_log_level(args).upper(),
-        handlers=[bfe_logging.build_handler(run_args.resolve_log_format(args))])
+        handlers=[bfe_logging.build_handler(run_args.resolve_log_format(args))],
+        force=True)
     return run.entrypoint(args)
 
 
