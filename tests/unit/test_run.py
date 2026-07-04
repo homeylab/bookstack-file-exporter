@@ -710,3 +710,52 @@ def test_run_once_returns_zero_on_empty():
                       return_value=NotifyResult(status=ExportStatus.EMPTY,
                                                 export_level="pages")):
         assert run._run_once(MagicMock()) == 0
+
+
+# ---------------------------------------------------------------------------
+# run() -- end-of-run summary log emission (independent of notifications)
+# ---------------------------------------------------------------------------
+
+class TestRunSummaryLog:
+    def _cfg(self):
+        return SimpleNamespace(user_inputs=SimpleNamespace(notifications=None))
+
+    def test_partial_result_logs_warning_summary(self, caplog):
+        partial = NotifyResult(status=ExportStatus.PARTIAL, local="/data/bkps.tgz",
+                               export_level="pages", failed_assets=["img1"])
+        with patch.object(run, "exporter", return_value=partial), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is partial
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("Run summary [PARTIAL]:" in r.message for r in warning_records)
+
+    def test_success_result_logs_info_summary(self, caplog):
+        success = NotifyResult(status=ExportStatus.SUCCESS, local="/data/bkps.tgz",
+                               export_level="pages")
+        with patch.object(run, "exporter", return_value=success), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is success
+        assert any("Run summary [SUCCESS]:" in r.message and r.levelno == logging.INFO
+                   for r in caplog.records)
+
+    def test_cancelled_cycle_logs_no_summary(self, caplog):
+        with patch.object(run, "exporter", return_value=None), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is None
+        assert not any("Run summary" in r.message for r in caplog.records)
+
+    def test_run_exception_logs_failed_summary(self, caplog):
+        with patch.object(run, "exporter", side_effect=RuntimeError("boom")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            try:
+                run.run(self._cfg())
+            except RuntimeError:
+                pass
+
+        assert any("Run summary [FAILED]: boom" in r.message for r in caplog.records)

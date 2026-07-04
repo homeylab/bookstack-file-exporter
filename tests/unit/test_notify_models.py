@@ -1,7 +1,7 @@
 # pylint: disable=missing-function-docstring,use-implicit-booleaness-not-comparison
 """Unit tests for ExportStatus / UploadOutcome / NotifyResult."""
 from bookstack_file_exporter.notify.models import (
-    ExportStatus, UploadOutcome, NotifyResult, STATUS_EFFECTS,
+    ExportStatus, UploadOutcome, NotifyResult, STATUS_EFFECTS, format_run_summary,
 )
 
 
@@ -67,3 +67,44 @@ class TestStatusEffects:
         assert result.failed_nodes == []
         assert result.failed_assets == []
         assert result.export_level == "pages"
+
+
+class TestFormatRunSummary:
+    """format_run_summary() -- one-line plaintext outcome roll-up for logs."""
+
+    def test_summary_partial_mixed(self):
+        r = NotifyResult(status=ExportStatus.PARTIAL, local="/data/bkps.tgz",
+                         export_level="pages",
+                         uploads=[UploadOutcome("minio/b", "minio-b/a.tgz"),
+                                  UploadOutcome("s3/dr", None, "boom")],
+                         failed_nodes=["p1", "p2"], failed_assets=["img1"],
+                         removed=["old.tgz"])
+        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads=1/2 ok "
+                                         "(failed: s3/dr) content-loss=2 node/1 asset removed=1")
+
+    def test_summary_success_pruned(self):
+        r = NotifyResult(status=ExportStatus.SUCCESS, local="/data/bkps.tgz",
+                         export_level="books",
+                         uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", pruned=3)])
+        assert format_run_summary(r) == "level=books archive=/data/bkps.tgz uploads=1/1 ok pruned=3"
+
+    def test_summary_empty(self):
+        r = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
+        assert format_run_summary(r) == "level=pages"
+
+    def test_summary_retention_warned(self):
+        r = NotifyResult(status=ExportStatus.PARTIAL, local="/data/bkps.tgz",
+                         export_level="pages",
+                         uploads=[UploadOutcome("minio/b", "minio-b/a.tgz",
+                                                warning="cleanup slow")])
+        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads=1/1 ok "
+                                         "(retention-warned: minio/b)")
+
+    def test_summary_flattens_newline_in_cleanup_error(self):
+        # cleanup_error is a str(exception); a line break must not split the
+        # one-line summary operators grep for.
+        r = NotifyResult(status=ExportStatus.PARTIAL, export_level="pages",
+                         cleanup_error="permission denied\n/data/old.tgz")
+        summary = format_run_summary(r)
+        assert "\n" not in summary
+        assert summary == "level=pages cleanup_error=permission denied /data/old.tgz"

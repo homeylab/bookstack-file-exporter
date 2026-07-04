@@ -12,7 +12,8 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
+from bookstack_file_exporter.notify.models import (
+    NotifyResult, ExportStatus, STATUS_EFFECTS, format_run_summary)
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
@@ -103,7 +104,9 @@ def _run_once(config: ConfigNode) -> int:
             signum = int(received.get("signum", signal.SIGINT))
             log.info("Interrupted by signal %s, exiting", signum)
             return 128 + signum
-        return STATUS_EFFECTS[result.status].exit_code
+        code = STATUS_EFFECTS[result.status].exit_code
+        log.info("One-shot run exit code: %d", code)
+        return code
     except KeyboardInterrupt:
         # Backstop only: a Ctrl-C landing in the brief window before the
         # handlers above are installed still raises normally.
@@ -181,6 +184,14 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
     """run export process with error handling and notification support"""
     try:
         result = exporter(config, stop)
+        # Terminal outcome roll-up for the logs, independent of notifications:
+        # WARNING for a degraded run so it is visible in scheduled mode (where the
+        # process still exits 0 and per-cycle status otherwise only reaches /health).
+        if result is not None:
+            summary_level = (logging.WARNING if result.status is ExportStatus.PARTIAL
+                             else logging.INFO)
+            log.log(summary_level, "Run summary [%s]: %s",
+                    result.status.name, format_run_summary(result))
         # None = cancelled by shutdown (run.py's shutdown-during-fetch /
         # shutdown-mid-cycle paths); notifying would report an outcome that
         # never happened, so skip notification entirely. Any real outcome
@@ -195,6 +206,7 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
                 log.error("Failed to send notification: %s", str(notif_err))
         return result
     except Exception as run_err: # general catch all for notifications
+        log.error("Run summary [FAILED]: %s", run_err)
         if not config.user_inputs.notifications:
             raise run_err
         try:
