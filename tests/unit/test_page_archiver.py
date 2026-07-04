@@ -812,6 +812,47 @@ class TestParallelExport:
         assert not collected  # no node written
         assert not fetched    # no node even fetched
 
+    def test_parallel_completed_node_recorded_even_when_stop_set(self, tmp_path, build_node):
+        """The node whose future completes in the same as_completed iteration that
+        observes the stop flag must still be merged into the ledger. Its bytes are
+        already written to the tar by the time the future is done (the worker
+        function returns only after the write), so dropping the merge here would
+        leave content_written out of sync with what is actually on disk.
+
+        Only one node is submitted, so as_completed has exactly one future to
+        yield: whenever the loop observes it as done, ev is already set (the
+        worker sets it before returning), which is what made this racy under
+        the OLD stop-check-first order and deterministic here.
+        """
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False,
+                              export_workers=2)
+        archiver = PageArchiver(str(tmp_path / "bookstack-completed"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        ev = threading.Event()
+        archiver.set_stop(ev)
+
+        parent = build_node(id=1, name="bk", slug="bk")
+        page = build_node(id=2, name="p2", slug="p2", parent=parent)
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            ev.set()  # trip stop as the (only) worker is about to return
+            return b"data"
+
+        collected = self._collect_writes(archiver)
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ):
+            archiver.archive({2: page})
+
+        # The write reached the tar...
+        assert collected == [f"{archiver.archive_base_path}/bk/p2.md"]
+        # ...so the ledger must agree: dropping the merge would strand this
+        # False even though content was actually written.
+        assert archiver.content_written is True
+
 
 # ---------------------------------------------------------------------------
 # 15. Content-loss ledger: failed node exports / asset downloads are recorded

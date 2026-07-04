@@ -345,9 +345,6 @@ class NodeArchiver:
             # completion order (NOT submission order) — so we react to whichever
             # node returns first.
             for future in as_completed(futures):
-                if self._stop_requested():
-                    executor.shutdown(cancel_futures=True)
-                    break
                 # future.result() re-raises, in THIS thread, any exception the
                 # worker thread raised. We catch broadly so one bad node is logged
                 # and skipped rather than aborting every other node's export.
@@ -369,6 +366,15 @@ class NodeArchiver:
                     # so the entry carries no extension
                     self.failed_node_exports.append(
                         f"{self._node_output_path(futures[future])} (worker error)")
+                # Honor stop only AFTER the just-completed result is recorded, so the
+                # node yielded this iteration (already in the tar) is merged, not dropped.
+                # This narrows the ledger gap; it does not fully close it - futures already
+                # done-but-not-yet-yielded, and in-flight workers that finish during the
+                # shutdown join, are still not merged. Acceptable: run.py discards the
+                # partial on stop anyway, so the ledger is not consulted on the stop path.
+                if self._stop_requested():
+                    executor.shutdown(cancel_futures=True)
+                    break
 
     def _export_node(self, node: Node, resource_type: str,
                      image_map: dict[int, list],
