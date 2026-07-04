@@ -60,6 +60,16 @@ def test_validate_bucket_raises_when_missing(aws, provider):
         S3CompatibleArchiver(provider(bucket="nope"))
 
 
+def test_client_built_with_per_target_verify(monkeypatch, make_provider):
+    captured = {}
+    def fake_client(self, *args, **kwargs):
+        captured.update(kwargs)
+        return MagicMock()
+    monkeypatch.setattr("boto3.session.Session.client", fake_client)
+    S3CompatibleArchiver(make_provider(ca_bundle="/certs/ca.pem"))
+    assert captured["verify"] == "/certs/ca.pem"
+
+
 def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch, provider):
     fake = MagicMock()
     fake.head_bucket.side_effect = EndpointConnectionError(endpoint_url="http://unreachable:9000")

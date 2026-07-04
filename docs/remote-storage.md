@@ -82,6 +82,8 @@ object_storage:
 | `bucket` | `str` | `true` | — | Bucket to upload to. |
 | `region` | `str` | conditionally | `None` | Explicit value always wins. If omitted and `endpoint` is set, defaults to `us-east-1`. If omitted and no `endpoint` (AWS), required unless `ambient_auth: true` (botocore can then resolve it from env/profile). |
 | `secure` | `bool` | `false` | `true` | TLS toggle; selects the `https://`/`http://` scheme used when building the endpoint URL. Set `false` for plain-HTTP local MinIO. |
+| `verify_ssl` | `bool` | `false` | `true` | TLS certificate verification for this target. Set `false` to accept an untrusted/self-signed certificate without verification (quick fix — prefer `ca_bundle`). Irrelevant for plain-HTTP endpoints (`secure: false`). |
+| `ca_bundle` | `str` | `false` | `""` | Path to a PEM CA bundle used to verify this target's certificate — the clean fix for a private-CA/self-signed HTTPS store (e.g. MinIO behind your own CA). Mutually exclusive with `verify_ssl: false`. When neither is set, the standard AWS SDK variables (`AWS_CA_BUNDLE`, etc.) still apply. |
 | `prefix` | `str` | `false` | `""` | Optional object key prefix. Empty means bucket root. |
 | `addressing_style` | `str` | `false` | `None` (inferred) | Passed straight to boto3: `path`, `virtual`, or `auto`. Left unset, `path` is inferred when `endpoint` is set (MinIO/Ceph work out of the box) and `auto` (virtual-hosted) for AWS. Use `virtual` for compat stores that require virtual-hosted addressing (e.g. DigitalOcean Spaces, Backblaze B2) — note boto3 treats `auto` the same as `path` when a custom `endpoint` is set, so `virtual` is the only way to get virtual-hosted there. |
 | `ambient_auth` | `bool` | `false` | `false` | Opt in to the boto3 SDK's own ambient credential chain: environment variables, shared config/profile, **IRSA or Pod Identity (EKS/Kubernetes)**, IMDS instance profile (EC2), or assume-role. Required whenever no `access_key(_env)` pair is configured on the entry — there is no silent fallback to ambient credentials. |
@@ -183,6 +185,22 @@ a hard **Failure** (exit `1`), not Partial.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
+
+### Self-signed or private-CA HTTPS targets
+
+For an HTTPS store whose certificate is not publicly trusted (typical for self-hosted
+MinIO), pick one per target:
+
+- `ca_bundle: /path/to/ca.pem` — verify against your own CA. The clean option: TLS
+  protection stays on, and other targets are unaffected.
+- `verify_ssl: false` — disable certificate verification for this target only.
+- `secure: false` — plain HTTP, no TLS at all (LAN-only setups).
+
+Prefer a per-target `ca_bundle` over the `AWS_CA_BUNDLE` environment variable when you
+have more than one target: the environment variable is process-wide and *replaces* the
+trust store, so pointing it at a private CA breaks verification for targets using
+publicly-trusted certificates (e.g. AWS S3). A per-target setting always wins over these
+environment variables.
 
 ### Interrupted uploads and orphaned multipart parts
 

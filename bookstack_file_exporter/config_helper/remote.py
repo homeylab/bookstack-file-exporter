@@ -23,6 +23,7 @@ class S3ProviderConfig:
         self.endpoint_url = self._resolve_endpoint_url(entry)
         self.region = self._resolve_region(entry)
         self.addressing_style = self._resolve_addressing(entry)
+        self.verify = self._resolve_verify(entry)
         self.access_key, self.secret_key = self._resolve_credentials(entry)
 
     @staticmethod
@@ -73,3 +74,19 @@ class S3ProviderConfig:
         if entry.addressing_style:
             return entry.addressing_style
         return "auto" if entry.is_aws else "path"
+
+    @staticmethod
+    def _resolve_verify(entry: S3StorageConfig) -> bool | str | None:
+        """boto3 client 'verify': explicit per-target setting pinned, SDK defaults otherwise.
+
+        ca_bundle path -> verify against that CA; verify_ssl false -> disable verification;
+        neither set -> None, which lets botocore fall through its own chain (AWS_CA_BUNDLE
+        env / config-file ca_bundle, then REQUESTS_CA_BUNDLE, then verify-on) — so a target
+        without explicit TLS settings still honors standard SDK env vars. botocore gives an
+        explicit non-None verify precedence over those env vars, which is what makes this
+        per-target-safe when multiple targets need different CAs."""
+        if entry.ca_bundle:
+            return entry.ca_bundle
+        if not entry.verify_ssl:
+            return False
+        return None
