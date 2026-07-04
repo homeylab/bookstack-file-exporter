@@ -1006,3 +1006,35 @@ class TestFailureLedger:
             archiver.archive({61: page})
 
         assert archiver.content_written is True
+
+
+# ---------------------------------------------------------------------------
+# 20. A1: asset-listing failure degrades to partial instead of aborting the run
+# ---------------------------------------------------------------------------
+
+class TestAssetListingFailureDegrades:
+    """A transient failure on the image/attachment LISTING endpoint must not
+    hard-fail the whole run; it should log, record a sentinel (-> PARTIAL),
+    and return an empty map so nodes still export without asset rewriting."""
+
+    def test_image_listing_failure_degrades_not_aborts(self, tmp_path):
+        config = _make_config(export_images=True)
+        archiver = PageArchiver(str(tmp_path / "bs-img-listing"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.side_effect = HTTPError("500 boom")
+
+        result = archiver._get_image_meta()
+
+        assert result == {}
+        assert archiver.failed_asset_downloads  # sentinel recorded -> run becomes PARTIAL
+
+    def test_attachment_listing_failure_degrades_not_aborts(self, tmp_path):
+        config = _make_config(export_attachments=True)
+        archiver = PageArchiver(str(tmp_path / "bs-att-listing"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.side_effect = HTTPError("500 boom")
+
+        result = archiver._get_attachment_meta()
+
+        assert result == {}
+        assert archiver.failed_asset_downloads  # sentinel recorded -> run becomes PARTIAL

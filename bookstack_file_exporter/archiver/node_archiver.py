@@ -217,12 +217,25 @@ class NodeArchiver:
     def _get_image_meta(self) -> dict[int, list]:
         if not self.export_images:
             return {}
-        return self.asset_archiver.get_asset_nodes('images')
+        try:
+            return self.asset_archiver.get_asset_nodes('images')
+        except (HTTPError, RetryError):
+            # Degrade like every other network call here: a transient listing failure
+            # drops image assets for this run (-> PARTIAL) instead of aborting the whole
+            # backup. Empty map means nodes still export, just without image rewriting.
+            log.error("Failed to list image metadata - skipping image assets this run")
+            self.failed_asset_downloads.append("images (listing failed)")
+            return {}
 
     def _get_attachment_meta(self) -> dict[int, list]:
         if not self.export_attachments:
             return {}
-        return self.asset_archiver.get_asset_nodes('attachments')
+        try:
+            return self.asset_archiver.get_asset_nodes('attachments')
+        except (HTTPError, RetryError):
+            log.error("Failed to list attachment metadata - skipping attachments this run")
+            self.failed_asset_downloads.append("attachments (listing failed)")
+            return {}
 
     def _get_node_data(self, url: str) -> bytes:
         return archiver_util.get_byte_response(url=url, http_client=self.http_client)
