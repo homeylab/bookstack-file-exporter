@@ -350,3 +350,50 @@ def test_urllib3_suppression_not_triggered_when_verify_ssl_true(monkeypatch):
         "bookstack_file_exporter.common.util.urllib3.disable_warnings", disabled)
     HttpHelper({}, HttpConfig(verify_ssl=True))
     disabled.assert_not_called()
+
+
+def test_urllib3_suppression_not_triggered_when_ca_bundle_set(monkeypatch):
+    """truthy ca_bundle means verification is ON; must not disable warnings
+    (mirrors the S3 archiver's behavior for ca_bundle)."""
+    disabled = MagicMock()
+    monkeypatch.setattr(
+        "bookstack_file_exporter.common.util.urllib3.disable_warnings", disabled)
+    HttpHelper({}, HttpConfig(ca_bundle="/certs/ca.pem"))
+    disabled.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# ca_bundle resolution
+# ---------------------------------------------------------------------------
+
+def test_verify_resolves_to_ca_bundle_when_set():
+    helper = HttpHelper({}, HttpConfig(ca_bundle="/certs/ca.pem"))
+    assert helper._verify == "/certs/ca.pem"
+
+
+def test_verify_resolves_to_true_when_neither_set():
+    helper = HttpHelper({}, HttpConfig())
+    assert helper._verify is True
+
+
+@responses.activate
+def test_http_get_request_passes_ca_bundle_as_verify(monkeypatch):
+    """The resolved ca_bundle path must be threaded through to the outgoing
+    request's verify= kwarg (mirrors test_http_get_request_reuses_session's
+    monkeypatch-the-session-method style)."""
+    responses.add(responses.GET, "https://wiki.test.example/api/books",
+                  json={"data": []}, status=200)
+    captured = {}
+    real_get = requests.Session.get
+
+    def _spy(self, *args, **kwargs):
+        captured.update(kwargs)
+        return real_get(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "bookstack_file_exporter.common.util.requests.Session.get", _spy)
+
+    helper = HttpHelper({}, HttpConfig(ca_bundle="/certs/ca.pem"))
+    helper.http_get_request("https://wiki.test.example/api/books")
+
+    assert captured["verify"] == "/certs/ca.pem"

@@ -39,6 +39,7 @@ formats:
   - zip
 http_config:
   verify_ssl: true      # verify the BookStack TLS cert (default); false for self-signed
+  # ca_bundle: "/certs/ca.pem"   # verify against a private CA (excludes verify_ssl: false)
   timeout: 30
   backoff_factor: 2.5
   retry_codes: [413, 429, 500, 502, 503, 504]
@@ -107,6 +108,7 @@ More descriptions can be found for each section below:
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export metadata about each archived page, book, or chapter in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `true`). Verify the BookStack server's TLS certificate when using https — on by default so the API token is not exposed to interception. Set `false` for a self-signed/internal-CA BookStack, or point the `REQUESTS_CA_BUNDLE` env var at your CA bundle. **The default flipped from `false` to `true` in v3.0.0** — see [Potential Breaking Upgrades](../README.md#potential-breaking-upgrades). |
+| `http_config.ca_bundle` | `str` | `false` | Optional (default: `""`). Path to a CA bundle to verify the BookStack server's TLS certificate against a private/internal CA. Mutually exclusive with `verify_ssl: false`. Equivalent to setting the `REQUESTS_CA_BUNDLE` env var. |
 | `http_config.timeout` | `int` | `false` | Optional (default: `30`), set the timeout, in seconds, for http requests. |
 | `http_config.retry_count` | `int` | `false` | Optional (default: `5`), the number of http retries after initial failure. |
 | `http_config.retry_codes` | `List[int]` | `false` | Optional (default: `[413, 429, 500, 502, 503, 504]`), which http response status codes trigger a retry. |

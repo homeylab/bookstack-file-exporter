@@ -59,6 +59,9 @@ http_config:
   # verify TLS certificates (default true as of v3; set false only for
   # self-signed/internal-CA instances you cannot add a ca_bundle for)
   verify_ssl: true
+  # path to a CA bundle to verify against a private/internal CA instead of
+  # disabling verification; mutually exclusive with verify_ssl: false
+  # ca_bundle: "/certs/ca.pem"
   # set http timeout in seconds for requests
   timeout: 30
   # default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry

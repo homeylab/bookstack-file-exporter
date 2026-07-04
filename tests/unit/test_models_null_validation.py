@@ -20,7 +20,7 @@ _USER_BASE = {"host": "https://wiki.example", "formats": ["markdown"]}
 
 @pytest.mark.parametrize("field", [
     "verify_ssl", "timeout", "backoff_factor", "retry_codes", "retry_count",
-    "additional_headers",
+    "additional_headers", "ca_bundle",
 ])
 def test_http_config_rejects_explicit_null(field):
     with pytest.raises(ValidationError):
@@ -32,6 +32,12 @@ def test_http_config_omitted_keys_still_default():
     assert cfg.verify_ssl is True  # secure-by-default: verify the BookStack TLS cert
     assert cfg.timeout == 30
     assert cfg.retry_codes == [413, 429, 500, 502, 503, 504]
+    assert cfg.ca_bundle == ""
+
+
+def test_http_config_ca_bundle_with_verify_off_rejected():
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        HttpConfig(verify_ssl=False, ca_bundle="/certs/ca.pem")
 
 
 @pytest.mark.parametrize("field", ["token_id", "token_secret"])
