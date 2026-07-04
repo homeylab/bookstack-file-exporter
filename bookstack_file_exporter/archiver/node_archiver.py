@@ -295,8 +295,9 @@ class NodeArchiver:
 
         The only caller (_archive_level) always passes real maps (empty when
         modify_links is off), so no None-defaulting is needed. export_workers==1
-        runs serially (byte-identical to pre-parallel behavior); >1 fans node
-        fetches across a thread pool.
+        runs serially; >1 fans node fetches across a thread pool. Both paths
+        share the same error contract: a failing node is skipped and recorded
+        (-> PARTIAL); ArchiveWriteError aborts.
         """
         if (self.export_images or self.export_attachments) and not self.modify_links:
             log.info("Assets downloaded but links not rewritten (modify_links disabled)")
@@ -308,12 +309,24 @@ class NodeArchiver:
     def _export_nodes_serial(self, nodes: dict[int, Node], resource_type: str,
                              image_map: dict[int, list],
                              attachment_map: dict[int, list]):
-        """Today's exact serial path: one node at a time, stop at node boundary."""
+        """One node at a time. Same skip-and-continue contract as
+        _export_nodes_parallel: a node raising a non-HTTP error is logged and
+        recorded in the ledger (-> PARTIAL) instead of aborting the run --
+        EXCEPT ArchiveWriteError, which poisons the shared tar stream for
+        every later node, so it propagates and fails the run fast.
+        """
         for _, node in nodes.items():
             if self._stop_requested():
                 return
-            self._merge_failures(
-                self._export_node(node, resource_type, image_map, attachment_map))
+            try:
+                self._merge_failures(
+                    self._export_node(node, resource_type, image_map, attachment_map))
+            except archiver_util.ArchiveWriteError:
+                raise
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                log.error("Node export failed, skipping node: %s", exc)
+                self.failed_node_exports.append(
+                    f"{self._node_output_path(node)} (export error)")
 
     def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
                                image_map: dict[int, list],
@@ -380,7 +393,7 @@ class NodeArchiver:
                     # formats already exported before the crash are unknown here,
                     # so the entry carries no extension
                     self.failed_node_exports.append(
-                        f"{self._node_output_path(futures[future])} (worker error)")
+                        f"{self._node_output_path(futures[future])} (export error)")
                 # Honor stop only AFTER the just-completed result is recorded, so the
                 # node yielded this iteration (already in the tar) is merged, not dropped.
                 # This narrows the ledger gap; it does not fully close it - futures already

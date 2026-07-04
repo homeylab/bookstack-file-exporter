@@ -433,7 +433,57 @@ class TestFailureLedger:
         ):
             archiver.archive({50: good, 51: crasher})
 
-        assert archiver.failed_node_exports == [f"{crasher.file_path} (worker error)"]
+        assert archiver.failed_node_exports == [f"{crasher.file_path} (export error)"]
+
+    def test_serial_node_exception_records_node_and_continues(self, tmp_path, build_node):
+        """Serial (default workers=1) now shares the parallel contract: a non-HTTP
+        node crash is recorded in the ledger and later nodes still export."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-ser"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        crasher = build_node(id=51, name="doomed", slug="doomed", parent=parent_node)
+        good = build_node(id=50, name="fine", slug="fine", parent=parent_node)
+
+        def _byte_response(url, http_client):  # pylint: disable=unused-argument
+            if "/pages/51/" in url:
+                raise RuntimeError("boom")  # non-HTTP: not swallowed per-format
+            return b"page bytes"
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            side_effect=_byte_response,
+        ), patch("bookstack_file_exporter.archiver.util.TarStream.write") as mock_write:
+            # crasher FIRST: the run must continue past it to the good node
+            archiver.archive({51: crasher, 50: good})
+
+        assert archiver.failed_node_exports == [f"{crasher.file_path} (export error)"]
+        assert mock_write.call_count == 1  # good page still written
+
+    def test_serial_archive_write_error_still_aborts(self, tmp_path, build_node):
+        """ArchiveWriteError means the shared tar stream is poisoned; serial must
+        propagate it (same as parallel), not swallow it into the ledger."""
+        config = _make_config(formats=["markdown"], export_images=False,
+                              export_attachments=False, export_meta=False)
+        archiver = PageArchiver(str(tmp_path / "bookstack-ser2"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+
+        parent_node = build_node(id=1, name="a-book", slug="a-book")
+        page = build_node(id=50, name="fine", slug="fine", parent=parent_node)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"page bytes",
+        ), patch(
+            "bookstack_file_exporter.archiver.util.TarStream.write",
+            side_effect=ArchiveWriteError("stream poisoned"),
+        ):
+            with pytest.raises(ArchiveWriteError):
+                archiver.archive({50: page})
 
     def test_content_written_false_when_all_formats_fail_meta_only(self, tmp_path, build_node):
         """Meta sidecars land in the tar even when every format fetch fails; the

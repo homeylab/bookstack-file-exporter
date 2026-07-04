@@ -172,5 +172,7 @@ For non-default levels the archive filename is suffixed with the level (e.g. `bk
 
 **Rate limiting:** more workers means more concurrent API requests. BookStack rate-limits the API (`API_REQUESTS_PER_MIN`, default `180`/min per user → HTTP `429`). If you raise `export_workers` and start seeing `429`s, raise `API_REQUESTS_PER_MIN` in BookStack's `.env`.
 
+**Node failures:** regardless of `export_workers`, a node that fails to export (for example an unexpected API response) is skipped and recorded — the run completes and reports `PARTIAL` (exit code `3`) instead of aborting. The exception is an archive-write failure, which poisons the archive stream and aborts the run.
+
 Values above `16` emit a startup warning — a heads-up for users, not a hard cap.
 
