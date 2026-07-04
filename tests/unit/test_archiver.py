@@ -572,9 +572,12 @@ def test_resolve_status_all_fail_local_kept_is_partial(archiver_instance, mock_c
 
 
 def test_resolve_status_all_fail_no_local_raises(archiver_instance, mock_config):
-    mock_config.user_inputs.keep_last = -1   # local deleted + all uploads fail = total loss
-    with pytest.raises(AggregateUploadError, match="a, b"):
+    mock_config.user_inputs.keep_last = -1   # no local copy retained + all uploads fail = total loss
+    with pytest.raises(AggregateUploadError, match="a, b") as excinfo:
         archiver_instance.resolve_remote_status([_fail("a"), _fail("b")])
+    msg = str(excinfo.value)
+    assert "all upload targets failed" in msg
+    assert "only the local copy remains" in msg
 
 
 def test_resolve_status_empty_is_success(archiver_instance):
