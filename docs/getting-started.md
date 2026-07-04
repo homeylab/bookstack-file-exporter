@@ -222,7 +222,7 @@ health_host: "0.0.0.0"     # optional bind address (default 0.0.0.0)
     "started_at": "2026-06-21T02:00:00Z",
     "finished_at": "2026-06-21T02:03:11Z",
     "duration_seconds": 191,
-    "archive_file": "bookstack_export_2026-06-21.tgz",
+    "archive_file": "bookstack_export_2026-06-21_02-00-00.tgz",
     "error": null
   },
   "next_run": "2026-06-22T02:00:00Z",

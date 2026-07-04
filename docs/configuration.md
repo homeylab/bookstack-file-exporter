@@ -38,7 +38,7 @@ formats:
   - plaintext
   - zip
 http_config:
-  verify_ssl: false
+  verify_ssl: true      # verify the BookStack TLS cert (default); false for self-signed
   timeout: 30
   backoff_factor: 2.5
   retry_codes: [413, 429, 500, 502, 503, 504]
@@ -52,6 +52,9 @@ object_storage:
     bucket: "mybucket"
     prefix: "bookstack/file_backups"
     secure: false
+    # https targets only (ignored when secure: false):
+    # verify_ssl: true              # verify the target's TLS cert (default true)
+    # ca_bundle: "/certs/ca.pem"    # verify against a private CA (excludes verify_ssl: false)
     keep_last: 5
     access_key_env: "MINIO_ACCESS_KEY"
     secret_key_env: "MINIO_SECRET_KEY"
@@ -103,7 +106,7 @@ More descriptions can be found for each section below:
 | `assets.modify_links` | `bool` | `false` | Optional (default: `false`). Rewrites image and attachment URLs in markdown AND html exports to local relative paths. Requires `assets.export_images` and/or `assets.export_attachments` to be `true`. Controls link *rewriting* only — assets are downloaded whenever their export flag is set, regardless of `modify_links`. Only applies to `markdown` and `html` formats; pdf, plaintext, and zip are not eligible. The legacy `modify_markdown` key was removed in v3.0.0 — rename it to `modify_links`. See [Modify Links](backup-behavior.md#modify-links) for more information. |
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export metadata about each archived page, book, or chapter in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
-| `http_config.verify_ssl` | `bool` | `false` | Optional (default: `false`), whether or not to verify ssl certificates if using https. |
+| `http_config.verify_ssl` | `bool` | `false` | Optional (default: `true`). Verify the BookStack server's TLS certificate when using https — on by default so the API token is not exposed to interception. Set `false` for a self-signed/internal-CA BookStack, or point the `REQUESTS_CA_BUNDLE` env var at your CA bundle. **The default flipped from `false` to `true` in v3.0.0** — see [Potential Breaking Upgrades](../README.md#potential-breaking-upgrades). |
 | `http_config.timeout` | `int` | `false` | Optional (default: `30`), set the timeout, in seconds, for http requests. |
 | `http_config.retry_count` | `int` | `false` | Optional (default: `5`), the number of http retries after initial failure. |
 | `http_config.retry_codes` | `List[int]` | `false` | Optional (default: `[413, 429, 500, 502, 503, 504]`), which http response status codes trigger a retry. |

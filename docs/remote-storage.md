@@ -5,8 +5,12 @@
 - [Object Storage Upload](#object-storage-upload)
   - [Entry fields](#entry-fields)
   - [Credential resolution (per entry, fail-closed)](#credential-resolution-per-entry-fail-closed)
+- [Bucket validation](#bucket-validation)
 - [Multi-target upload behavior](#multi-target-upload-behavior)
+  - [Self-signed or private-CA HTTPS targets](#self-signed-or-private-ca-https-targets)
+  - [Interrupted uploads and orphaned multipart parts](#interrupted-uploads-and-orphaned-multipart-parts)
 - [Migrating from v2](#migrating-from-v2)
+  - [Other v3 key changes (outside object_storage)](#other-v3-key-changes-outside-object_storage)
 
 ## Object Storage Upload
 _Currently, S3-compatible object storage providers are supported. Feel free to create a github issue to request something else_.

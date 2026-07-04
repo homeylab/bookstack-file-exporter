@@ -30,11 +30,11 @@ Error message: 401 Client Error: Unauthorized for url: https://test.bookstack/ap
 Bookstack File Exporter completed successfully.
 
 Completed At: 2025-09-06 01:05:27 UTC
-Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
+Archive: bkps/bookstack_export_2025-09-06_01-05-27.tgz (removed locally after upload)
 
 Uploaded to:
-- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_010527.tgz
-- aws-s3: my-bucket-s3/bookstack/bookstack_export_2025-09-06_010527.tgz
+- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_01-05-27.tgz
+- aws-s3: my-bucket-s3/bookstack/bookstack_export_2025-09-06_01-05-27.tgz
 
 Pruned:
 - local: 2 archive(s)
@@ -57,10 +57,10 @@ No pages content was found to export.
 Bookstack File Exporter completed with errors.
 
 Completed At: 2025-09-06 01:05:27 UTC
-Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
+Archive: bkps/bookstack_export_2025-09-06_01-05-27.tgz (removed locally after upload)
 
 Uploaded to:
-- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_010527.tgz
+- minio-main: my-bucket/bookstack/bookstack_export_2025-09-06_01-05-27.tgz
 
 Failed:
 - content: 2 page export(s) failed
