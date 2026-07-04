@@ -756,4 +756,20 @@ class TestRunSummaryLog:
             except RuntimeError:
                 pass
 
-        assert any("Run summary [FAILED]: boom" in r.message for r in caplog.records)
+        assert any("Run summary [FAILED]: error=boom" in r.message for r in caplog.records)
+
+    def test_run_exception_summary_flattens_multiline_error(self, caplog):
+        """A multi-line str(exception) is collapsed to a single grep-able log line,
+        matching format_run_summary's single-line guarantee on the other paths."""
+        with patch.object(run, "exporter",
+                          side_effect=RuntimeError("line one\nline two")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            try:
+                run.run(self._cfg())
+            except RuntimeError:
+                pass
+
+        failed = [r for r in caplog.records if "Run summary [FAILED]" in r.message]
+        assert failed
+        assert "\n" not in failed[0].message
+        assert "error=line one line two" in failed[0].message

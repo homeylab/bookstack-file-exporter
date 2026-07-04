@@ -207,7 +207,11 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
                 log.error("Failed to send notification: %s", str(notif_err))
         return result
     except Exception as run_err: # general catch all for notifications
-        log.error("Run summary [FAILED]: %s", run_err)
+        # Flatten newlines so a multi-line str(exception) stays one grep-able line,
+        # matching format_run_summary's single-line guarantee; error= keeps the
+        # payload field-shaped like the SUCCESS/PARTIAL/EMPTY summary lines.
+        log.error("Run summary [FAILED]: error=%s",
+                  str(run_err).replace("\r", " ").replace("\n", " "))
         if not config.user_inputs.notifications:
             raise run_err
         try:
