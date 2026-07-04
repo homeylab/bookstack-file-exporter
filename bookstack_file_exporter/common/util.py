@@ -87,9 +87,9 @@ class HttpHelper:
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
-        # verify stays per-call: an explicit verify=False must keep suppressing
-        # REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE overrides, which session-level verify
-        # cannot (requests merges call-level None with the env bundle first).
+        # verify is passed per-call because requests gives env vars precedence
+        # over session.verify: with no call-level value, REQUESTS_CA_BUNDLE/
+        # CURL_CA_BUNDLE would override an explicit verify_ssl: false config.
         response = self._session.get(url, headers=self._headers,
                                      verify=self.verify_ssl, timeout=self.http_timeout)
         try:
