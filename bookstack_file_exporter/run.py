@@ -363,6 +363,8 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
                             removed=removed, cleanup_error=cleanup_error,
+                            prune_skipped=(not archive.prune_allowed
+                                           and archive.retention_configured),
                             failed_nodes=archive.failed_nodes,
                             failed_assets=archive.failed_assets,
                             export_level=export_level)
