@@ -343,7 +343,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
             status = ExportStatus.PARTIAL
             cleanup_error = str(err)
 
-        log.info("Created file archive: %s.tgz", archive.archive_dir)
+        log.info("Created file archive: %s", archive.archive_file)
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
                             removed=removed, cleanup_error=cleanup_error,

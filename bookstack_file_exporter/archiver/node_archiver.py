@@ -493,8 +493,22 @@ class NodeArchiver:
         missing .incomplete: run.py only calls create_archive() after its
         has_exported_content / content_written gates proved a write happened —
         do not call this on an empty run.
+
+        If the run ledger recorded any content loss (failed node exports or
+        failed asset downloads), the published name gets a `_partial` marker
+        inserted before the extension, e.g. `bookstack-<ts>_partial.tgz`. This
+        only reflects content loss known at this point — upload-stage failures
+        happen after this rename and can't be folded into the name. The marker
+        goes after the timestamp (not as a prefix) so lexical and chronological
+        order stay identical for local retention, and so the remote managed-object
+        prefix filter (a startswith match on the timestamped base name) still
+        matches partial archives.
         """
         self._tar_stream.finalize()
+        if self.failed_node_exports or self.failed_asset_downloads:
+            tgz_ext = _FILE_EXTENSION_MAP['tgz']
+            self.archive_file = (
+                f"{self.archive_file.removesuffix(tgz_ext)}_partial{tgz_ext}")
         os.rename(self.incomplete_file, self.archive_file)
 
     def abort_archive(self):
