@@ -366,6 +366,16 @@ class TestMdCode:
         assert "\n" not in notifiers._md_code("line1\nline2")
         assert notifiers._md_code("line1\nline2") == "`line1 line2`"
 
+    def test_md_code_neutralizes_markdown_link_and_autolink_injection(self):
+        for payload in ("[click me](javascript:alert(1))",
+                        "![img](https://evil.example/x.png)",
+                        "<https://evil.example>"):
+            rendered = markdown(
+                notifiers._md_code(payload),
+                extensions=["markdown.extensions.nl2br", "markdown.extensions.tables"])
+            assert "<a " not in rendered.lower()
+            assert "<img" not in rendered.lower()
+
 
 class TestMarkdownBody:
     def _partial_result(self):
