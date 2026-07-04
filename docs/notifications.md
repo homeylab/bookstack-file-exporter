@@ -19,7 +19,7 @@ The title for notifications is configurable but if not specified, a default will
 {BODY}:
 Bookstack File Exporter encountered an unrecoverable error.
 
-Occurred At: 2025-09-06 01:02:47
+Occurred At: 2025-09-06 01:02:47 UTC
 
 Error message: 401 Client Error: Unauthorized for url: https://test.bookstack/api/shelve
 
@@ -29,7 +29,7 @@ Error message: 401 Client Error: Unauthorized for url: https://test.bookstack/ap
 {BODY}:
 Bookstack File Exporter completed successfully.
 
-Completed At: 2025-09-06 01:05:27
+Completed At: 2025-09-06 01:05:27 UTC
 Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
 
 Uploaded to:
@@ -46,7 +46,7 @@ Pruned:
 {BODY}:
 Bookstack File Exporter completed - nothing to archive.
 
-Completed At: 2025-09-06 01:05:27
+Completed At: 2025-09-06 01:05:27 UTC
 
 No pages content was found to export.
 
@@ -56,7 +56,7 @@ No pages content was found to export.
 {BODY}:
 Bookstack File Exporter completed with errors.
 
-Completed At: 2025-09-06 01:05:27
+Completed At: 2025-09-06 01:05:27 UTC
 Archive: bkps/bookstack_export_2025-09-06_010527.tgz (removed locally after upload)
 
 Uploaded to:
