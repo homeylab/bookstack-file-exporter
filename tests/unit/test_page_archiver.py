@@ -1,4 +1,6 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access,too-few-public-methods
+# This module now exceeds pylint's max-module-lines; splitting it into focused
+# per-concern test modules is deferred to the post-v3 backlog. Suppress until then.
+# pylint: disable=missing-class-docstring,missing-function-docstring,redefined-outer-name,unused-argument,protected-access,too-few-public-methods,too-many-lines
 """Happy-path unit tests for PageArchiver."""
 import logging
 import os
