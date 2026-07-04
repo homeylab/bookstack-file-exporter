@@ -13,7 +13,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     The bound RunStatus is injected as a class attribute on a per-server
     subclass (see start_health_server)."""
-    status: RunStatus = None  # set on the per-server subclass
+    status: RunStatus | None = None  # set on the per-server subclass
 
     # do_GET name is mandated by BaseHTTPRequestHandler
     def do_GET(self):  # pylint: disable=invalid-name

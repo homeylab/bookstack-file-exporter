@@ -36,7 +36,7 @@ def entrypoint(args: argparse.Namespace) -> int:
         return 1
 
     inputs = config.user_inputs
-    if getattr(args, "run_once", False) or (not inputs.run_interval and not inputs.run_schedule):
+    if args.run_once or (not inputs.run_interval and not inputs.run_schedule):
         return _run_once(config)
     if inputs.run_schedule:
         return _run_scheduled(
@@ -163,6 +163,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
 
     if server:
         server.shutdown()
+        server.server_close()
     log.info("Shutdown complete")
     return 0
 
@@ -234,8 +235,9 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
     ## Select nodes by export level
     export_level = config.user_inputs.export_level
+    nodes: dict[int, Node]
     if export_level == "books":
-        nodes: dict[int, Node] = book_nodes
+        nodes = book_nodes
     elif export_level == "chapters":
         nodes = export_helper.get_chapter_nodes(book_nodes)
     else:
