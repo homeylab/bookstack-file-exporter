@@ -460,6 +460,18 @@ def test_scheduled_loop_uses_injected_wait_provider():
     mock_wait.assert_called_once_with(5)
 
 
+def test_run_scheduled_keyboardinterrupt_backstop():
+    """A SIGINT landing before/while _install_signal_handlers runs must still
+    return the documented 128+signum exit code, not propagate a traceback --
+    the same backstop contract _run_once already provides."""
+    cfg = _config(run_interval=5)
+
+    with patch.object(run, "_install_signal_handlers", side_effect=KeyboardInterrupt):
+        result = run._run_scheduled(cfg, lambda: 0.0)
+
+    assert result == 128 + signal.SIGINT
+
+
 # ---------------------------------------------------------------------------
 # Health server wiring in _run_scheduled (F4)
 # ---------------------------------------------------------------------------
