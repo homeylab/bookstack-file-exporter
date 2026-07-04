@@ -9,15 +9,15 @@ from bookstack_file_exporter.archiver.util import ArchiveWriteError
 
 
 # ---------------------------------------------------------------------------
-# 4. finalize_archive closes the stream then renames .tgz.partial -> .tgz
+# 4. finalize_archive closes the stream then renames .tgz.incomplete -> .tgz
 # ---------------------------------------------------------------------------
 class TestFinalizeArchive:
 
-    def test_finalize_renames_partial_to_final(self, page_archiver):
+    def test_finalize_renames_incomplete_to_final(self, page_archiver):
         page_archiver.write_data("notes/page.md", b"# hi")
         page_archiver.finalize_archive()
         assert os.path.exists(page_archiver.archive_file)
-        assert not os.path.exists(page_archiver.partial_file)
+        assert not os.path.exists(page_archiver.incomplete_file)
         with tarfile.open(page_archiver.archive_file, "r:gz") as tar:
             assert tar.getnames() == ["notes/page.md"]
 

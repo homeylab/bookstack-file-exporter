@@ -82,9 +82,9 @@ def _run_once(config: ConfigNode) -> int:
     Cancellation is cooperative via a shared threading.Event -- the same
     mechanism scheduled mode uses. The export polls it at checkpoints (fetch,
     node, per-format, per-asset boundaries) and bails; the exporter's `finally`
-    still runs discard_partial, which matters for ephemeral one-shot containers
+    still runs discard_incomplete, which matters for ephemeral one-shot containers
     (`docker run --rm`, a k8s Job) where no later run exists to sweep a
-    stranded `.tgz.partial` off the output volume. The first signal restores
+    stranded `.tgz.incomplete` off the output volume. The first signal restores
     the default disposition for both signals so a second signal force-kills
     via the kernel. Exit code is 128+signum (SIGINT->130, SIGTERM->143).
 
@@ -264,7 +264,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
     # create export directory if not exists
     archive.create_export_dir()
 
-    # Remove orphaned .tar/.tgz.partial from prior runs (SIGKILL backstop) before
+    # Remove orphaned .tar/.tgz.incomplete from prior runs (SIGKILL backstop) before
     # this cycle writes anything.
     archive.sweep_orphans()
 
@@ -297,10 +297,10 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         # get all content for each node
         archive.get_bookstack_exports(nodes)
 
-        # Graceful shutdown requested mid-cycle: drop the partial archive and skip
+        # Graceful shutdown requested mid-cycle: drop the incomplete archive and skip
         # finalize/upload/cleanup so a cancelled cycle never produces an archive.
         if stop is not None and stop.is_set():
-            log.info("Shutdown requested mid-cycle; discarding partial export")
+            log.info("Shutdown requested mid-cycle; discarding incomplete export")
             return None
 
         # Gate on DOCUMENT content, not the archive stream: assets/meta alone are not a
@@ -351,8 +351,8 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
                             failed_assets=archive.failed_assets,
                             export_level=export_level)
     finally:
-        # Eager cleanup of THIS cycle's partial on every terminal path (stop,
-        # exception). No-op on success: the stream is already closed and the
-        # .partial renamed away. The run-start sweep is the backstop for
+        # Eager cleanup of THIS cycle's incomplete archive on every terminal path
+        # (stop, exception). No-op on success: the stream is already closed and
+        # the .incomplete renamed away. The run-start sweep is the backstop for
         # SIGKILL, which kills the process before finally runs.
-        archive.discard_partial()
+        archive.discard_incomplete()

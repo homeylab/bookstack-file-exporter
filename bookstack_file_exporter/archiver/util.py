@@ -22,14 +22,14 @@ class ArchiveWriteError(Exception):
     Raised on the first failed member write (which poisons the stream), on any
     later write against a poisoned stream, and by finalize() when the stream is
     poisoned or the closing flush fails. Callers must never publish the
-    .partial once this has been raised.
+    .incomplete once this has been raised.
     """
 
 class TarStream:
     """Single-owner streaming .tar.gz writer for one export run.
 
     Opens the target lazily on the first write ("w:gz" straight onto the
-    .tgz.partial path), so an empty run never creates a file. All writes
+    .tgz.incomplete path), so an empty run never creates a file. All writes
     serialize under an internal lock — single-writer safety is structural,
     not a convention callers must remember. Compression runs inside the
     lock: concurrent WRITERS serialize on compress time, but fetching
@@ -72,11 +72,11 @@ class TarStream:
                     f"archive write failed for {file_path}: {err}") from err
 
     def finalize(self):
-        """Close the stream so the .partial is complete and publishable.
+        """Close the stream so the .incomplete is complete and publishable.
 
         Close-then-rename ordering is load-bearing: close() flushes the gzip
         trailer, and a failure here (or a poisoned stream) raises so the caller
-        discards the .partial instead of renaming a truncated archive into place.
+        discards the .incomplete instead of renaming a truncated archive into place.
         No-op if nothing was ever written.
         """
         with self._lock:

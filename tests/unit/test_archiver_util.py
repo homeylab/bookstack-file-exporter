@@ -126,43 +126,43 @@ class TestTarStreamWrite:
     """TarStream streams members into a gzip'd tar at the given path."""
 
     def test_lazy_open_no_file_before_first_write(self, tmp_path):
-        partial = str(tmp_path / "bkps.tgz.partial")
-        TarStream(partial)
-        assert not (tmp_path / "bkps.tgz.partial").exists()
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        TarStream(incomplete)
+        assert not (tmp_path / "bkps.tgz.incomplete").exists()
 
-    def test_first_write_creates_partial(self, tmp_path):
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+    def test_first_write_creates_incomplete(self, tmp_path):
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         stream.write("hello.txt", b"hello world")
-        assert (tmp_path / "bkps.tgz.partial").exists()
+        assert (tmp_path / "bkps.tgz.incomplete").exists()
         stream.finalize()
 
     def test_members_readable_after_finalize(self, tmp_path):
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         stream.write("file1.txt", b"data1")
         stream.write("dir/file2.txt", b"data2")
         stream.finalize()
-        with tarfile.open(partial, "r:gz") as tar:
+        with tarfile.open(incomplete, "r:gz") as tar:
             names = tar.getnames()
             assert names == ["file1.txt", "dir/file2.txt"]
             member = tar.extractfile("dir/file2.txt")
             assert member.read() == b"data2"
 
     def test_member_size_matches_payload(self, tmp_path):
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         payload = b"x" * 4096
         stream.write("big.bin", payload)
         stream.finalize()
-        with tarfile.open(partial, "r:gz") as tar:
+        with tarfile.open(incomplete, "r:gz") as tar:
             info = tar.getmember("big.bin")
             assert info.size == len(payload)
 
     def test_concurrent_writes_all_present(self, tmp_path):
         """Writes from a pool serialize under the internal lock; nothing is lost."""
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         n = 32
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = [
@@ -172,7 +172,7 @@ class TestTarStreamWrite:
             for future in futures:
                 future.result()
         stream.finalize()
-        with tarfile.open(partial, "r:gz") as tar:
+        with tarfile.open(incomplete, "r:gz") as tar:
             assert sorted(tar.getnames()) == sorted(f"file{i}.txt" for i in range(n))
 
 
@@ -180,8 +180,8 @@ class TestTarStreamPoison:
     """First write failure poisons the stream: later writes and finalize fail fast."""
 
     def _poisoned_stream(self, tmp_path, monkeypatch, request) -> TarStream:
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         stream.write("ok.txt", b"fine")
         # The poisoned stream is returned still-open; close the gzip handle at teardown
         # so its finalizer doesn't raise "lost gzip_file" as an unraisable warning that
@@ -222,7 +222,7 @@ class TestTarStreamPoison:
 
     def test_open_failure_poisons(self, tmp_path):
         # Unwritable target: first write fails, second fails fast as poisoned.
-        stream = TarStream(str(tmp_path / "no_such_dir" / "bkps.tgz.partial"))
+        stream = TarStream(str(tmp_path / "no_such_dir" / "bkps.tgz.incomplete"))
         with pytest.raises(ArchiveWriteError):
             stream.write("a.txt", b"a")
         with pytest.raises(ArchiveWriteError):
@@ -233,19 +233,19 @@ class TestTarStreamLifecycle:
     """finalize/abort close semantics: idempotent, safe on every terminal path."""
 
     def test_finalize_without_writes_is_noop(self, tmp_path):
-        stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
+        stream = TarStream(str(tmp_path / "bkps.tgz.incomplete"))
         stream.finalize()  # nothing written, nothing to close, no error
-        assert not (tmp_path / "bkps.tgz.partial").exists()
+        assert not (tmp_path / "bkps.tgz.incomplete").exists()
 
     def test_abort_never_raises_and_is_idempotent(self, tmp_path):
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         stream.write("a.txt", b"a")
         stream.abort()
         stream.abort()  # double-abort: no error
 
     def test_abort_swallows_close_errors(self, tmp_path, monkeypatch, request):
-        stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
+        stream = TarStream(str(tmp_path / "bkps.tgz.incomplete"))
         stream.write("a.txt", b"a")
 
         def boom():
@@ -260,7 +260,7 @@ class TestTarStreamLifecycle:
 
     def test_finalize_close_failure_raises_archive_write_error(self, tmp_path, monkeypatch,
                                                                  request):
-        stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
+        stream = TarStream(str(tmp_path / "bkps.tgz.incomplete"))
         stream.write("a.txt", b"a")
 
         def boom():
@@ -274,17 +274,17 @@ class TestTarStreamLifecycle:
 
     def test_abort_after_finalize_is_noop(self, tmp_path):
         """Success path: finalize() then the finally-block discard's abort()."""
-        partial = str(tmp_path / "bkps.tgz.partial")
-        stream = TarStream(partial)
+        incomplete = str(tmp_path / "bkps.tgz.incomplete")
+        stream = TarStream(incomplete)
         stream.write("a.txt", b"a")
         stream.finalize()
         stream.abort()
         # finalize's close already flushed a valid archive; abort didn't break it
-        with tarfile.open(partial, "r:gz") as tar:
+        with tarfile.open(incomplete, "r:gz") as tar:
             assert tar.getnames() == ["a.txt"]
 
     def test_write_after_abort_raises(self, tmp_path):
-        stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
+        stream = TarStream(str(tmp_path / "bkps.tgz.incomplete"))
         stream.write("a.txt", b"a")
         stream.abort()
         with pytest.raises(ArchiveWriteError):

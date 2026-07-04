@@ -116,25 +116,25 @@ class Archiver:
         """
         self._archiver.set_stop(stop)
 
-    def discard_partial(self):
-        """Abort the archive stream and remove this run's .tgz.partial; never the final .tgz.
+    def discard_incomplete(self):
+        """Abort the archive stream and remove this run's .tgz.incomplete; never the final .tgz.
 
         Abort-then-unlink: the stream handle is closed (best-effort) before the
         file is removed, and abort poisons the stream so no straggler write can
-        recreate the .partial after cleanup. Idempotent and missing-file
+        recreate the .incomplete after cleanup. Idempotent and missing-file
         tolerant: on the success path finalize() already detached the handle and
-        renamed the .partial away, so this is a no-op.
+        renamed the .incomplete away, so this is a no-op.
         """
         self._archiver.abort_archive()
-        partial = self._archiver.partial_file
-        if os.path.exists(partial):
-            log.info("Cleaning up partial archive: %s", partial)
-            util.remove_file(partial)
+        incomplete = self._archiver.incomplete_file
+        if os.path.exists(incomplete):
+            log.info("Cleaning up incomplete archive: %s", incomplete)
+            util.remove_file(incomplete)
 
     def sweep_orphans(self):
-        """Delete prior-run .tar / .tgz.partial orphans (SIGKILL backstop).
+        """Delete prior-run .tar / .tgz.incomplete orphans (SIGKILL backstop).
 
-        Run at the start of a cycle, BEFORE this run writes any tar or .partial.
+        Run at the start of a cycle, BEFORE this run writes any tar or .incomplete.
         Safety comes from that ordering, not the glob: scan_archives globs
         {base}_*{ext}, which would also match this run's own filenames — but none
         exist on disk yet, so only earlier runs' leftovers are removed. Moving this
@@ -142,14 +142,14 @@ class Archiver:
 
         Globs on the unscoped base_dir_name (e.g. `bkps`), not the level-scoped
         base_dir (`bkps_books`): intermediates are always junk regardless of export
-        level, so `bkps_*` clears partials stranded by prior runs at any level. The
+        level, so `bkps_*` clears incompletes stranded by prior runs at any level. The
         `bkps_` prefix still anchors the scan so unrelated files are never touched.
         (keep_last retention deliberately stays level-scoped — those are deliverables.)
         Also retro-cleans .tar orphans stranded by pre-v3 versions (which staged
         an intermediate .tar before gzipping) and by past failed cycles.
         """
         tgz_ext = self._archiver.file_extension_map['tgz']
-        for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.partial"):
+        for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.incomplete"):
             for path in util.scan_archives(self.config.base_dir_name, ext):
                 util.remove_file(path)
 
@@ -160,14 +160,14 @@ class Archiver:
 
     @property
     def has_exported_content(self) -> bool:
-        """True if the streaming .partial exists, i.e. at least one file was written.
+        """True if the streaming .incomplete exists, i.e. at least one file was written.
 
         Checked against the archive on disk (ground truth) rather than a flag
         threaded up from the archivers, so it cannot drift from what was actually
         archived. The stream opens lazily on the first write, so mere Archiver
         construction never creates the file.
         """
-        return os.path.exists(self._archiver.partial_file)
+        return os.path.exists(self._archiver.incomplete_file)
 
     def create_archive(self):
         """finalize the streaming archive: close and atomically rename to .tgz"""

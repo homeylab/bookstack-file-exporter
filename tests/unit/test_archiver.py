@@ -52,88 +52,88 @@ class TestSetStop:
         archiver_instance._archiver.set_stop.assert_called_once_with(ev)
 
 
-class TestDiscardPartial:
-    """discard_partial aborts the stream and removes only this run's .partial."""
+class TestDiscardIncomplete:
+    """discard_incomplete aborts the stream and removes only this run's .incomplete."""
 
-    def test_removes_partial_and_leaves_final_tgz(self, archiver_instance, tmp_path):
-        partial = tmp_path / "bkps_2026.tgz.partial"
+    def test_removes_incomplete_and_leaves_final_tgz(self, archiver_instance, tmp_path):
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
         final = tmp_path / "bkps_2026.tgz"
-        partial.write_bytes(b"partial")
+        incomplete.write_bytes(b"incomplete")
         final.write_bytes(b"final")
-        archiver_instance._archiver.partial_file = str(partial)
-        archiver_instance.discard_partial()
-        assert not partial.exists()
+        archiver_instance._archiver.incomplete_file = str(incomplete)
+        archiver_instance.discard_incomplete()
+        assert not incomplete.exists()
         assert final.exists()
 
     def test_noop_when_nothing_on_disk(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
-        archiver_instance.discard_partial()  # no raise
+        archiver_instance._archiver.incomplete_file = str(tmp_path / "absent.tgz.incomplete")
+        archiver_instance.discard_incomplete()  # no raise
 
     def test_aborts_stream_before_unlink(self, archiver_instance, tmp_path):
         # The archiver_instance fixture injects a MagicMock node archiver,
         # so assert the ORDERING contract on the mock:
-        # abort_archive must run while the .partial is still on disk.
-        partial = tmp_path / "bkps_2026.tgz.partial"
-        partial.write_bytes(b"stream")
-        archiver_instance._archiver.partial_file = str(partial)
+        # abort_archive must run while the .incomplete is still on disk.
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
+        incomplete.write_bytes(b"stream")
+        archiver_instance._archiver.incomplete_file = str(incomplete)
         order = []
         archiver_instance._archiver.abort_archive.side_effect = (
-            lambda: order.append(("abort", partial.exists())))
-        archiver_instance.discard_partial()
+            lambda: order.append(("abort", incomplete.exists())))
+        archiver_instance.discard_incomplete()
         assert order == [("abort", True)]
-        assert not partial.exists()
+        assert not incomplete.exists()
 
 
 class TestSweepOrphans:
-    def test_removes_prior_tar_and_partial_orphans(self, archiver_instance, tmp_path):
+    def test_removes_prior_tar_and_incomplete_orphans(self, archiver_instance, tmp_path):
         archiver_instance.config.base_dir_name = str(tmp_path / "bkps")
         archiver_instance._archiver.file_extension_map = _FILE_EXTENSION_MAP
         orphan_tar = tmp_path / "bkps_2026-01-01.tar"
-        orphan_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
+        orphan_incomplete = tmp_path / "bkps_2026-01-01.tgz.incomplete"
         keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
-        for f in (orphan_tar, orphan_partial, keep_tgz):
+        for f in (orphan_tar, orphan_incomplete, keep_tgz):
             f.write_bytes(b"x")
 
         archiver_instance.sweep_orphans()
 
         assert not orphan_tar.exists()
-        assert not orphan_partial.exists()
+        assert not orphan_incomplete.exists()
         assert keep_tgz.exists()  # finished archives are not swept
 
     def test_sweeps_orphans_across_export_levels(self, mock_config, mock_http_client,
                                                  tmp_path):
-        """Orphan intermediates are always junk, so the sweep clears partials left by
+        """Orphan intermediates are always junk, so the sweep clears incompletes left by
         prior runs at OTHER export levels, not just its own level's base."""
         mock_config.base_dir_name = str(tmp_path / "bkps")
         mock_config.user_inputs.export_level = "books"
         archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
         archiver._archiver.file_extension_map = _FILE_EXTENSION_MAP
-        pages_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
-        books_partial = tmp_path / "bkps_books_2026-01-01.tgz.partial"
-        chapters_partial = tmp_path / "bkps_chapters_2026-01-01.tgz.partial"
+        pages_incomplete = tmp_path / "bkps_2026-01-01.tgz.incomplete"
+        books_incomplete = tmp_path / "bkps_books_2026-01-01.tgz.incomplete"
+        chapters_incomplete = tmp_path / "bkps_chapters_2026-01-01.tgz.incomplete"
         keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
-        for f in (pages_partial, books_partial, chapters_partial, keep_tgz):
+        for f in (pages_incomplete, books_incomplete, chapters_incomplete, keep_tgz):
             f.write_bytes(b"x")
 
         archiver.sweep_orphans()
 
-        assert not pages_partial.exists()
-        assert not books_partial.exists()
-        assert not chapters_partial.exists()
+        assert not pages_incomplete.exists()
+        assert not books_incomplete.exists()
+        assert not chapters_incomplete.exists()
         assert keep_tgz.exists()  # finished archives are never swept
 
 
 class TestHasExportedContent:
-    """has_exported_content reflects whether the streaming .partial exists on disk."""
+    """has_exported_content reflects whether the streaming .incomplete exists on disk."""
 
-    def test_false_when_no_partial(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
+    def test_false_when_no_incomplete(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.incomplete_file = str(tmp_path / "absent.tgz.incomplete")
         assert archiver_instance.has_exported_content is False
 
-    def test_true_when_partial_exists(self, archiver_instance, tmp_path):
-        partial = tmp_path / "bkps_2026.tgz.partial"
-        partial.write_bytes(b"stream")
-        archiver_instance._archiver.partial_file = str(partial)
+    def test_true_when_incomplete_exists(self, archiver_instance, tmp_path):
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
+        incomplete.write_bytes(b"stream")
+        archiver_instance._archiver.incomplete_file = str(incomplete)
         assert archiver_instance.has_exported_content is True
 
 

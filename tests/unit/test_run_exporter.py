@@ -461,7 +461,7 @@ class TestExporterReturnValue:
 
 
 # ---------------------------------------------------------------------------
-# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_partial)
+# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_incomplete)
 # ---------------------------------------------------------------------------
 
 class TestExporterStopWiring:
@@ -511,7 +511,7 @@ class TestExporterStopWiring:
         archive.create_archive.assert_not_called()
         assert result is None
 
-    def test_exporter_discards_partial_on_mid_archive_stop(self):
+    def test_exporter_discards_incomplete_on_mid_archive_stop(self):
         cfg = self._cfg()
         stop = threading.Event()  # not set during fetch
         archive = MagicMock()
@@ -526,12 +526,12 @@ class TestExporterStopWiring:
             result = run.exporter(cfg, stop)
 
         archive.get_bookstack_exports.assert_called_once()
-        # mid-cycle stop -> discard the partial tar, never gzip/upload
+        # mid-cycle stop -> discard the incomplete tar, never gzip/upload
         archive.create_archive.assert_not_called()
-        archive.discard_partial.assert_called_once()
+        archive.discard_incomplete.assert_called_once()
         assert result is None
 
-    def test_exporter_discards_partial_on_exception(self):
+    def test_exporter_discards_incomplete_on_exception(self):
         cfg = self._cfg()
         archive = MagicMock()
         archive.get_bookstack_exports.side_effect = RuntimeError("mid-cycle boom")
@@ -543,7 +543,7 @@ class TestExporterStopWiring:
             mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
             with pytest.raises(RuntimeError):
                 run.exporter(cfg, None)
-        archive.discard_partial.assert_called_once()
+        archive.discard_incomplete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +662,8 @@ class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
 
         Earlier nodes succeeded (content_written True, ledger non-empty), so run.py
         would otherwise downgrade to PARTIAL -- but create_archive (finalize) raises
-        because the stream is poisoned, and the finally block discards the partial.
+        because the stream is poisoned, and the finally block discards the incomplete
+        archive.
         """
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
@@ -678,5 +679,5 @@ class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
         with pytest.raises(ArchiveWriteError):
             run.exporter(config)
 
-        mock_archiver.discard_partial.assert_called_once()
+        mock_archiver.discard_incomplete.assert_called_once()
         mock_archiver.archive_remote.assert_not_called()

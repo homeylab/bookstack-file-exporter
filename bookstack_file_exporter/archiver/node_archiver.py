@@ -82,8 +82,8 @@ class NodeArchiver:
         # full path with .tgz extension
         self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
         # streaming archive target; renamed to archive_file on finalize
-        self.partial_file = f"{self.archive_file}.partial"
-        self._tar_stream = archiver_util.TarStream(self.partial_file)
+        self.incomplete_file = f"{self.archive_file}.incomplete"
+        self._tar_stream = archiver_util.TarStream(self.incomplete_file)
         # base folder name inside the tgz archive
         self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
@@ -483,22 +483,22 @@ class NodeArchiver:
         self._tar_stream.write(file_path, data)
 
     def finalize_archive(self):
-        """Close the stream and atomically publish .tgz.partial as the final .tgz.
+        """Close the stream and atomically publish .tgz.incomplete as the final .tgz.
 
         Close-before-rename is load-bearing: a consumer or the next run never
         observes a half-written .tgz (a SIGKILL/crash mid-run leaves only the
-        .partial, which the run-start sweep removes). finalize() raises if the
+        .incomplete, which the run-start sweep removes). finalize() raises if the
         stream is poisoned or the closing flush fails, so a corrupt archive is
         never renamed into place. The unconditional os.rename never sees a
-        missing .partial: run.py only calls create_archive() after its
+        missing .incomplete: run.py only calls create_archive() after its
         has_exported_content / content_written gates proved a write happened —
         do not call this on an empty run.
         """
         self._tar_stream.finalize()
-        os.rename(self.partial_file, self.archive_file)
+        os.rename(self.incomplete_file, self.archive_file)
 
     def abort_archive(self):
-        """Close the stream best-effort so the discard path can unlink the .partial."""
+        """Close the stream best-effort so the discard path can unlink the .incomplete."""
         self._tar_stream.abort()
 
     @property
