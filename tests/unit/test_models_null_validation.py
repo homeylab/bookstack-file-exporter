@@ -29,6 +29,7 @@ def test_http_config_rejects_explicit_null(field):
 
 def test_http_config_omitted_keys_still_default():
     cfg = HttpConfig()
+    assert cfg.verify_ssl is True  # secure-by-default: verify the BookStack TLS cert
     assert cfg.timeout == 30
     assert cfg.retry_codes == [413, 429, 500, 502, 503, 504]
 

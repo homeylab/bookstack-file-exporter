@@ -174,7 +174,11 @@ class Assets(StrictModel):
 
 class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
-    verify_ssl: bool = False
+    # verifies the BookStack server's TLS cert by default -- the API token rides
+    # this connection, so an unverified default would expose it to MITM. Users with
+    # a self-signed/internal-CA BookStack opt out with verify_ssl: false (or point
+    # REQUESTS_CA_BUNDLE at their CA).
+    verify_ssl: bool = True
     timeout: int = 30
     backoff_factor: float = 2.5
     retry_codes: list[int] = [413, 429, 500, 502, 503, 504]
