@@ -87,12 +87,11 @@ class HttpHelper:
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
-        try:
-            response = self._session.get(url, headers=self._headers,
-                                         verify=self.verify_ssl, timeout=self.http_timeout)
-        except Exception as req_err:
-            log.error("Failed to make request for %s", url)
-            raise req_err
+        # verify stays per-call: an explicit verify=False must keep suppressing
+        # REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE overrides, which session-level verify
+        # cannot (requests merges call-level None with the env bundle first).
+        response = self._session.get(url, headers=self._headers,
+                                     verify=self.verify_ssl, timeout=self.http_timeout)
         try:
             #raise_for_status() throws an exception on codes 400-599
             response.raise_for_status()
