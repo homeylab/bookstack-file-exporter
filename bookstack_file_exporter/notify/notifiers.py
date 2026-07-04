@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyFormat
 
 from bookstack_file_exporter.config_helper import notifications
@@ -118,7 +118,7 @@ class AppRiseNotify:
 
     def _text_body(self, error_msg: None | Exception,
                    result: NotifyResult | None = None) -> str:
-        timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         if error_msg:
             return "\n".join([
                 "",
@@ -188,7 +188,7 @@ class AppRiseNotify:
         # markdown emphasis on headline/group headers and every interpolated
         # untrusted value wrapped in _md_code(). See _md_code for why the wrapping
         # is mandatory (apprise's MARKDOWN->HTML conversion does not escape HTML).
-        timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         if error_msg:
             return "\n".join([
                 "",

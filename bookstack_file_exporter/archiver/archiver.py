@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import os
 
@@ -311,4 +311,4 @@ class Archiver:
     @staticmethod
     def _generate_root_folder(base_folder_name: str) -> str:
         """return base archive name"""
-        return base_folder_name + "_" + datetime.now().strftime(_DATE_STR_FORMAT)
+        return base_folder_name + "_" + datetime.now(timezone.utc).strftime(_DATE_STR_FORMAT)

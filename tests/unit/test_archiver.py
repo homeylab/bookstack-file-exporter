@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from unittest.mock import MagicMock
 
@@ -157,13 +157,15 @@ class TestLevelBaseDir:
 @pytest.mark.parametrize("base_name", ["bkps", "my_export", "abc-123"])
 def test_generate_root_folder_format(monkeypatch, base_name):
     fixed_dt = datetime(2024, 3, 15, 10, 30, 45)
+    fake_now = MagicMock(return_value=fixed_dt)
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.datetime",
-        type("_FakeDT", (), {"now": staticmethod(lambda: fixed_dt)})(),
+        type("_FakeDT", (), {"now": staticmethod(fake_now)})(),
     )
     result = Archiver._generate_root_folder(base_name)
     expected = f"{base_name}_2024-03-15_10-30-45"
     assert result == expected
+    fake_now.assert_called_once_with(timezone.utc)
 
 
 def test_archive_dir_has_timestamp_suffix(archiver_instance):

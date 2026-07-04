@@ -2,6 +2,7 @@
 # pylint: disable=protected-access
 """Unit tests for AppRiseNotify._get_message_text success-branch formatting."""
 import os
+import re
 from unittest.mock import MagicMock, patch
 
 from apprise import AppriseConfig, NotifyFormat
@@ -416,6 +417,7 @@ class TestEmptyStatusBody:
         body = notifier._text_body(None, result)
         assert "nothing to archive" in body
         assert "Completed At:" in body
+        assert re.search(r"Completed At: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC", body)
         assert "No pages content was found to export." in body
         assert "Archive:" not in body
         assert "Uploaded to:" not in body
@@ -434,6 +436,7 @@ class TestEmptyStatusBody:
         body = notifier._markdown_body(None, result)
         assert "**Bookstack File Exporter completed - nothing to archive.**" in body
         assert "Completed At:" in body
+        assert re.search(r"Completed At: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC", body)
         assert "No pages content was found to export." in body
         assert "Archive:" not in body
         assert "Uploaded to:" not in body
