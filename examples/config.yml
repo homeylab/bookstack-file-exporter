@@ -1,8 +1,7 @@
 ---
 # Logging: text by default. For JSON Lines output (aggregators), run with
-# --log-format json or set LOG_FORMAT=json. See README "Log Format".
+# --log-format json or set LOG_FORMAT=json. See docs/configuration.md.
 # if http/https not specified, defaults to https
-# if you put http here, it will try verify=false, not to check certs
 host: "https://bookstack.mydomain.org"
 # optional - set here, or via env BOOKSTACK_TOKEN_ID / BOOKSTACK_TOKEN_SECRET (env wins)
 # leave empty or omit this section if using env vars
@@ -25,7 +24,7 @@ formats:
 #             export_attachments/modify_links support as books; loose pages not under a chapter are skipped
 # export_level: pages
 ## optional - include/exclude resources by display-name regex (uses re.fullmatch)
-# omit/comment out to disable all filtering. See the "Filters" section in the README.
+# omit/comment out to disable all filtering. See docs/filters.md.
 # filters:
 #   shelves:
 #     exclude: ["Archive"]            # drop the Archive shelf + everything under it
@@ -57,8 +56,9 @@ assets:
 # optional - override default http_config; omit/comment out to use defaults
 # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
 http_config:
-  # whether or not to verify ssl certificates if using https
-  verify_ssl: false
+  # verify TLS certificates (default true as of v3; set false only for
+  # self-signed/internal-CA instances you cannot add a ca_bundle for)
+  verify_ssl: true
   # set http timeout in seconds for requests
   timeout: 30
   # default backoff_factor 2.5 means we wait 5, 10, 20, and then 40 seconds before our last retry
@@ -98,7 +98,8 @@ http_config:
 # relative or full path
 output_path: "bkps/"
 ## optional - prune older local archives
-# -1: delete all after each run (useful when only uploading to object storage)
+# -1: delete all after each run (REQUIRES object_storage above -- rejected at
+#     config load otherwise, since it would delete the only copy)
 # 1+: retain that many; 0/omit: no action
 keep_last: 5
 ## optional - if specified exporter will run in a loop
