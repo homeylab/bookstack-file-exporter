@@ -159,8 +159,17 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         status = None
         if config.user_inputs.health_port:
             status = RunStatus()
-            server = start_health_server(
-                config.user_inputs.health_host, config.user_inputs.health_port, status)
+            try:
+                server = start_health_server(
+                    config.user_inputs.health_host, config.user_inputs.health_port, status)
+            except OSError as err:
+                # Fail-fast stays (a silently missing monitoring endpoint is worse),
+                # but with an operator-readable message instead of a bare traceback.
+                log.error(
+                    "Health endpoint failed to bind %s:%s (%s); fix health_port/"
+                    "health_host or free the port",
+                    config.user_inputs.health_host, config.user_inputs.health_port, err)
+                raise
             log.info("Health endpoint listening on %s:%s",
                      config.user_inputs.health_host, config.user_inputs.health_port)
 
