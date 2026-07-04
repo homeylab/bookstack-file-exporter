@@ -1,12 +1,14 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,protected-access
 """Unit tests for HttpHelper in bookstack_file_exporter.common.util."""
 import logging
+from unittest.mock import MagicMock
 
 import pytest
 import requests
 import responses
 from responses import matchers
 from requests.adapters import DEFAULT_POOLSIZE
+from urllib3.exceptions import InsecureRequestWarning
 
 from bookstack_file_exporter.common.util import HttpHelper
 from bookstack_file_exporter.config_helper.models import HttpConfig
@@ -328,3 +330,23 @@ def test_export_workers_defaults_to_one_when_omitted():
     helper = HttpHelper({}, HttpConfig())
     adapter = helper._session.get_adapter("https://example.com")
     assert adapter._pool_maxsize == DEFAULT_POOLSIZE
+
+
+# ---------------------------------------------------------------------------
+# urllib3 warning suppression
+# ---------------------------------------------------------------------------
+
+def test_urllib3_suppression_scoped_to_insecure_request_warning(monkeypatch):
+    disabled = MagicMock()
+    monkeypatch.setattr(
+        "bookstack_file_exporter.common.util.urllib3.disable_warnings", disabled)
+    HttpHelper({}, HttpConfig(verify_ssl=False))
+    disabled.assert_called_once_with(InsecureRequestWarning)
+
+
+def test_urllib3_suppression_not_triggered_when_verify_ssl_true(monkeypatch):
+    disabled = MagicMock()
+    monkeypatch.setattr(
+        "bookstack_file_exporter.common.util.urllib3.disable_warnings", disabled)
+    HttpHelper({}, HttpConfig(verify_ssl=True))
+    disabled.assert_not_called()

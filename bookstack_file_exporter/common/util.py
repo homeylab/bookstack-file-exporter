@@ -5,6 +5,7 @@ from http.cookiejar import DefaultCookiePolicy
 from typing import TypeVar
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
@@ -57,7 +58,11 @@ class HttpHelper:
         # _build_session — so there is no shared mutable per-request state to race.
         self._pool_maxsize = max(DEFAULT_POOLSIZE, export_workers)
         if not self.verify_ssl:
-            urllib3.disable_warnings()
+            # requests emits a urllib3 InsecureRequestWarning on every request when
+            # verification is off; silence only that category (still global across
+            # the process by design of urllib3's warnings API), matching
+            # S3CompatibleArchiver's behavior for verify: false on object storage.
+            urllib3.disable_warnings(InsecureRequestWarning)
         self._headers = headers
         self._session = self._build_session()
 
