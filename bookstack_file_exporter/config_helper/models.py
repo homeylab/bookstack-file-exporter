@@ -260,6 +260,11 @@ class UserInput(StrictModel):
     assets: Assets = Assets()
     object_storage: list[S3StorageConfig] | None = None
     keep_last: int = 0
+    # Retention safety: a run that dropped content (partial archive) skips ALL
+    # retention pruning (local keep_last and every object_storage keep_last) so a
+    # degraded backup can never evict complete ones. Opt back into unconditional
+    # pruning (v2 behavior) for tight-disk setups that accept that tradeoff.
+    prune_on_partial: bool = False
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
     # nonsense at config-parse time, not mid-run. No hard upper bound: huge values

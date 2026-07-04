@@ -240,6 +240,8 @@ class Archiver:
         # this captures keep_last = 0
         if not self.config.user_inputs.keep_last:
             return []
+        if not self.prune_allowed:
+            return []
         to_delete = self._get_stale_archives()
         if to_delete:
             self._delete_files(to_delete)
@@ -264,6 +266,29 @@ class Archiver:
     def content_written(self) -> bool:
         """True once at least one node (document) export landed in the tar."""
         return self._archiver.content_written
+
+    @property
+    def prune_allowed(self) -> bool:
+        """False when this run dropped content and the user has not opted into
+        prune_on_partial: a degraded (partial) archive must never evict complete
+        backups, locally or remotely. Content loss only — a failed upload never
+        prunes its own target anyway, and resolve_remote_status guards the
+        no-durable-copy case. Consumed by clean_up, archive_remote, and run.py's
+        NotifyResult."""
+        if self.config.user_inputs.prune_on_partial:
+            return True
+        return not (self.failed_nodes or self.failed_assets)
+
+    @property
+    def retention_configured(self) -> bool:
+        """True when any pruning could actually happen (top-level keep_last set,
+        or any object_storage target with keep_last > 0). Gates the 'pruning
+        skipped' messaging so keep_last-less users are not told about a skip of
+        an action that was never going to run."""
+        if self.config.user_inputs.keep_last:
+            return True
+        return any(t.keep_last > 0
+                   for t in self.config.user_inputs.object_storage or [])
 
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage

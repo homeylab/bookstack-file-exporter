@@ -32,13 +32,20 @@ def mock_config():
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
     config.user_inputs.export_level = "pages"
+    config.user_inputs.prune_on_partial = False
     config.object_storage_config = []
     return config
 
 
 @pytest.fixture
 def archiver_instance(mock_config, mock_http_client):
-    return Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
+    archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
+    # Real empty lists (not a truthy MagicMock) so prune_allowed's `failed_nodes or
+    # failed_assets` check reflects a clean run by default; tests that need a
+    # degraded run overwrite these locally.
+    archiver._archiver.failed_node_exports = []
+    archiver._archiver.failed_asset_downloads = []
+    return archiver
 
 
 # ---------------------------------------------------------------------------
@@ -692,6 +699,56 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
     result = archiver_instance.clean_up()
     assert result == file_list[:2]
     assert file_list[2] not in result
+
+
+# ---------------------------------------------------------------------------
+# prune_allowed / retention_configured (Task 5)
+# ---------------------------------------------------------------------------
+
+def test_clean_up_skipped_when_content_degraded(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """A partial run (failed node export) skips pruning even though keep_last > 0
+    and stale archives exist -- degraded backups must never evict complete ones."""
+    mock_config.user_inputs.keep_last = 2
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+    patch_scan_archives(["old1.tgz", "old2.tgz"])
+    archiver_instance._delete_files = MagicMock()
+
+    assert archiver_instance.prune_allowed is False
+    result = archiver_instance.clean_up()
+
+    assert result == []
+    archiver_instance._delete_files.assert_not_called()
+
+
+def test_clean_up_runs_when_degraded_but_prune_on_partial(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """prune_on_partial: true restores v2 unconditional-prune behavior even on a
+    degraded (partial) run."""
+    mock_config.user_inputs.keep_last = 2
+    mock_config.user_inputs.prune_on_partial = True
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+    stale = ["old1.tgz", "old2.tgz"]
+    archiver_instance._get_stale_archives = MagicMock(return_value=stale)
+    archiver_instance._delete_files = MagicMock()
+
+    assert archiver_instance.prune_allowed is True
+    result = archiver_instance.clean_up()
+
+    assert result == stale
+    archiver_instance._delete_files.assert_called_once_with(stale)
+
+
+def test_prune_allowed_true_on_clean_run(archiver_instance, mock_config):
+    """No failed nodes/assets -> pruning is allowed regardless of prune_on_partial."""
+    archiver_instance._archiver.failed_node_exports = []
+    archiver_instance._archiver.failed_asset_downloads = []
+
+    assert archiver_instance.prune_allowed is True
 
 
 # ---------------------------------------------------------------------------

@@ -231,6 +231,28 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
         # raise original error instead of notification error
         raise run_err
 
+def _run_local_cleanup(archive: Archiver) -> tuple[list[str], str | None]:
+    """Prune local stale archives after upload. A failed delete is housekeeping, not
+    a run failure -- caught here and downgraded to PARTIAL by the caller, same
+    treatment as a remote retention failure in archiver._upload. Stale local files
+    are harmless; the next run prunes them."""
+    try:
+        return archive.clean_up(), None
+    except Exception as err:  # pylint: disable=broad-except
+        log.error("Local cleanup failed (export and uploads succeeded): %s", err)
+        return [], str(err) or "local cleanup failed"
+
+
+def _warn_if_pruning_skipped(archive: Archiver) -> None:
+    """Log once when this run's content loss disabled retention pruning everywhere
+    (local and every remote target), but only when pruning was actually configured
+    -- no point warning about a skip of an action that would never have run."""
+    if not archive.prune_allowed and archive.retention_configured:
+        log.warning(
+            "Retention pruning skipped (local and all remote targets): this run "
+            "is partial; set prune_on_partial: true to prune on partial runs")
+
+
 def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """export bookstack nodes and archive locally and/or remotely"""
 
@@ -319,6 +341,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # close the archive stream and publish the .tgz
         archive.create_archive()
+        _warn_if_pruning_skipped(archive)
 
         # attempt every remote target, then derive status (raises only when no copy survives)
         outcomes = archive.archive_remote()
@@ -331,17 +354,10 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # Local retention pruning is housekeeping: at this point durable copies exist
         # (resolve_remote_status raised otherwise), so a failed local delete downgrades
-        # the run to PARTIAL instead of failing it — same treatment as a remote
-        # retention failure in archiver._upload. Stale local files are harmless; the
-        # next run prunes them.
-        removed: list[str] = []
-        cleanup_error: str | None = None
-        try:
-            removed = archive.clean_up()
-        except Exception as err:  # pylint: disable=broad-except
-            log.error("Local cleanup failed (export and uploads succeeded): %s", err)
+        # the run to PARTIAL instead of failing it, rather than failing the whole run.
+        removed, cleanup_error = _run_local_cleanup(archive)
+        if cleanup_error:
             status = ExportStatus.PARTIAL
-            cleanup_error = str(err)
 
         log.info("Created file archive: %s", archive.archive_file)
         log.info("Completed run")
