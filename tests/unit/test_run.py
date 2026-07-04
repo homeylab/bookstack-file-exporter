@@ -62,15 +62,13 @@ class TestRunOncePath:
             result = run.entrypoint(args=_args())
         assert result == 0
 
-    def test_run_raises_exception_returns_1(self, caplog):
+    def test_run_raises_exception_returns_1(self):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run", side_effect=RuntimeError("export boom")), \
-             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+             patch.object(run, "run", side_effect=RuntimeError("export boom")):
             result = run.entrypoint(args=_args())
         assert result == 1
-        assert any("Export failed" in r.message for r in caplog.records)
 
     def test_run_raises_exception_no_traceback_propagated(self):
         """Exception must NOT escape entrypoint."""

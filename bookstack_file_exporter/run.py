@@ -113,8 +113,9 @@ def _run_once(config: ConfigNode) -> int:
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
         return 128 + signum
-    except Exception as err:  # pylint: disable=broad-except
-        log.error("Export failed: %s", err)
+    except Exception:  # pylint: disable=broad-except
+        # run() already logged the terminal "Run summary [FAILED]" line before
+        # re-raising, so avoid a duplicate error line here; keep the traceback.
         log.debug("Traceback:", exc_info=True)
         return 1
 
@@ -148,10 +149,10 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:  
                     else:
                         status.mark_success(result)
             except Exception as err:  # pylint: disable=broad-except
-                # log-and-continue: a failed cycle still waits the interval below
-                # before retrying (no busy-loop), and the failure notification has
-                # already fired inside run().
-                log.error("Export failed: %s", err)
+                # log-and-continue: run() already logged the "Run summary [FAILED]"
+                # line and fired the failure notification, so no duplicate error line
+                # here; a failed cycle still waits the interval below before retrying
+                # (no busy-loop). Keep the traceback and mark health failed.
                 log.debug("Traceback:", exc_info=True)
                 if status:
                     status.mark_failed(err)
