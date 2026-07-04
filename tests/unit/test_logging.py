@@ -47,6 +47,14 @@ class TestJsonFormatterExtras:
         out = json.loads(JsonFormatter().format(_record(obj=object())))
         assert isinstance(out["obj"], str)
 
+    def test_fixed_keys_not_clobbered_by_extra(self):
+        out = json.loads(JsonFormatter().format(
+            _record(level="FAKE", logger="spoofed", timestamp="spoofed-ts")))
+        assert out["level"] == "INFO"
+        assert out["logger"] == "mod.sub"
+        assert out["timestamp"] != "spoofed-ts"
+        assert out["message"] == "hello world"
+
 
 class TestJsonFormatterExcInfo:
     def test_exc_info_field_present_on_exception(self):
