@@ -55,7 +55,7 @@ def resolve_log_format(args: argparse.Namespace) -> str:
     env_val = os.environ.get(_LOG_FORMAT_ENV)
     if env_val is None:
         return "text"
-    env_val = env_val.lower()
+    env_val = env_val.strip().lower()
     if env_val in LOG_FORMAT:
         return env_val
     log.warning("Invalid %s '%s'; supported: %s. Using text.",
@@ -73,7 +73,7 @@ def resolve_log_level(args: argparse.Namespace) -> str:
     env_val = os.environ.get(_LOG_LEVEL_ENV)
     if env_val is None:
         return "info"
-    env_val = env_val.lower()
+    env_val = env_val.strip().lower()
     if env_val in LOG_LEVEL:
         return env_val
     log.warning("Invalid %s '%s'; supported: %s. Using info.",
