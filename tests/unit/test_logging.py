@@ -96,5 +96,13 @@ class TestBuildHandler:
         rendered = handler.formatter.format(_record(msg="done", args=()))
         assert rendered.endswith("[INFO] done")
 
+    def test_text_handler_timestamps_in_utc(self):
+        """Text asctime must render in UTC with the label, not host-local time."""
+        handler = build_handler("text")
+        rec = _record(msg="done", args=())
+        rec.created = 0  # 1970-01-01 00:00:00 UTC; a local-time render differs
+        rendered = handler.formatter.format(rec)
+        assert rendered.startswith("1970-01-01 00:00:00 UTC [INFO]")
+
     def test_returns_stream_handler(self):
         assert isinstance(build_handler("text"), logging.StreamHandler)
