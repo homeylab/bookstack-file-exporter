@@ -29,13 +29,25 @@ def test_keep_last_rejects_explicit_null():
         S3StorageConfig(**_entry(access_key="a", secret_key="s", keep_last=None))
 
 
-@pytest.mark.parametrize("field", ["prefix", "access_key", "secret_key"])
+@pytest.mark.parametrize("field", ["prefix", "access_key", "secret_key", "ca_bundle"])
 def test_s3_string_fields_reject_explicit_null(field):
     # non-Optional strings: explicit null must fail instead of flowing downstream
     entry = _entry(access_key="a", secret_key="s")
     entry[field] = None
     with pytest.raises(ValidationError):
         S3StorageConfig(**entry)
+
+
+def test_tls_defaults():
+    cfg = S3StorageConfig(**_entry(access_key="a", secret_key="s"))
+    assert cfg.verify_ssl is True
+    assert cfg.ca_bundle == ""
+
+
+def test_ca_bundle_with_verify_off_rejected():
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        S3StorageConfig(**_entry(access_key="a", secret_key="s",
+                                 verify_ssl=False, ca_bundle="/certs/ca.pem"))
 
 
 def test_is_aws_discriminant():

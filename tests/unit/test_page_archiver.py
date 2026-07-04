@@ -718,6 +718,45 @@ class TestParallelExport:
         expected = {f"{archiver.archive_base_path}/bk/p{i}.md" for i in (2, 3, 5, 6)}
         assert set(collected) == expected
 
+    def test_parallel_archive_write_error_aborts_run(self, tmp_path, build_node):
+        """ArchiveWriteError from a worker aborts the export: the stream is
+        poisoned, so remaining nodes can't be written - cancel queued futures
+        and propagate instead of logging N per-node failures."""
+        config = _make_config(formats=["markdown"], export_workers=2)
+        archiver = PageArchiver(str(tmp_path / "bs"), config, MagicMock(),
+                                asset_archiver=MagicMock())
+        archiver.asset_archiver.get_asset_nodes.return_value = {}
+        parent = build_node(id=1, name="bk", slug="bk")
+        pages = {i: build_node(id=i, name=f"p{i}", slug=f"p{i}", parent=parent)
+                 for i in range(2, 22)}  # 20 pages
+
+        def _boom(path, data):
+            raise ArchiveWriteError("archive write failed for x: disk full")
+        archiver.write_data = _boom
+
+        cancel_calls = []
+
+        class SpyExecutor(ThreadPoolExecutor):
+            def shutdown(self, wait=True, *, cancel_futures=False):
+                cancel_calls.append(cancel_futures)
+                super().shutdown(wait, cancel_futures=cancel_futures)
+
+        with patch(
+            "bookstack_file_exporter.archiver.node_archiver.ThreadPoolExecutor",
+            SpyExecutor,
+        ), patch(
+            "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+            return_value=b"data",
+        ):
+            with pytest.raises(ArchiveWriteError):
+                archiver.archive(pages)
+
+        # The abort path must cancel queued futures (True), not just the
+        # with-exit shutdown (False).
+        assert True in cancel_calls
+        # The aborting error is propagated, not folded into the per-node ledger.
+        assert not archiver.failed_node_exports
+
     def test_parallel_stop_mid_run_does_not_crash(self, tmp_path, build_node):
         """Stop Event set mid-run: no crash, run exits cleanly (partial discarded upstream)."""
         config = _make_config(formats=["markdown"], export_workers=2)

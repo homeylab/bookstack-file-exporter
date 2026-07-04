@@ -45,13 +45,15 @@ class TarStream:
         self._lock = threading.Lock()
         self._tar: tarfile.TarFile | None = None
         self._poisoned = False
+        self._first_error: str | None = None
 
     def write(self, file_path: str, data: bytes):
         """Append one member; thread-safe. Raises ArchiveWriteError on failure."""
         with self._lock:
             if self._poisoned:
                 raise ArchiveWriteError(
-                    f"archive stream already failed; dropping write of {file_path}")
+                    f"archive stream already failed{self._first_error_detail()}; "
+                    f"dropping write of {file_path}")
             try:
                 if self._tar is None:
                     # Handle is intentionally kept open across calls (not a
@@ -65,6 +67,7 @@ class TarStream:
                 self._tar.addfile(tar_info, fileobj=data_obj)
             except Exception as err:  # pylint: disable=broad-exception-caught
                 self._poisoned = True
+                self._first_error = str(err)
                 raise ArchiveWriteError(
                     f"archive write failed for {file_path}: {err}") from err
 
@@ -78,7 +81,9 @@ class TarStream:
         """
         with self._lock:
             if self._poisoned:
-                raise ArchiveWriteError("archive stream failed mid-run; not publishing")
+                raise ArchiveWriteError(
+                    f"archive stream failed mid-run{self._first_error_detail()}; "
+                    "not publishing")
             if self._tar is None:
                 return
             tar = self._tar
@@ -87,6 +92,7 @@ class TarStream:
                 tar.close()
             except Exception as err:  # pylint: disable=broad-exception-caught
                 self._poisoned = True
+                self._first_error = str(err)
                 raise ArchiveWriteError(
                     f"archive close failed; not publishing: {err}") from err
 
@@ -107,6 +113,13 @@ class TarStream:
                 except Exception:  # pylint: disable=broad-exception-caught
                     log.debug("Ignoring close error while discarding archive stream",
                               exc_info=True)
+
+    def _first_error_detail(self) -> str:
+        """' (first error: ...)' suffix, or '' when poisoned without a recorded
+        cause (abort() poisons deliberately during discard)."""
+        if self._first_error is None:
+            return ""
+        return f" (first error: {self._first_error})"
 
 def get_json_bytes(data: dict[str, str | int]) -> bytes:
     """dump dict to json file"""

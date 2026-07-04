@@ -60,6 +60,31 @@ def test_validate_bucket_raises_when_missing(aws, provider):
         S3CompatibleArchiver(provider(bucket="nope"))
 
 
+def test_client_built_with_per_target_verify(monkeypatch, make_provider):
+    captured = {}
+    def fake_client(self, *args, **kwargs):
+        captured.update(kwargs)
+        return MagicMock()
+    monkeypatch.setattr("boto3.session.Session.client", fake_client)
+    S3CompatibleArchiver(make_provider(ca_bundle="/certs/ca.pem"))
+    assert captured["verify"] == "/certs/ca.pem"
+
+
+@pytest.mark.parametrize("overrides,expect_disabled", [
+    ({"verify_ssl": False}, True),
+    ({"ca_bundle": "/certs/ca.pem"}, False),  # truthy path must NOT disable warnings
+    ({}, False),                              # default (verify=None) must NOT disable
+])
+def test_urllib3_warnings_disabled_only_when_verify_off(
+        monkeypatch, make_provider, overrides, expect_disabled):
+    monkeypatch.setattr("boto3.session.Session.client", lambda self, *a, **k: MagicMock())
+    disabled = MagicMock()
+    monkeypatch.setattr(
+        "bookstack_file_exporter.archiver.s3_archiver.urllib3.disable_warnings", disabled)
+    S3CompatibleArchiver(make_provider(**overrides))
+    assert disabled.called is expect_disabled
+
+
 def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch, provider):
     fake = MagicMock()
     fake.head_bucket.side_effect = EndpointConnectionError(endpoint_url="http://unreachable:9000")

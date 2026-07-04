@@ -55,6 +55,8 @@ class S3StorageConfig(StrictModel):
     prefix: str = ""
     region: str | None = None
     secure: bool = True
+    verify_ssl: bool = True
+    ca_bundle: str = ""
     addressing_style: Literal["path", "virtual", "auto"] | None = None  # None => inferred
     ambient_auth: bool = False
     keep_last: int = 0
@@ -134,6 +136,16 @@ class S3StorageConfig(StrictModel):
                 "targets (no 'endpoint') unless ambient_auth resolves it.")
         return self
 
+    @model_validator(mode="after")
+    def _check_tls_verify_options(self):
+        """'ca_bundle' means "verify against this CA"; 'verify_ssl: false' means "do not
+        verify at all" — both together is a contradiction, not a precedence question."""
+        if self.ca_bundle and not self.verify_ssl:
+            raise ValueError(
+                f"object_storage target {self.name!r}: 'ca_bundle' and 'verify_ssl: false' "
+                "are mutually exclusive - a custom CA bundle implies verification is on.")
+        return self
+
 # pylint: disable=too-few-public-methods
 class BookstackAccess(StrictModel):
     """YAML schema for bookstack access credentials"""
@@ -162,7 +174,11 @@ class Assets(StrictModel):
 
 class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
-    verify_ssl: bool = False
+    # verifies the BookStack server's TLS cert by default -- the API token rides
+    # this connection, so an unverified default would expose it to MITM. Users with
+    # a self-signed/internal-CA BookStack opt out with verify_ssl: false (or point
+    # REQUESTS_CA_BUNDLE at their CA).
+    verify_ssl: bool = True
     timeout: int = 30
     backoff_factor: float = 2.5
     retry_codes: list[int] = [413, 429, 500, 502, 503, 504]

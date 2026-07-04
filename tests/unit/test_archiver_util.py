@@ -204,6 +204,17 @@ class TestTarStreamPoison:
         with pytest.raises(ArchiveWriteError):
             stream.finalize()
 
+    def test_subsequent_write_carries_first_error(self, tmp_path, monkeypatch):
+        """Poisoned-stream raises must name the ROOT cause, not just 'already failed'."""
+        stream = self._poisoned_stream(tmp_path, monkeypatch)
+        with pytest.raises(ArchiveWriteError, match="disk full"):
+            stream.write("later.txt", b"payload")
+
+    def test_finalize_carries_first_error(self, tmp_path, monkeypatch):
+        stream = self._poisoned_stream(tmp_path, monkeypatch)
+        with pytest.raises(ArchiveWriteError, match="disk full"):
+            stream.finalize()
+
     def test_open_failure_poisons(self, tmp_path):
         # Unwritable target: first write fails, second fails fast as poisoned.
         stream = TarStream(str(tmp_path / "no_such_dir" / "bkps.tgz.partial"))

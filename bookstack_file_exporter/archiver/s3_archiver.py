@@ -3,6 +3,7 @@ import os
 
 # pylint: disable=import-error
 import boto3
+import urllib3
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -32,6 +33,11 @@ class S3CompatibleArchiver:
     (env / shared config / IRSA / IMDS / assume-role) — used only when ambient_auth is set.
     """
     def __init__(self, provider_config: S3ProviderConfig):
+        if provider_config.verify is False:
+            # botocore emits a urllib3 InsecureRequestWarning on every request when
+            # verification is off; silence globally, matching HttpHelper's behavior
+            # for verify_ssl: false on the BookStack side.
+            urllib3.disable_warnings()
         session = boto3.session.Session(
             aws_access_key_id=provider_config.access_key,
             aws_secret_access_key=provider_config.secret_key,
@@ -40,6 +46,7 @@ class S3CompatibleArchiver:
         self._client = session.client(
             "s3",
             endpoint_url=provider_config.endpoint_url,
+            verify=provider_config.verify,
             config=Config(s3={"addressing_style": provider_config.addressing_style}),
         )
         self.bucket = provider_config.bucket

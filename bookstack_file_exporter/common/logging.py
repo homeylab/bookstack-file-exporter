@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from datetime import datetime, timezone
 
 # Standard LogRecord attributes; anything else on a record is a user-supplied
@@ -35,7 +36,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, default=str)
 
 
-_TEXT_FMT = "%(asctime)s [%(levelname)s] %(message)s"
+_TEXT_FMT = "%(asctime)s UTC [%(levelname)s] %(message)s"
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -45,5 +46,10 @@ def build_handler(log_format: str) -> logging.StreamHandler:
     if log_format == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(_TEXT_FMT, datefmt=_DATE_FMT))
+        formatter = logging.Formatter(_TEXT_FMT, datefmt=_DATE_FMT)
+        # %(asctime)s renders via time.localtime by default; pin to UTC so the
+        # text format shares one clock with every other surface (JSON logs,
+        # health endpoint, notification bodies, archive filenames).
+        formatter.converter = time.gmtime
+        handler.setFormatter(formatter)
     return handler

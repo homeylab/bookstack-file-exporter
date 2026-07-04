@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import sys
+import time
 
 from bookstack_file_exporter.common.logging import JsonFormatter, build_handler
 
@@ -95,6 +96,22 @@ class TestBuildHandler:
         handler = build_handler("text")
         rendered = handler.formatter.format(_record(msg="done", args=()))
         assert rendered.endswith("[INFO] done")
+
+    def test_text_handler_timestamps_in_utc(self, monkeypatch):
+        """Text asctime must render in UTC with the label, not host-local time."""
+        # Force a non-UTC local zone: on a UTC-configured host, a localtime render
+        # of epoch 0 is identical to the UTC one and a converter revert would pass.
+        monkeypatch.setenv("TZ", "America/New_York")
+        time.tzset()
+        try:
+            handler = build_handler("text")
+            rec = _record(msg="done", args=())
+            rec.created = 0  # 1970-01-01 00:00:00 UTC; EST renders 1969-12-31 19:00:00
+            rendered = handler.formatter.format(rec)
+        finally:
+            monkeypatch.undo()
+            time.tzset()
+        assert rendered.startswith("1970-01-01 00:00:00 UTC [INFO]")
 
     def test_returns_stream_handler(self):
         assert isinstance(build_handler("text"), logging.StreamHandler)

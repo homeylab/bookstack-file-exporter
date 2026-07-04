@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from unittest.mock import MagicMock
 
@@ -157,13 +157,15 @@ class TestLevelBaseDir:
 @pytest.mark.parametrize("base_name", ["bkps", "my_export", "abc-123"])
 def test_generate_root_folder_format(monkeypatch, base_name):
     fixed_dt = datetime(2024, 3, 15, 10, 30, 45)
+    fake_now = MagicMock(return_value=fixed_dt)
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.datetime",
-        type("_FakeDT", (), {"now": staticmethod(lambda: fixed_dt)})(),
+        type("_FakeDT", (), {"now": staticmethod(fake_now)})(),
     )
     result = Archiver._generate_root_folder(base_name)
     expected = f"{base_name}_2024-03-15_10-30-45"
     assert result == expected
+    fake_now.assert_called_once_with(timezone.utc)
 
 
 def test_archive_dir_has_timestamp_suffix(archiver_instance):
@@ -410,10 +412,10 @@ def test_create_export_dir_with_path_calls_create_dir(
     assert calls == ["x/y"]
 
 
-def test_create_export_dir_permission_error_logs_warning(
+def test_create_export_dir_permission_error_fails_fast(
     monkeypatch, archiver_instance, mock_config, caplog
 ):
-    """util.create_dir raises PermissionError → warning logged, no exception raised."""
+    """util.create_dir raises PermissionError → pointed error logged, exception propagates."""
     mock_config.user_inputs.output_path = "some/path"
 
     def _raise_perm(path):
@@ -423,10 +425,11 @@ def test_create_export_dir_permission_error_logs_warning(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
         _raise_perm,
     )
-    caplog.set_level(logging.WARNING, logger="bookstack_file_exporter.archiver.archiver")
-    archiver_instance.create_export_dir()  # must not raise
-    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("Failed to create base directory" in msg for msg in warning_messages)
+    caplog.set_level(logging.ERROR, logger="bookstack_file_exporter.archiver.archiver")
+    with pytest.raises(PermissionError):
+        archiver_instance.create_export_dir()
+    error_messages = [r.message for r in caplog.records if r.levelno == logging.ERROR]
+    assert any("Cannot create export directory" in msg for msg in error_messages)
 
 
 # ---------------------------------------------------------------------------

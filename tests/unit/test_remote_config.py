@@ -38,3 +38,16 @@ def test_none_prefix_rejected_at_construction(make_storage_entry):
     # instead of resolving to "" at S3ProviderConfig.
     with pytest.raises(ValidationError):
         make_storage_entry(prefix=None)
+
+
+def test_verify_defaults_to_none_for_sdk_chain(make_storage_entry):
+    # None (not True) so botocore's own AWS_CA_BUNDLE/REQUESTS_CA_BUNDLE chain still applies
+    assert S3ProviderConfig(make_storage_entry()).verify is None
+
+
+def test_verify_ssl_false_resolves_to_false(make_storage_entry):
+    assert S3ProviderConfig(make_storage_entry(verify_ssl=False)).verify is False
+
+
+def test_ca_bundle_resolves_to_path(make_storage_entry):
+    assert S3ProviderConfig(make_storage_entry(ca_bundle="/certs/ca.pem")).verify == "/certs/ca.pem"

@@ -5,8 +5,12 @@
 - [Object Storage Upload](#object-storage-upload)
   - [Entry fields](#entry-fields)
   - [Credential resolution (per entry, fail-closed)](#credential-resolution-per-entry-fail-closed)
+- [Bucket validation](#bucket-validation)
 - [Multi-target upload behavior](#multi-target-upload-behavior)
+  - [Self-signed or private-CA HTTPS targets](#self-signed-or-private-ca-https-targets)
+  - [Interrupted uploads and orphaned multipart parts](#interrupted-uploads-and-orphaned-multipart-parts)
 - [Migrating from v2](#migrating-from-v2)
+  - [Other v3 key changes (outside object_storage)](#other-v3-key-changes-outside-object_storage)
 
 ## Object Storage Upload
 _Currently, S3-compatible object storage providers are supported. Feel free to create a github issue to request something else_.
@@ -82,6 +86,8 @@ object_storage:
 | `bucket` | `str` | `true` | — | Bucket to upload to. |
 | `region` | `str` | conditionally | `None` | Explicit value always wins. If omitted and `endpoint` is set, defaults to `us-east-1`. If omitted and no `endpoint` (AWS), required unless `ambient_auth: true` (botocore can then resolve it from env/profile). |
 | `secure` | `bool` | `false` | `true` | TLS toggle; selects the `https://`/`http://` scheme used when building the endpoint URL. Set `false` for plain-HTTP local MinIO. |
+| `verify_ssl` | `bool` | `false` | `true` | TLS certificate verification for this target. Set `false` to accept an untrusted/self-signed certificate without verification (quick fix — prefer `ca_bundle`). Irrelevant for plain-HTTP endpoints (`secure: false`). |
+| `ca_bundle` | `str` | `false` | `""` | Path to a PEM CA bundle used to verify this target's certificate — the clean fix for a private-CA/self-signed HTTPS store (e.g. MinIO behind your own CA). Mutually exclusive with `verify_ssl: false`. When neither is set, the standard AWS SDK variables (`AWS_CA_BUNDLE`, etc.) still apply. |
 | `prefix` | `str` | `false` | `""` | Optional object key prefix. Empty means bucket root. |
 | `addressing_style` | `str` | `false` | `None` (inferred) | Passed straight to boto3: `path`, `virtual`, or `auto`. Left unset, `path` is inferred when `endpoint` is set (MinIO/Ceph work out of the box) and `auto` (virtual-hosted) for AWS. Use `virtual` for compat stores that require virtual-hosted addressing (e.g. DigitalOcean Spaces, Backblaze B2) — note boto3 treats `auto` the same as `path` when a custom `endpoint` is set, so `virtual` is the only way to get virtual-hosted there. |
 | `ambient_auth` | `bool` | `false` | `false` | Opt in to the boto3 SDK's own ambient credential chain: environment variables, shared config/profile, **IRSA or Pod Identity (EKS/Kubernetes)**, IMDS instance profile (EC2), or assume-role. Required whenever no `access_key(_env)` pair is configured on the entry — there is no silent fallback to ambient credentials. |
@@ -183,6 +189,40 @@ a hard **Failure** (exit `1`), not Partial.
 
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
+
+### Self-signed or private-CA HTTPS targets
+
+For an HTTPS store whose certificate is not publicly trusted (typical for self-hosted
+MinIO), pick one per target:
+
+- `ca_bundle: /path/to/ca.pem` — verify against your own CA. The clean option: TLS
+  protection stays on, and other targets are unaffected.
+- `verify_ssl: false` — disable certificate verification for this target only.
+- `secure: false` — plain HTTP, no TLS at all (LAN-only setups).
+
+Prefer a per-target `ca_bundle` over the `AWS_CA_BUNDLE` environment variable when you
+have more than one target: the environment variable is process-wide and *replaces* the
+trust store, so pointing it at a private CA breaks verification for targets using
+publicly-trusted certificates (e.g. AWS S3). A per-target setting always wins over these
+environment variables.
+
+### Interrupted uploads and orphaned multipart parts
+
+A failed or interrupted upload never leaves a partial archive visible in the
+bucket: small archives upload as a single atomic `PutObject`, and larger ones
+use multipart uploads that only materialize as an object on completion. If an
+upload fails while the exporter is still running, boto3 aborts the multipart
+session itself.
+
+The one gap is a hard kill (SIGKILL, power loss, OOM) in the middle of a large
+multipart upload: the already-uploaded parts stay in the bucket — invisible in
+normal listings but still billed — until they are removed. The standard fix is
+a provider-side rule rather than application-side cleanup:
+
+- **AWS S3**: add an `AbortIncompleteMultipartUpload` lifecycle rule to the
+  bucket (for example, abort anything incomplete after 1 day).
+- **MinIO**: set an equivalent ILM expiry rule for incomplete uploads, or clean
+  up manually with `mc rm --incomplete --recursive <alias>/<bucket>`.
 
 ## Migrating from v2
 

@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import os
 
@@ -92,14 +92,21 @@ class Archiver:
             return
         log.info("Creating base directory for archive: %s",
                  self.config.user_inputs.output_path)
-        # in docker, this may fail if the user id is not the same as the host
         try:
             util.create_dir(self.config.user_inputs.output_path)
         except PermissionError as perm_err:
-            log.warning("Failed to create base directory: %s", perm_err)
-            log.warning("This usually occurs in docker environments " \
-                        "attempting to skip this step")
-            return
+            # create_dir uses mkdir(exist_ok=True), which never raises for an
+            # existing directory (writable or not) — the docker mounted-volume
+            # case is tolerated there, not here. Reaching this catch means
+            # output_path is missing AND creating it was denied: a real
+            # misconfig, so fail now with a pointed message instead of dying
+            # later at the first archive write.
+            log.error(
+                "Cannot create export directory '%s': %s - the path does not "
+                "exist and creation was denied; fix output_path or its "
+                "parent directory permissions",
+                self.config.user_inputs.output_path, perm_err)
+            raise
 
     def set_stop(self, stop):
         """Inject the shutdown flag into the node archiver for cooperative cancel.
@@ -311,4 +318,4 @@ class Archiver:
     @staticmethod
     def _generate_root_folder(base_folder_name: str) -> str:
         """return base archive name"""
-        return base_folder_name + "_" + datetime.now().strftime(_DATE_STR_FORMAT)
+        return base_folder_name + "_" + datetime.now(timezone.utc).strftime(_DATE_STR_FORMAT)

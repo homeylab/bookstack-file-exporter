@@ -24,7 +24,7 @@ What it does:
 
 - Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
-- Additional content for pages like their images, attachments, and metadata and can be exported
+- Additional page content — images, attachments, and metadata — can also be exported
 - The exporter can also [Modify Links](docs/backup-behavior.md#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
 - Fine grained filtering and selectable export levels.
 - YAML configuration file for repeatable and easy runs
@@ -35,9 +35,8 @@ What it does:
 
 Supported backup targets are:
 
-1. local
-2. minio
-3. s3
+1. local filesystem
+2. S3-compatible object storage — AWS S3, MinIO, Ceph, Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, etc. There is no `type` field; a target is treated as a custom store or AWS S3 based on whether an `endpoint` is set. See [Remote Storage](docs/remote-storage.md#object-storage-upload).
 
 Supported backup formats are based on Bookstack API and shown [here](https://demo.bookstackapp.com/api/docs#pages-exportHtml) and below:
 
@@ -74,6 +73,7 @@ Below are versions that have major changes to the way configuration or exporter 
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 | `1.6.X` | `3.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key was removed in `3.0.0`. |
 | `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry using the flat schema (`name`, `endpoint`, `prefix`, `ambient_auth`, etc — no `type` field). See [Migrating from v2](docs/remote-storage.md#migrating-from-v2) for the exact mapping. |
+| `< 3.0.0` | `3.0.0` | `http_config.verify_ssl` now defaults to `true` (was `false`) — the exporter verifies the BookStack server's TLS certificate by default. If your BookStack uses a self-signed or internal-CA certificate, set `http_config.verify_ssl: false`, or point the `REQUESTS_CA_BUNDLE` environment variable at your CA bundle. |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
