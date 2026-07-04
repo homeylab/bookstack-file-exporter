@@ -135,6 +135,7 @@ class TestTarStreamWrite:
         stream = TarStream(partial)
         stream.write("hello.txt", b"hello world")
         assert (tmp_path / "bkps.tgz.partial").exists()
+        stream.finalize()
 
     def test_members_readable_after_finalize(self, tmp_path):
         partial = str(tmp_path / "bkps.tgz.partial")
@@ -178,10 +179,14 @@ class TestTarStreamWrite:
 class TestTarStreamPoison:
     """First write failure poisons the stream: later writes and finalize fail fast."""
 
-    def _poisoned_stream(self, tmp_path, monkeypatch) -> TarStream:
+    def _poisoned_stream(self, tmp_path, monkeypatch, request) -> TarStream:
         partial = str(tmp_path / "bkps.tgz.partial")
         stream = TarStream(partial)
         stream.write("ok.txt", b"fine")
+        # The poisoned stream is returned still-open; close the gzip handle at teardown
+        # so its finalizer doesn't raise "lost gzip_file" as an unraisable warning that
+        # could mask a real one. abort() is idempotent and swallows close errors.
+        request.addfinalizer(stream.abort)
 
         def boom(*_args, **_kwargs):
             raise OSError("disk full")
@@ -191,27 +196,27 @@ class TestTarStreamPoison:
             stream.write("bad.txt", b"payload")
         return stream
 
-    def test_failed_write_raises_archive_write_error(self, tmp_path, monkeypatch):
-        self._poisoned_stream(tmp_path, monkeypatch)
+    def test_failed_write_raises_archive_write_error(self, tmp_path, monkeypatch, request):
+        self._poisoned_stream(tmp_path, monkeypatch, request)
 
-    def test_subsequent_write_fails_fast(self, tmp_path, monkeypatch):
-        stream = self._poisoned_stream(tmp_path, monkeypatch)
+    def test_subsequent_write_fails_fast(self, tmp_path, monkeypatch, request):
+        stream = self._poisoned_stream(tmp_path, monkeypatch, request)
         with pytest.raises(ArchiveWriteError):
             stream.write("later.txt", b"payload")
 
-    def test_finalize_refuses_poisoned_stream(self, tmp_path, monkeypatch):
-        stream = self._poisoned_stream(tmp_path, monkeypatch)
+    def test_finalize_refuses_poisoned_stream(self, tmp_path, monkeypatch, request):
+        stream = self._poisoned_stream(tmp_path, monkeypatch, request)
         with pytest.raises(ArchiveWriteError):
             stream.finalize()
 
-    def test_subsequent_write_carries_first_error(self, tmp_path, monkeypatch):
+    def test_subsequent_write_carries_first_error(self, tmp_path, monkeypatch, request):
         """Poisoned-stream raises must name the ROOT cause, not just 'already failed'."""
-        stream = self._poisoned_stream(tmp_path, monkeypatch)
+        stream = self._poisoned_stream(tmp_path, monkeypatch, request)
         with pytest.raises(ArchiveWriteError, match="disk full"):
             stream.write("later.txt", b"payload")
 
-    def test_finalize_carries_first_error(self, tmp_path, monkeypatch):
-        stream = self._poisoned_stream(tmp_path, monkeypatch)
+    def test_finalize_carries_first_error(self, tmp_path, monkeypatch, request):
+        stream = self._poisoned_stream(tmp_path, monkeypatch, request)
         with pytest.raises(ArchiveWriteError, match="disk full"):
             stream.finalize()
 
@@ -239,22 +244,31 @@ class TestTarStreamLifecycle:
         stream.abort()
         stream.abort()  # double-abort: no error
 
-    def test_abort_swallows_close_errors(self, tmp_path, monkeypatch):
+    def test_abort_swallows_close_errors(self, tmp_path, monkeypatch, request):
         stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
         stream.write("a.txt", b"a")
 
         def boom():
             raise OSError("flush failed")
         monkeypatch.setattr(stream._tar, "close", boom)
+        # Mocking close() out entirely means the real gzip handle underneath is
+        # never actually closed; close it directly at teardown so its finalizer
+        # doesn't raise "lost gzip_file" as an unraisable warning that could mask
+        # a real one.
+        request.addfinalizer(stream._tar.fileobj.close)
         stream.abort()  # never raises, even when close blows up
 
-    def test_finalize_close_failure_raises_archive_write_error(self, tmp_path, monkeypatch):
+    def test_finalize_close_failure_raises_archive_write_error(self, tmp_path, monkeypatch,
+                                                                 request):
         stream = TarStream(str(tmp_path / "bkps.tgz.partial"))
         stream.write("a.txt", b"a")
 
         def boom():
             raise OSError("flush failed")
         monkeypatch.setattr(stream._tar, "close", boom)
+        # Same as above: close() is mocked out, so the real fileobj is orphaned
+        # unless we close it ourselves at teardown.
+        request.addfinalizer(stream._tar.fileobj.close)
         with pytest.raises(ArchiveWriteError):
             stream.finalize()
 

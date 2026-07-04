@@ -62,15 +62,13 @@ class TestRunOncePath:
             result = run.entrypoint(args=_args())
         assert result == 0
 
-    def test_run_raises_exception_returns_1(self, caplog):
+    def test_run_raises_exception_returns_1(self):
         cfg = self._cfg_no_interval()
         with patch.object(run, "ConfigNode", return_value=cfg), \
              patch("bookstack_file_exporter.run.signal.signal"), \
-             patch.object(run, "run", side_effect=RuntimeError("export boom")), \
-             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+             patch.object(run, "run", side_effect=RuntimeError("export boom")):
             result = run.entrypoint(args=_args())
         assert result == 1
-        assert any("Export failed" in r.message for r in caplog.records)
 
     def test_run_raises_exception_no_traceback_propagated(self):
         """Exception must NOT escape entrypoint."""
@@ -460,6 +458,18 @@ def test_scheduled_loop_uses_injected_wait_provider():
     mock_wait.assert_called_once_with(5)
 
 
+def test_run_scheduled_keyboardinterrupt_backstop():
+    """A SIGINT landing before/while _install_signal_handlers runs must still
+    return the documented 128+signum exit code, not propagate a traceback --
+    the same backstop contract _run_once already provides."""
+    cfg = _config(run_interval=5)
+
+    with patch.object(run, "_install_signal_handlers", side_effect=KeyboardInterrupt):
+        result = run._run_scheduled(cfg, lambda: 0.0)
+
+    assert result == 128 + signal.SIGINT
+
+
 # ---------------------------------------------------------------------------
 # Health server wiring in _run_scheduled (F4)
 # ---------------------------------------------------------------------------
@@ -605,6 +615,32 @@ class TestScheduledHealthServer:
         fake_status.mark_degraded.assert_called_once_with(partial_result)
         fake_status.mark_success.assert_not_called()
 
+    def test_failed_cycle_marks_failed_and_keeps_scheduler_alive(self):
+        """A cycle whose run() raises must be swallowed: health is marked failed and
+        the scheduler exits cleanly on the next stop check rather than propagating the
+        exception -- a failed cycle never tears down scheduled mode."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()  # stop after this cycle so the test terminates
+            raise RuntimeError("cycle boom")
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0  # scheduler exited cleanly, exception did not propagate
+        fake_status.mark_failed.assert_called_once()
+        fake_status.mark_success.assert_not_called()
+        fake_status.mark_degraded.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _run_scheduled() — double-signal force-kill (SIG_DFL restore)
@@ -698,3 +734,68 @@ def test_run_once_returns_zero_on_empty():
                       return_value=NotifyResult(status=ExportStatus.EMPTY,
                                                 export_level="pages")):
         assert run._run_once(MagicMock()) == 0
+
+
+# ---------------------------------------------------------------------------
+# run() -- end-of-run summary log emission (independent of notifications)
+# ---------------------------------------------------------------------------
+
+class TestRunSummaryLog:
+    def _cfg(self):
+        return SimpleNamespace(user_inputs=SimpleNamespace(notifications=None))
+
+    def test_partial_result_logs_warning_summary(self, caplog):
+        partial = NotifyResult(status=ExportStatus.PARTIAL, local="/data/bkps.tgz",
+                               export_level="pages", failed_assets=["img1"])
+        with patch.object(run, "exporter", return_value=partial), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is partial
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("Run summary [PARTIAL]:" in r.message for r in warning_records)
+
+    def test_success_result_logs_info_summary(self, caplog):
+        success = NotifyResult(status=ExportStatus.SUCCESS, local="/data/bkps.tgz",
+                               export_level="pages")
+        with patch.object(run, "exporter", return_value=success), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is success
+        assert any("Run summary [SUCCESS]:" in r.message and r.levelno == logging.INFO
+                   for r in caplog.records)
+
+    def test_cancelled_cycle_logs_no_summary(self, caplog):
+        with patch.object(run, "exporter", return_value=None), \
+             caplog.at_level(logging.INFO, logger="bookstack_file_exporter.run"):
+            result = run.run(self._cfg())
+
+        assert result is None
+        assert not any("Run summary" in r.message for r in caplog.records)
+
+    def test_run_exception_logs_failed_summary(self, caplog):
+        with patch.object(run, "exporter", side_effect=RuntimeError("boom")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            try:
+                run.run(self._cfg())
+            except RuntimeError:
+                pass
+
+        assert any("Run summary [FAILED]: error=boom" in r.message for r in caplog.records)
+
+    def test_run_exception_summary_flattens_multiline_error(self, caplog):
+        """A multi-line str(exception) is collapsed to a single grep-able log line,
+        matching format_run_summary's single-line guarantee on the other paths."""
+        with patch.object(run, "exporter",
+                          side_effect=RuntimeError("line one\nline two")), \
+             caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+            try:
+                run.run(self._cfg())
+            except RuntimeError:
+                pass
+
+        failed = [r for r in caplog.records if "Run summary [FAILED]" in r.message]
+        assert failed
+        assert "\n" not in failed[0].message
+        assert "error=line one line two" in failed[0].message

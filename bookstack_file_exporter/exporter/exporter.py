@@ -27,9 +27,11 @@ class NodeExporter():
         self.http_client = http_client
         self._node_filter = node_filter
         # Cooperative-cancel flag (threading.Event), injected by both one-shot and
-        # scheduled mode so a signal mid-fetch halts the tree walk at the next node
-        # boundary instead of fetching the entire tree first. None (checks below are
-        # no-ops) only when run()/exporter() are called directly (tests/library use).
+        # scheduled mode so a signal mid-fetch halts the tree walk at the next
+        # top-level node boundary (between parent books/chapters, not between a
+        # single parent's children) instead of fetching the entire tree first. None
+        # (checks below are no-ops) only when run()/exporter() are called directly
+        # (tests/library use).
         # Twin of NodeArchiver._stop (archive phase).
         self._stop = stop
         # Tracks book IDs belonging to dropped shelves; consumed in get_unassigned_books.
@@ -42,6 +44,12 @@ class NodeExporter():
 
     def _until_stop(self, items):
         """Yield from items until a shutdown signal is flagged, then stop.
+
+        Cancellation granularity is per PARENT node (book/chapter): the stop flag
+        is checked between top-level items, not between the children fetched for a
+        single parent. A signal mid-way through one parent's child fan-out is
+        honored only after that parent's children finish -- intentional, since the
+        second signal force-kills.
 
         Wraps each fetch loop's iterable so cancellation lives in one place. This
         is also the seam a future parallel exporter would attach to: the same

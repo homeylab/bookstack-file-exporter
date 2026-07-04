@@ -47,6 +47,10 @@ class TestResolveLogFormat:
         assert any("yaml" in r.message and "LOG_FORMAT" in r.message
                    for r in caplog.records)
 
+    def test_env_trims_whitespace(self, monkeypatch):
+        monkeypatch.setenv("LOG_FORMAT", "  json  ")
+        assert run_args.resolve_log_format(_args()) == "json"
+
 
 class TestLogLevelArg:
     def test_default_is_none(self):
@@ -80,3 +84,7 @@ class TestResolveLogLevel:
             assert run_args.resolve_log_level(_lvl_args()) == "info"
         assert any("verbose" in r.message and "LOG_LEVEL" in r.message
                    for r in caplog.records)
+
+    def test_env_trims_whitespace(self, monkeypatch):
+        monkeypatch.setenv("LOG_LEVEL", "  debug  ")
+        assert run_args.resolve_log_level(_lvl_args()) == "debug"

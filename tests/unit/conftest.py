@@ -3,10 +3,23 @@
 Fixture factories (not plain helpers) so each test names exactly the fields it
 overrides and schema changes are absorbed in one place.
 """
+from unittest.mock import MagicMock
+
 import pytest
 
+from bookstack_file_exporter.archiver.node_archiver import PageArchiver
 from bookstack_file_exporter.config_helper.models import S3StorageConfig
 from bookstack_file_exporter.config_helper.remote import S3ProviderConfig
+from tests.fixtures.mock_config import make_mock_config as _make_config
+
+
+@pytest.fixture
+def page_archiver(tmp_path):
+    """Construct a PageArchiver with all external collaborators mocked."""
+    config = _make_config()
+    http_client = MagicMock()
+    archive_dir = str(tmp_path / "bookstack-20260514")
+    return PageArchiver(archive_dir, config, http_client, asset_archiver=MagicMock())
 
 
 @pytest.fixture

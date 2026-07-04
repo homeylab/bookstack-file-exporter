@@ -5,6 +5,7 @@ from http.cookiejar import DefaultCookiePolicy
 from typing import TypeVar
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 # pylint: disable=import-error
 import requests
 # pylint: disable=import-error
@@ -57,7 +58,11 @@ class HttpHelper:
         # _build_session — so there is no shared mutable per-request state to race.
         self._pool_maxsize = max(DEFAULT_POOLSIZE, export_workers)
         if not self.verify_ssl:
-            urllib3.disable_warnings()
+            # requests emits a urllib3 InsecureRequestWarning on every request when
+            # verification is off; silence only that category (still global across
+            # the process by design of urllib3's warnings API), matching
+            # S3CompatibleArchiver's behavior for verify: false on object storage.
+            urllib3.disable_warnings(InsecureRequestWarning)
         self._headers = headers
         self._session = self._build_session()
 
@@ -104,7 +109,12 @@ class HttpHelper:
         return response
 
     def http_get_all(self, url: str, count: int = 500) -> list[dict]:
-        """fetch all items from a paginated bookstack list endpoint"""
+        """fetch all items from a paginated bookstack list endpoint.
+
+        A full paginated listing is one atomic fetch: there is no per-page
+        cancellation checkpoint, so a shutdown signal is honored only after the
+        whole list is retrieved (consistent with the per-fetch cancellation
+        granularity documented for the export loop)."""
         parsed = urlparse(url)
         base_query = [(k, v) for k, v in parse_qsl(parsed.query)
                       if k not in ('count', 'offset')]

@@ -12,7 +12,8 @@ from bookstack_file_exporter.exporter.filter import NodeFilter
 from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
+from bookstack_file_exporter.notify.models import (
+    NotifyResult, ExportStatus, STATUS_EFFECTS, format_run_summary)
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
@@ -103,75 +104,104 @@ def _run_once(config: ConfigNode) -> int:
             signum = int(received.get("signum", signal.SIGINT))
             log.info("Interrupted by signal %s, exiting", signum)
             return 128 + signum
-        return STATUS_EFFECTS[result.status].exit_code
+        code = STATUS_EFFECTS[result.status].exit_code
+        log.info("One-shot run exit code: %d", code)
+        return code
     except KeyboardInterrupt:
         # Backstop only: a Ctrl-C landing in the brief window before the
         # handlers above are installed still raises normally.
         signum = int(received.get("signum", signal.SIGINT))
         log.info("Interrupted by signal %s, exiting", signum)
         return 128 + signum
-    except Exception as err:  # pylint: disable=broad-except
-        log.error("Export failed: %s", err)
+    except Exception:  # pylint: disable=broad-except
+        # run() already logged the terminal "Run summary [FAILED]" line before
+        # re-raising, so avoid a duplicate error line here; keep the traceback.
         log.debug("Traceback:", exc_info=True)
         return 1
+
+
+def _run_cycle(config: ConfigNode, stop: threading.Event, status: RunStatus | None) -> None:
+    """Execute one scheduled export cycle and reflect its outcome in health status.
+
+    Owns the full mark_running -> run -> success/degraded/failed transition for a
+    single cycle so the scheduling loop stays a thin timer. A cycle's own export
+    failure is caught, logged (in run()) and recorded on health, letting the caller
+    retry on the next interval instead of tearing down the scheduler. (A signal-borne
+    BaseException still propagates to the loop's KeyboardInterrupt backstop, as before.)"""
+    if status:
+        status.mark_running()
+    try:
+        result = run(config, stop)
+        # None = cycle cancelled by shutdown; the caller breaks on stop.is_set()
+        # right after, so an unfinished cycle is never marked success/degraded.
+        if status and result is not None:
+            if STATUS_EFFECTS[result.status].health_degraded:
+                status.mark_degraded(result)
+            else:
+                status.mark_success(result)
+    except Exception as err:  # pylint: disable=broad-except
+        # log-and-continue: run() already logged the "Run summary [FAILED]" line and
+        # fired the failure notification, so no duplicate error line here; the caller
+        # still waits the interval before retrying (no busy-loop). Keep the traceback
+        # and mark health failed.
+        log.debug("Traceback:", exc_info=True)
+        if status:
+            status.mark_failed(err)
 
 
 def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     """Run the export on a repeating schedule until a stop signal is received."""
     stop = threading.Event()
-    _install_signal_handlers(stop)
-
-    status = None
     server = None
-    if config.user_inputs.health_port:
-        status = RunStatus()
-        server = start_health_server(
-            config.user_inputs.health_host, config.user_inputs.health_port, status)
-        log.info("Health endpoint listening on %s:%s",
-                 config.user_inputs.health_host, config.user_inputs.health_port)
+    try:
+        _install_signal_handlers(stop)
 
-    while not stop.is_set():
-        if status:
-            status.mark_running()
-        try:
-            result = run(config, stop)
-            # None = cycle cancelled by shutdown; the loop breaks right after
-            # (stop.is_set() below) and the server shuts down, so the cycle is
-            # never marked success/degraded for work that didn't finish.
-            if status and result is not None:
-                if STATUS_EFFECTS[result.status].health_degraded:
-                    status.mark_degraded(result)
-                else:
-                    status.mark_success(result)
-        except Exception as err:  # pylint: disable=broad-except
-            # log-and-continue: a failed cycle still waits the interval below
-            # before retrying (no busy-loop), and the failure notification has
-            # already fired inside run().
-            log.error("Export failed: %s", err)
-            log.debug("Traceback:", exc_info=True)
+        status = None
+        if config.user_inputs.health_port:
+            status = RunStatus()
+            server = start_health_server(
+                config.user_inputs.health_host, config.user_inputs.health_port, status)
+            log.info("Health endpoint listening on %s:%s",
+                     config.user_inputs.health_host, config.user_inputs.health_port)
+
+        while not stop.is_set():
+            _run_cycle(config, stop, status)
+            if stop.is_set():
+                break
+
+            wait_secs = next_wait()
             if status:
-                status.mark_failed(err)
+                status.set_next_run(datetime.now(timezone.utc) + timedelta(seconds=wait_secs))
+            log.info("Waiting %s seconds for next run", wait_secs)
+            stop.wait(wait_secs)
 
-        if stop.is_set():
-            break
-
-        wait_secs = next_wait()
-        if status:
-            status.set_next_run(datetime.now(timezone.utc) + timedelta(seconds=wait_secs))
-        log.info("Waiting %s seconds for next run", wait_secs)
-        stop.wait(wait_secs)
-
-    if server:
-        server.shutdown()
-        server.server_close()
-    log.info("Shutdown complete")
-    return 0
+        log.info("Shutdown complete")
+        return 0
+    except KeyboardInterrupt:
+        # Backstop: a Ctrl-C landing before/while _install_signal_handlers runs
+        # still raises normally; map it to the same 128+signum contract as
+        # one-shot mode's backstop.
+        log.info("Interrupted before graceful shutdown was armed; exiting")
+        return 128 + signal.SIGINT
+    finally:
+        # Idempotent teardown on every exit path (normal, exception, backstop).
+        if server is not None:
+            server.shutdown()
+            server.server_close()
 
 
 def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """run export process with error handling and notification support"""
     try:
         result = exporter(config, stop)
+        # Terminal outcome roll-up for the logs, independent of notifications:
+        # WARNING for a degraded run so it is visible in scheduled mode (where the
+        # process still exits 0 and per-cycle status otherwise only reaches /health).
+        if result is not None:
+            summary_level = (logging.WARNING if result.status is ExportStatus.PARTIAL
+                             else logging.INFO)
+            log.log(summary_level, "Run summary [%s]: %s",
+                    result.status.name, format_run_summary(result))
         # None = cancelled by shutdown (run.py's shutdown-during-fetch /
         # shutdown-mid-cycle paths); notifying would report an outcome that
         # never happened, so skip notification entirely. Any real outcome
@@ -186,6 +216,11 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
                 log.error("Failed to send notification: %s", str(notif_err))
         return result
     except Exception as run_err: # general catch all for notifications
+        # Flatten newlines so a multi-line str(exception) stays one grep-able line,
+        # matching format_run_summary's single-line guarantee; error= keeps the
+        # payload field-shaped like the SUCCESS/PARTIAL/EMPTY summary lines.
+        log.error("Run summary [FAILED]: error=%s",
+                  str(run_err).replace("\r", " ").replace("\n", " "))
         if not config.user_inputs.notifications:
             raise run_err
         try:

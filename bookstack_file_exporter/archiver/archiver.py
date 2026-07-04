@@ -219,7 +219,8 @@ class Archiver:
 
     def resolve_remote_status(self, outcomes: list[UploadOutcome]) -> ExportStatus:
         """Derive run status from upload outcomes. Raise AggregateUploadError only when
-        NO durable copy survives: every upload failed AND keep_last<0 deletes the local.
+        NO durable copy survives: every upload failed AND keep_last<0 retains no local
+        copy across runs (this run's file lingers but a later successful run prunes it).
         A target that uploaded but whose retention cleanup failed (warning) downgrades
         SUCCESS to PARTIAL."""
         if not outcomes:
@@ -230,8 +231,8 @@ class Archiver:
         if n_ok == 0 and self.config.user_inputs.keep_last < 0:
             failed = ", ".join(o.label for o in outcomes)
             raise AggregateUploadError(
-                f"all upload targets failed and no local copy is kept "
-                f"(keep_last<0): {failed}")
+                f"all upload targets failed; only the local copy remains and "
+                f"keep_last<0 means a later successful run will prune it: {failed}")
         return ExportStatus.PARTIAL
 
     def clean_up(self) -> list[str]:

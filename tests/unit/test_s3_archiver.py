@@ -11,6 +11,7 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError, EndpointConnectionError
 from moto import mock_aws
+from urllib3.exceptions import InsecureRequestWarning
 
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
 
@@ -83,6 +84,15 @@ def test_urllib3_warnings_disabled_only_when_verify_off(
         "bookstack_file_exporter.archiver.s3_archiver.urllib3.disable_warnings", disabled)
     S3CompatibleArchiver(make_provider(**overrides))
     assert disabled.called is expect_disabled
+
+
+def test_urllib3_suppression_scoped_to_insecure_request_warning(monkeypatch, make_provider):
+    monkeypatch.setattr("boto3.session.Session.client", lambda self, *a, **k: MagicMock())
+    disabled = MagicMock()
+    monkeypatch.setattr(
+        "bookstack_file_exporter.archiver.s3_archiver.urllib3.disable_warnings", disabled)
+    S3CompatibleArchiver(make_provider(verify_ssl=False))
+    disabled.assert_called_once_with(InsecureRequestWarning)
 
 
 def test_validate_bucket_wraps_endpoint_connection_error(monkeypatch, provider):

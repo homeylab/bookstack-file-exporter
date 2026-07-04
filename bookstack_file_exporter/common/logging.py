@@ -26,8 +26,11 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.message,
         }
+        # Fixed schema keys are authoritative: skip any caller extra whose name collides,
+        # so extra={'level': ...}/{'logger': ...}/{'timestamp': ...} can never clobber the
+        # real record values (mirrors python-json-logger's static-fields precedence).
         for key, val in record.__dict__.items():
-            if key not in _RESERVED_ATTRS:
+            if key not in _RESERVED_ATTRS and key not in out:
                 out[key] = val
         if record.exc_info:
             out["exc_info"] = self.formatException(record.exc_info)

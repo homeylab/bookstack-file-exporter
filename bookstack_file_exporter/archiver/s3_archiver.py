@@ -4,6 +4,7 @@ import os
 # pylint: disable=import-error
 import boto3
 import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -35,9 +36,10 @@ class S3CompatibleArchiver:
     def __init__(self, provider_config: S3ProviderConfig):
         if provider_config.verify is False:
             # botocore emits a urllib3 InsecureRequestWarning on every request when
-            # verification is off; silence globally, matching HttpHelper's behavior
-            # for verify_ssl: false on the BookStack side.
-            urllib3.disable_warnings()
+            # verification is off; silence only that category (still global across
+            # the process by design of urllib3's warnings API), matching
+            # HttpHelper's behavior for verify_ssl: false on the BookStack side.
+            urllib3.disable_warnings(InsecureRequestWarning)
         session = boto3.session.Session(
             aws_access_key_id=provider_config.access_key,
             aws_secret_access_key=provider_config.secret_key,

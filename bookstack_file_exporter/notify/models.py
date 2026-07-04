@@ -67,3 +67,37 @@ class NotifyResult:  # pylint: disable=too-many-instance-attributes
     # which node kind this run exported ("pages" | "books" | "chapters") -- lets
     # the notifier say "2 page export(s) failed" instead of a generic "node"
     export_level: str = "pages"
+
+
+def format_run_summary(result: NotifyResult) -> str:
+    """One-line plaintext run summary for the logs, mirroring the fields a
+    notification carries. Distinct from the markdown notifier body: this is the
+    outcome roll-up for operators reading stdout without notifications wired.
+    Empty fields are omitted so a clean success stays short."""
+    parts = [f"level={result.export_level}"]
+    if result.local:
+        parts.append(f"archive={result.local}")
+    total = len(result.uploads)
+    if total:
+        ok = sum(1 for u in result.uploads if u.dest is not None)
+        parts.append(f"uploads={ok}/{total} ok")
+        failed = [u.label for u in result.uploads if u.dest is None]
+        if failed:
+            parts.append(f"(failed: {', '.join(failed)})")
+        warned = [u.label for u in result.uploads if u.dest is not None and u.warning]
+        if warned:
+            parts.append(f"(retention-warned: {', '.join(warned)})")
+    if result.failed_nodes or result.failed_assets:
+        parts.append(
+            f"content-loss={len(result.failed_nodes)} node/"
+            f"{len(result.failed_assets)} asset")
+    if result.removed:
+        parts.append(f"removed={len(result.removed)}")
+    pruned = sum(u.pruned for u in result.uploads)
+    if pruned:
+        parts.append(f"pruned={pruned}")
+    if result.cleanup_error:
+        parts.append(f"cleanup_error={result.cleanup_error}")
+    # Flatten any embedded newline so the summary stays a single grep-able line
+    # (cleanup_error is a str(exception) and could otherwise carry a line break).
+    return " ".join(parts).replace("\r", " ").replace("\n", " ")
