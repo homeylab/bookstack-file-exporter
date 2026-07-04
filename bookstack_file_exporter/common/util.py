@@ -109,7 +109,12 @@ class HttpHelper:
         return response
 
     def http_get_all(self, url: str, count: int = 500) -> list[dict]:
-        """fetch all items from a paginated bookstack list endpoint"""
+        """fetch all items from a paginated bookstack list endpoint.
+
+        A full paginated listing is one atomic fetch: there is no per-page
+        cancellation checkpoint, so a shutdown signal is honored only after the
+        whole list is retrieved (consistent with the per-fetch cancellation
+        granularity documented for the export loop)."""
         parsed = urlparse(url)
         base_query = [(k, v) for k, v in parse_qsl(parsed.query)
                       if k not in ('count', 'offset')]
