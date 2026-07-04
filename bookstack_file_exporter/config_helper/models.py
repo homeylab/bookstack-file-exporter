@@ -26,7 +26,11 @@ class StrictModel(BaseModel):
     Dev note: those before-validators are migration UX only, not a safety layer —
     extra='forbid' alone still rejects the legacy keys, just with a generic
     unknown-key error. They can be deleted once v2-era configs have aged out."""
-    model_config = ConfigDict(extra="forbid")
+    # hide_input_in_errors: validation errors land in logs/stderr, and a value
+    # pasted into the wrong field is often a credential — suppress the
+    # input_value echo for every field (error location + reason still shown)
+    # rather than guess which fields are secret.
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     @staticmethod
     def _reject_keys(raw, hints: dict[str, str]):

@@ -274,3 +274,19 @@ def test_negative_keep_last_with_object_storage_accepted():
 def test_zero_and_positive_keep_last_never_require_object_storage():
     assert UserInput(**_minimal(keep_last=0)).keep_last == 0
     assert UserInput(**_minimal(keep_last=5)).keep_last == 5
+
+
+# --- Task 13: hide input values in validation errors (secret echo prevention) ---
+
+def test_validation_errors_do_not_echo_input_values():
+    """A secret pasted into a mistyped field must not leak into the error text
+    (ValidationError strings land in logs/stderr)."""
+    with pytest.raises(ValidationError) as exc_info:
+        S3StorageConfig(name="minio", bucket="backups", endpoint="minio.local:9000",
+                        access_key=112233, secret_key="hunter2-secret")
+    assert "112233" not in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        UserInput(host="https://wiki.example", formats=["markdown"],
+                  keep_last="hunter2-token")
+    assert "hunter2-token" not in str(exc_info.value)
