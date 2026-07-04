@@ -412,10 +412,10 @@ def test_create_export_dir_with_path_calls_create_dir(
     assert calls == ["x/y"]
 
 
-def test_create_export_dir_permission_error_logs_warning(
+def test_create_export_dir_permission_error_fails_fast(
     monkeypatch, archiver_instance, mock_config, caplog
 ):
-    """util.create_dir raises PermissionError → warning logged, no exception raised."""
+    """util.create_dir raises PermissionError → pointed error logged, exception propagates."""
     mock_config.user_inputs.output_path = "some/path"
 
     def _raise_perm(path):
@@ -425,10 +425,11 @@ def test_create_export_dir_permission_error_logs_warning(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
         _raise_perm,
     )
-    caplog.set_level(logging.WARNING, logger="bookstack_file_exporter.archiver.archiver")
-    archiver_instance.create_export_dir()  # must not raise
-    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("Failed to create base directory" in msg for msg in warning_messages)
+    caplog.set_level(logging.ERROR, logger="bookstack_file_exporter.archiver.archiver")
+    with pytest.raises(PermissionError):
+        archiver_instance.create_export_dir()
+    error_messages = [r.message for r in caplog.records if r.levelno == logging.ERROR]
+    assert any("Cannot create export directory" in msg for msg in error_messages)
 
 
 # ---------------------------------------------------------------------------
