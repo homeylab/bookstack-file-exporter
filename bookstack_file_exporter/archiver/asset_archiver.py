@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import base64
+import binascii
 from typing import Literal
 
 from markdown_it import MarkdownIt
@@ -23,6 +24,17 @@ _ATTACHMENT_DIR_NAME = "attachments"
 # Matches BookStack's scaled-thumbnail path segment, e.g. /scaled-1680-/ or /scaled-300-/.
 # Used to strip the scaled variant back to the canonical URL for url_map lookup.
 _SCALED_RE = re.compile(r'/scaled-\d+-/')
+
+
+class AssetDecodeError(Exception):
+    """Attachment payload did not match the documented base64-JSON shape.
+
+    Raised instead of letting KeyError/JSONDecodeError/binascii.Error escape:
+    those builtins are ambiguous (they could equally be our own bug), while
+    this type means specifically "the server sent something we cannot decode",
+    so callers can treat it exactly like a failed download (skip the asset ->
+    PARTIAL) without a broad except masking real defects.
+    """
 
 
 class AssetNode:
@@ -290,10 +302,33 @@ class AssetArchiver:
             case "images":
                 asset_data = asset_response.content
             case "attachments":
-                asset_data = self._decode_attachment_data(asset_response.json()['content'])
+                asset_data = self._decode_attachment_response(asset_response)
             case _:
                 raise ValueError(f"unsupported asset type: {asset_type}")
         return asset_data
+
+    @staticmethod
+    def _decode_attachment_response(response: Response) -> bytes:
+        """Validate-then-decode the attachment payload ({'content': <base64 str>}).
+
+        requests raises a ValueError subclass on a non-JSON body; b64decode
+        raises binascii.Error on bad padding. Both, plus a missing/mistyped
+        'content' field, become AssetDecodeError so one malformed attachment is
+        skipped (-> failed_assets -> PARTIAL) instead of aborting the export.
+        """
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise AssetDecodeError(f"attachment response is not JSON: {exc}") from exc
+        content = payload.get('content') if isinstance(payload, dict) else None
+        if not isinstance(content, str):
+            raise AssetDecodeError(
+                "attachment response has no base64 string 'content' field")
+        try:
+            return base64.b64decode(content.encode())
+        except binascii.Error as exc:
+            raise AssetDecodeError(
+                f"attachment 'content' is not valid base64: {exc}") from exc
 
     def update_asset_links(self, asset_type: str, page_name: str, page_data: bytes,
             asset_nodes: list[ImageNode | AttachmentNode]) -> bytes:
@@ -438,9 +473,3 @@ class AssetArchiver:
         nodes = [AttachmentNode(meta, self.api_urls['attachments'])
                  for meta in json_data if not meta['external']]
         return self._group_by_page(nodes)
-
-    @staticmethod
-    def _decode_attachment_data(b64encoded_data: str) -> bytes:
-        """decode base64 encoded data"""
-        asset_data = b64encoded_data.encode()
-        return base64.b64decode(asset_data)

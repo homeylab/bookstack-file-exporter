@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
-from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
+from bookstack_file_exporter.archiver.asset_archiver import (
+    AssetArchiver, AssetDecodeError, ImageNode, AttachmentNode)
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common.util import HttpHelper
 
@@ -205,10 +206,11 @@ class NodeArchiver:
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(
                     asset_type, asset_node.download_url)
-            except (HTTPError, RetryError):
+            except (HTTPError, RetryError, AssetDecodeError) as exc:
                 failed_assets.add(asset_node.id_)
                 log.error("Failed to get image or attachment data "
-                          "for asset located at: %s - skipping", asset_node.download_url)
+                          "for asset located at: %s - skipping (%s)",
+                          asset_node.download_url, exc)
                 continue
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
