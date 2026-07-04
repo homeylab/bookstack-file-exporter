@@ -653,6 +653,63 @@ class TestExporterContentLoss:
 
 
 # ---------------------------------------------------------------------------
+# prune_skipped / "Retention pruning skipped" WARNING wiring (exporter()-level)
+# ---------------------------------------------------------------------------
+
+class TestExporterPruneSkippedWiring:
+    def _partial_archiver(self, mock_archiver):
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = []
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
+        mock_archiver.clean_up.return_value = []
+        mock_archiver.archive_file = "/local/export.tgz"
+        mock_archiver.failed_nodes = ["book/x.md"]
+
+    def test_prune_skipped_true_and_warning_logged_when_retention_configured(
+        self, monkeypatch, caplog
+    ):
+        """not prune_allowed and retention_configured -> prune_skipped True and the
+        run.py-level WARNING fires (pinning exporter()'s NotifyResult.prune_skipped
+        wiring and _warn_if_pruning_skipped's call site together)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._partial_archiver(mock_archiver)
+        mock_archiver.prune_allowed = False
+        mock_archiver.retention_configured = True
+
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.prune_skipped is True
+        assert any("Retention pruning skipped" in r.message for r in caplog.records)
+
+    def test_prune_skipped_false_and_no_warning_when_retention_not_configured(
+        self, monkeypatch, caplog
+    ):
+        """not prune_allowed but retention NOT configured -> prune_skipped False and
+        no WARNING (nothing to warn about: pruning was never going to run anyway)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._partial_archiver(mock_archiver)
+        mock_archiver.prune_allowed = False
+        mock_archiver.retention_configured = False
+
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.prune_skipped is False
+        assert not any("Retention pruning skipped" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
 # A poisoned archive stream must hard-fail the run, never publish as PARTIAL
 # ---------------------------------------------------------------------------
 

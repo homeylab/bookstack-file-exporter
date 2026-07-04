@@ -363,7 +363,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # Local retention pruning is housekeeping: at this point durable copies exist
         # (resolve_remote_status raised otherwise), so a failed local delete downgrades
-        # the run to PARTIAL instead of failing it, rather than failing the whole run.
+        # the run to PARTIAL instead of failing the whole run.
         removed, cleanup_error = _run_local_cleanup(archive)
         if cleanup_error:
             status = ExportStatus.PARTIAL
