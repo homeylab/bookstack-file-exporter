@@ -23,6 +23,10 @@ def load_yaml_config(path: str) -> dict:
             raise
     if data is None:                       # empty / whitespace-only file
         raise ValueError(f"Config file is empty or has no YAML content: {path}")
+    if not isinstance(data, dict):    # scalar or list at top level
+        raise ValueError(
+            f"Config file root must be a YAML mapping of 'key: value' pairs, "
+            f"got {type(data).__name__}: {path}")
     return data
 
 

@@ -60,6 +60,13 @@ def test_load_yaml_config_raises_value_error_on_empty_file(tmp_path, content):
         load_yaml_config(str(empty))
 
 
+def test_non_mapping_yaml_root_raises_clear_error(tmp_path):
+    cfg = tmp_path / "config.yml"
+    cfg.write_text("- just\n- a\n- list\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="mapping"):
+        load_yaml_config(str(cfg))
+
+
 def test_load_yaml_config_raises_yaml_error_on_invalid_yaml(tmp_path):
     """load_yaml_config must propagate yaml.YAMLError for malformed YAML."""
     bad_yaml = tmp_path / "bad.yml"
