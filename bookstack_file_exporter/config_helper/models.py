@@ -352,3 +352,15 @@ class UserInput(StrictModel):
                 raise ValueError(
                     f"run_schedule cron expression never fires: {self.run_schedule!r}") from err
         return self
+
+    @model_validator(mode="after")
+    def _check_negative_keep_last_requires_remote(self):
+        """keep_last < 0 deletes EVERY local archive after each run, including the
+        one just created. Without at least one object_storage target that is
+        guaranteed total data loss reported as SUCCESS, so reject it at config
+        load (fail-fast) rather than warn at runtime."""
+        if self.keep_last < 0 and not self.object_storage:
+            raise ValueError(
+                "keep_last < 0 deletes every local archive after each run; it is "
+                "only valid with at least one object_storage target to upload to first")
+        return self

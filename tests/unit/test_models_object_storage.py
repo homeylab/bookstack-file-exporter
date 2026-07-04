@@ -246,3 +246,31 @@ def test_unknown_nested_key_rejected():
     with pytest.raises(ValidationError) as exc:
         UserInput(**raw)
     assert "timout" in str(exc.value)
+
+
+# --- Task 2: keep_last < 0 requires at least one object_storage target ---
+
+def _minimal(**overrides):
+    base = {"host": "https://bookstack.example.org", "formats": ["markdown"]}
+    base.update(overrides)
+    return base
+
+
+def test_negative_keep_last_without_object_storage_rejected():
+    with pytest.raises(ValidationError, match="keep_last"):
+        UserInput(**_minimal(keep_last=-1))
+
+
+def test_negative_keep_last_with_object_storage_accepted():
+    user_input = UserInput(**_minimal(
+        keep_last=-1,
+        object_storage=[{
+            "name": "minio-main", "endpoint": "minio.local:9000",
+            "bucket": "bkps", "access_key": "k", "secret_key": "s",
+        }]))
+    assert user_input.keep_last == -1
+
+
+def test_zero_and_positive_keep_last_never_require_object_storage():
+    assert UserInput(**_minimal(keep_last=0)).keep_last == 0
+    assert UserInput(**_minimal(keep_last=5)).keep_last == 5
