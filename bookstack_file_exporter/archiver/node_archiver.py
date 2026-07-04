@@ -318,7 +318,9 @@ class NodeArchiver:
         runs WITHOUT cancel_futures, so without this call queued work would all run.
         A worker raising a non-HTTP error (HTTPError/RetryError are already swallowed
         per-format inside _export_node) is logged and skipped so one bad node never
-        aborts the run.
+        aborts the run - EXCEPT ArchiveWriteError: that means the shared tar stream
+        is poisoned and no later node can be written, so the run aborts promptly
+        instead of fetching the rest for nothing.
         """
         # Threads (not processes) because the work is I/O-bound: each node spends
         # almost all its time waiting on a network round-trip to BookStack, and
@@ -351,6 +353,16 @@ class NodeArchiver:
                 # and skipped rather than aborting every other node's export.
                 try:
                     self._merge_failures(future.result())
+                except archiver_util.ArchiveWriteError:
+                    # The stream is poisoned: no later node can write, so
+                    # continuing only burns API fetches. Drop queued futures and
+                    # propagate; in-flight workers finish their fetch and die
+                    # cheaply on the poisoned write. (Fail-fast is scoped to
+                    # ArchiveWriteError deliberately - requests exceptions
+                    # subclass OSError, so a broader class would abort the run
+                    # on one flaky page.)
+                    executor.shutdown(cancel_futures=True)
+                    raise
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     log.error("Node export worker failed, skipping node: %s", exc)
                     # formats already exported before the crash are unknown here,
