@@ -624,6 +624,25 @@ def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instan
     assert "delete denied" in outcomes[0].warning
 
 
+def test_remote_prune_skipped_when_degraded(archiver_instance, mock_config):
+    """A degraded run (content loss) still uploads to remote targets but must not
+    trigger remote retention -- mirrors clean_up's local prune_allowed gate."""
+    mock_config.object_storage_config = [_provider_entry("s3/aws")]
+    inst = MagicMock()
+    inst.upload_backup.return_value = "s3-aws/a.tgz"
+    archiver_instance._s3_archiver_cls = MagicMock(return_value=inst)
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert outcomes[0].dest == "s3-aws/a.tgz"
+    assert outcomes[0].pruned == 0
+    inst.clean_up.assert_not_called()
+
+
 def test_resolve_status_upload_ok_but_warning_is_partial(archiver_instance):
     out = [UploadOutcome(label="a", dest="a/x.tgz", error=None, warning="prune failed")]
     assert archiver_instance.resolve_remote_status(out) is ExportStatus.PARTIAL

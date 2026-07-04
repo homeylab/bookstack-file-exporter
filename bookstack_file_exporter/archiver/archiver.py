@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import functools
 import logging
 import os
 
@@ -192,13 +193,16 @@ class Archiver:
         entries = self.config.object_storage_config or []
         if not entries:
             return []
+        allow_prune = self.prune_allowed
         if len(entries) == 1:
-            return [self._upload(entries[0])]
+            return [self._upload(entries[0], allow_prune=allow_prune)]
         workers = min(len(entries), _MAX_UPLOAD_WORKERS)
+        upload = functools.partial(self._upload, allow_prune=allow_prune)
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(executor.map(self._upload, entries))
+            return list(executor.map(upload, entries))
 
-    def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
+    def _upload(self, provider_config: S3ProviderConfig,
+                allow_prune: bool = True) -> UploadOutcome:
         label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)
@@ -207,6 +211,10 @@ class Archiver:
             # attempt-all: record and continue so other targets still run
             log.error("Upload to target '%s' failed: %s", label, err)
             return UploadOutcome(label=label, dest=None, error=str(err))
+        # Partial run: the degraded archive still uploads (a thin copy beats no
+        # copy) but must not trigger retention that evicts complete backups.
+        if not allow_prune:
+            return UploadOutcome(label=label, dest=dest, error=None)
         # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
         # keep dest (never flip to failed) but flag a warning so the run is degraded.
         try:
