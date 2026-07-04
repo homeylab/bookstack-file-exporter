@@ -120,7 +120,36 @@ def _run_once(config: ConfigNode) -> int:
         return 1
 
 
-def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:  # pylint: disable=too-many-branches
+def _run_cycle(config: ConfigNode, stop: threading.Event, status: RunStatus | None) -> None:
+    """Execute one scheduled export cycle and reflect its outcome in health status.
+
+    Owns the full mark_running -> run -> success/degraded/failed transition for a
+    single cycle so the scheduling loop stays a thin timer. A cycle's own export
+    failure is caught, logged (in run()) and recorded on health, letting the caller
+    retry on the next interval instead of tearing down the scheduler. (A signal-borne
+    BaseException still propagates to the loop's KeyboardInterrupt backstop, as before.)"""
+    if status:
+        status.mark_running()
+    try:
+        result = run(config, stop)
+        # None = cycle cancelled by shutdown; the caller breaks on stop.is_set()
+        # right after, so an unfinished cycle is never marked success/degraded.
+        if status and result is not None:
+            if STATUS_EFFECTS[result.status].health_degraded:
+                status.mark_degraded(result)
+            else:
+                status.mark_success(result)
+    except Exception as err:  # pylint: disable=broad-except
+        # log-and-continue: run() already logged the "Run summary [FAILED]" line and
+        # fired the failure notification, so no duplicate error line here; the caller
+        # still waits the interval before retrying (no busy-loop). Keep the traceback
+        # and mark health failed.
+        log.debug("Traceback:", exc_info=True)
+        if status:
+            status.mark_failed(err)
+
+
+def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
     """Run the export on a repeating schedule until a stop signal is received."""
     stop = threading.Event()
     server = None
@@ -136,27 +165,7 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:  
                      config.user_inputs.health_host, config.user_inputs.health_port)
 
         while not stop.is_set():
-            if status:
-                status.mark_running()
-            try:
-                result = run(config, stop)
-                # None = cycle cancelled by shutdown; the loop breaks right after
-                # (stop.is_set() below) and the server shuts down, so the cycle is
-                # never marked success/degraded for work that didn't finish.
-                if status and result is not None:
-                    if STATUS_EFFECTS[result.status].health_degraded:
-                        status.mark_degraded(result)
-                    else:
-                        status.mark_success(result)
-            except Exception as err:  # pylint: disable=broad-except
-                # log-and-continue: run() already logged the "Run summary [FAILED]"
-                # line and fired the failure notification, so no duplicate error line
-                # here; a failed cycle still waits the interval below before retrying
-                # (no busy-loop). Keep the traceback and mark health failed.
-                log.debug("Traceback:", exc_info=True)
-                if status:
-                    status.mark_failed(err)
-
+            _run_cycle(config, stop, status)
             if stop.is_set():
                 break
 

@@ -615,6 +615,32 @@ class TestScheduledHealthServer:
         fake_status.mark_degraded.assert_called_once_with(partial_result)
         fake_status.mark_success.assert_not_called()
 
+    def test_failed_cycle_marks_failed_and_keeps_scheduler_alive(self):
+        """A cycle whose run() raises must be swallowed: health is marked failed and
+        the scheduler exits cleanly on the next stop check rather than propagating the
+        exception -- a failed cycle never tears down scheduled mode."""
+        cfg = _config(run_interval=5, health_port=8080)
+        stop_event = threading.Event()
+
+        def _run_side_effect(_config, _stop=None):
+            stop_event.set()  # stop after this cycle so the test terminates
+            raise RuntimeError("cycle boom")
+
+        fake_status = MagicMock()
+
+        with patch.object(run, "ConfigNode", return_value=cfg), \
+             patch.object(run, "run", side_effect=_run_side_effect), \
+             patch("bookstack_file_exporter.run.signal.signal"), \
+             patch("bookstack_file_exporter.run.RunStatus", return_value=fake_status), \
+             patch("bookstack_file_exporter.run.start_health_server", return_value=MagicMock()), \
+             patch("bookstack_file_exporter.run.threading.Event", return_value=stop_event):
+            result = run.entrypoint(args=_args(run_once=False))
+
+        assert result == 0  # scheduler exited cleanly, exception did not propagate
+        fake_status.mark_failed.assert_called_once()
+        fake_status.mark_success.assert_not_called()
+        fake_status.mark_degraded.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # _run_scheduled() — double-signal force-kill (SIG_DFL restore)
