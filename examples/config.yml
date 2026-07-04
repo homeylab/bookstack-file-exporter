@@ -102,6 +102,9 @@ output_path: "bkps/"
 #     config load otherwise, since it would delete the only copy)
 # 1+: retain that many; 0/omit: no action
 keep_last: 5
+## optional - prune even when a run was partial (dropped content); default false
+# keeps degraded archives from evicting complete backups
+# prune_on_partial: false
 ## optional - if specified exporter will run in a loop
 # it will run and then pause for {run_interval} seconds before running again
 # specify in seconds, example: 86400 seconds = 24 hours or run once a day
