@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyFormat
 
@@ -10,14 +11,29 @@ _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 def _md_code(text: str) -> str:
     """Wrap untrusted interpolated text in a markdown code span.
 
-    Code spans are the sanitizer for the markdown body: python-markdown escapes
-    <>& inside them, so error strings containing raw HTML cannot be swallowed by
-    HTML-native targets (apprise's MARKDOWN->HTML conversion does NOT escape,
-    verified against apprise 1.10.0). Double-backtick delimiters with space
-    padding tolerate single backticks inside the text (CommonMark)."""
-    if "`" in text:
-        return f"`` {text} ``"
-    return f"`{text}`"
+    Code spans are the markdown body's sanitizer: python-markdown escapes <>&
+    inside them, so error strings containing raw HTML are neutralized for
+    HTML-native apprise targets (its MARKDOWN->HTML conversion does NOT escape,
+    verified against apprise 1.10.0). Two defenses are needed:
+
+    1. Newlines are flattened to spaces first. python-markdown's HTML-block
+       preprocessor extracts a block-level tag that starts a line (e.g. a line
+       beginning `<script>`/`<iframe>`/`<div>`) as raw HTML BEFORE code-span
+       parsing, so multi-line untrusted text could otherwise break out of the
+       span. A single-line span keeps every line starting with the fence.
+    2. The fence is sized to the longest interior backtick run + 1 (space-padded).
+       Per CommonMark a run of N backticks is closed only by the next run of
+       exactly N, so the fence must be longer than any run already in the text;
+       padding lets the span hold text that starts or ends with a backtick.
+
+    This narrows to the code-span sanitizer only; it is not a general HTML
+    sanitizer for arbitrary markdown."""
+    text = re.sub(r"[\r\n]+", " ", text)
+    runs = re.findall(r"`+", text)
+    fence = "`" * (max((len(r) for r in runs), default=0) + 1)
+    if not runs:
+        return f"{fence}{text}{fence}"
+    return f"{fence} {text} {fence}"
 
 def _pruned_bullets(result: NotifyResult, local_abs: str, removed_abs: set[str],
                     wrap_labels: bool = False) -> list[str]:

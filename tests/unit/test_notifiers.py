@@ -6,6 +6,7 @@ import re
 from unittest.mock import MagicMock, patch
 
 from apprise import AppriseConfig, NotifyFormat
+from markdown import markdown
 
 from bookstack_file_exporter.config_helper import models as config_models
 from bookstack_file_exporter.config_helper import notifications
@@ -316,6 +317,42 @@ class TestMdCode:
         # the whole point: code spans neutralize raw HTML for MARKDOWN->HTML targets
         out = notifiers._md_code("Forbidden <edge & chars>")
         assert out == "`Forbidden <edge & chars>`"
+
+    def test_md_code_neutralizes_two_backtick_payload(self):
+        # exactly two consecutive backticks would close a 2-backtick fence early,
+        # letting the following raw HTML through on MARKDOWN->HTML apprise targets
+        evil = "boom `` <img src=x onerror=alert(1)>"
+        rendered = markdown(
+            notifiers._md_code(evil),
+            extensions=["markdown.extensions.nl2br", "markdown.extensions.tables"],
+        )
+        assert "<img" not in rendered  # tag must be escaped/inert inside the code span
+
+    def test_md_code_sizes_fence_above_longest_run(self):
+        # longest interior run is 2 -> fence must be 3 backticks, space-padded
+        assert notifiers._md_code("a `` b") == "``` a `` b ```"
+
+    def test_md_code_triple_run(self):
+        assert notifiers._md_code("x ``` y") == "```` x ``` y ````"
+
+    def test_md_code_empty_string(self):
+        assert notifiers._md_code("") == "``"
+
+    def test_md_code_neutralizes_newline_block_html(self):
+        # a newline followed by a block-level tag would otherwise be extracted as raw
+        # HTML before code-span parsing, rendering live on MARKDOWN->HTML targets
+        exts = ["markdown.extensions.nl2br", "markdown.extensions.tables"]
+        for payload in ("a\n<script>alert(1)</script>",
+                        "err\n<iframe src=javascript:alert(1)>",
+                        "x\n<div onmouseover=alert(1)>hi</div>"):
+            rendered = markdown(notifiers._md_code(payload), extensions=exts)
+            assert "<script" not in rendered
+            assert "<iframe" not in rendered
+            assert "<div" not in rendered
+
+    def test_md_code_flattens_newlines(self):
+        assert "\n" not in notifiers._md_code("line1\nline2")
+        assert notifiers._md_code("line1\nline2") == "`line1 line2`"
 
 
 class TestMarkdownBody:
