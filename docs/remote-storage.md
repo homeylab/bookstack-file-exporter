@@ -184,6 +184,24 @@ a hard **Failure** (exit `1`), not Partial.
 In scheduled mode the `/healthz` endpoint reports `last_run.status` as `degraded` for a partial
 run (distinct from `success` and `failed`).
 
+### Interrupted uploads and orphaned multipart parts
+
+A failed or interrupted upload never leaves a partial archive visible in the
+bucket: small archives upload as a single atomic `PutObject`, and larger ones
+use multipart uploads that only materialize as an object on completion. If an
+upload fails while the exporter is still running, boto3 aborts the multipart
+session itself.
+
+The one gap is a hard kill (SIGKILL, power loss, OOM) in the middle of a large
+multipart upload: the already-uploaded parts stay in the bucket — invisible in
+normal listings but still billed — until they are removed. The standard fix is
+a provider-side rule rather than application-side cleanup:
+
+- **AWS S3**: add an `AbortIncompleteMultipartUpload` lifecycle rule to the
+  bucket (for example, abort anything incomplete after 1 day).
+- **MinIO**: set an equivalent ILM expiry rule for incomplete uploads, or clean
+  up manually with `mc rm --incomplete --recursive <alias>/<bucket>`.
+
 ## Migrating from v2
 
 v3.0.0 removes the single top-level `minio:` block entirely — its presence is now a hard
