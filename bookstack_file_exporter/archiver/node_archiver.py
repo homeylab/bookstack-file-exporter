@@ -35,7 +35,7 @@ _REWRITABLE_FORMATS = {"markdown", "html"}
 # fast the BookStack instance answers concurrent requests, which varies by deployment,
 # so we advise rather than cap. User-facing rate-limit /
 # 429 guidance is the single source of truth on the field in config_helper/models.py.
-# NOTE: README's "Parallel Export" section mirrors this 16 in prose; keep in sync.
+# NOTE: docs/configuration.md "Parallel Export" mirrors this 16 in prose; keep in sync.
 _EXPORT_WORKERS_SOFT_MAX = 16
 
 

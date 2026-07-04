@@ -172,6 +172,10 @@ def seconds_until_next_cron(schedule: str, now: datetime) -> float:
     `now` is naive/container-local; the result is always strictly positive
     (croniter returns the next future tick), so a cycle that overran its slot
     waits for the next clock match rather than firing immediately.
+
+    The returned wall-clock delta is slept as real seconds (stop.wait), so a
+    sleep spanning a DST transition drifts by the offset (~1h early/late for
+    that one cycle); the schedule self-corrects at the next tick.
     """
     return (croniter(schedule, now).get_next(datetime) - now).total_seconds()
 
