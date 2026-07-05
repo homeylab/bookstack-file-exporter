@@ -659,6 +659,23 @@ class TestScheduledHealthServer:
                 run._run_scheduled(cfg, lambda: 1)
         assert "Health endpoint failed to bind" in caplog.text
 
+    def test_entrypoint_health_bind_failure_exits_clean(self, caplog):
+        """Via entrypoint, a health-bind failure must exit cleanly with code 1
+        (no propagated OSError / top-level traceback), mirroring the config-error
+        path -- while still emitting the operator-readable bind-failure line."""
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            cfg = _config(run_interval=5, health_port=port, health_host="127.0.0.1")
+            with patch.object(run, "ConfigNode", return_value=cfg), \
+                 patch("bookstack_file_exporter.run.signal.signal"), \
+                 caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+                # entrypoint must RETURN 1 here, not raise -- an escaping OSError
+                # would fault this assignment and fail the test.
+                result = run.entrypoint(args=_args(run_once=False))
+        assert result == 1
+        assert "Health endpoint failed to bind" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # _run_scheduled() — double-signal force-kill (SIG_DFL restore)

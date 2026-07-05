@@ -38,11 +38,24 @@ def entrypoint(args: argparse.Namespace) -> int:
 
     inputs = config.user_inputs
     if args.run_once or (not inputs.run_interval and not inputs.run_schedule):
+        # One-shot never starts the health server, so no bind failure to catch here.
         return _run_once(config)
-    if inputs.run_schedule:
-        return _run_scheduled(
-            config, lambda: seconds_until_next_cron(inputs.run_schedule, datetime.now()))
-    return _run_scheduled(config, lambda: inputs.run_interval)
+    # The only OSError that escapes _run_scheduled is the pre-loop health-bind
+    # failure (per-cycle errors are caught and mark_failed inside the loop). It has
+    # already logged an operator-readable line before re-raising, so mirror the
+    # config-error path above: suppress the redundant top-level traceback (debug
+    # only) and exit cleanly with 1 instead of dumping a traceback. If another
+    # OSError source is ever introduced on a non-cycle path, it must log its own
+    # operator-readable line before reaching this catch, or it will be silently
+    # reduced to exit 1 with only a debug-level traceback.
+    try:
+        if inputs.run_schedule:
+            return _run_scheduled(
+                config, lambda: seconds_until_next_cron(inputs.run_schedule, datetime.now()))
+        return _run_scheduled(config, lambda: inputs.run_interval)
+    except OSError:
+        log.debug("Traceback:", exc_info=True)
+        return 1
 
 
 def _install_signal_handlers(stop: threading.Event) -> dict:
@@ -205,7 +218,7 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
         result = exporter(config, stop)
         # Terminal outcome roll-up for the logs, independent of notifications:
         # WARNING for a degraded run so it is visible in scheduled mode (where the
-        # process still exits 0 and per-cycle status otherwise only reaches /health).
+        # process still exits 0 and per-cycle status otherwise only reaches /healthz).
         if result is not None:
             summary_level = (logging.WARNING if result.status is ExportStatus.PARTIAL
                              else logging.INFO)
