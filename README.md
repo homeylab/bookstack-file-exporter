@@ -74,6 +74,8 @@ Below are versions that have major changes to the way configuration or exporter 
 | `1.6.X` | `3.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key was removed in `3.0.0`. |
 | `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry using the flat schema (`name`, `endpoint`, `prefix`, `ambient_auth`, etc — no `type` field). See [Migrating from v2](docs/remote-storage.md#migrating-from-v2) for the exact mapping. |
 | `< 3.0.0` | `3.0.0` | `http_config.verify_ssl` now defaults to `true` (was `false`) — the exporter verifies the BookStack server's TLS certificate by default. If your BookStack uses a self-signed or internal-CA certificate, set `http_config.verify_ssl: false`, or point the `REQUESTS_CA_BUNDLE` environment variable at your CA bundle. |
+| `< 3.0.0` | `3.0.0` | Retention pruning is now skipped on partial runs (a run that drops content): neither local nor remote archives are pruned, and such archives are named `*_partial.tgz`. Set `prune_on_partial: true` for the old unconditional behavior. See [docs/backup-behavior.md](docs/backup-behavior.md). |
+| `< 3.0.0` | `3.0.0` | With `export_workers: 1` (the default), a node that fails to export no longer aborts the whole run: it is skipped, recorded, and the run completes as `PARTIAL` (exit `3`), matching parallel behavior. Combined with v3's retention gating, a degraded run also never prunes existing backups. |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~

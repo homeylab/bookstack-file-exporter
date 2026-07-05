@@ -292,6 +292,18 @@ def test_body_pruned_group_remote_only():
     assert "- local:" not in body
 
 
+def test_text_body_reports_prune_skipped():
+    """When retention was skipped for a partial run, the Pruned: group still
+    appears (so operators aren't left wondering) but says skipped instead of
+    listing counts."""
+    inst = _notifier()
+    result = NotifyResult(
+        status=ExportStatus.PARTIAL, local="/bkps/x_partial.tgz",
+        failed_nodes=["books/x"], prune_skipped=True)
+    body = inst._get_message_text(None, result)
+    assert "Pruned: skipped (partial run)" in body
+
+
 def test_body_separates_groups_with_blank_line():
     """A blank line precedes each group header so sections don't run together."""
     inst = _notifier()
@@ -354,6 +366,16 @@ class TestMdCode:
         assert "\n" not in notifiers._md_code("line1\nline2")
         assert notifiers._md_code("line1\nline2") == "`line1 line2`"
 
+    def test_md_code_neutralizes_markdown_link_and_autolink_injection(self):
+        for payload in ("[click me](javascript:alert(1))",
+                        "![img](https://evil.example/x.png)",
+                        "<https://evil.example>"):
+            rendered = markdown(
+                notifiers._md_code(payload),
+                extensions=["markdown.extensions.nl2br", "markdown.extensions.tables"])
+            assert "<a " not in rendered.lower()
+            assert "<img" not in rendered.lower()
+
 
 class TestMarkdownBody:
     def _partial_result(self):
@@ -396,6 +418,14 @@ class TestMarkdownBody:
             removed=["/a/old.tgz"])
         body = notifier._get_message_text(None, result=result)
         assert "\n\n**Pruned:**\n\n- local: 1 archive(s)\n- `s3/aws`: 2 archive(s)" in body
+
+    def test_markdown_body_reports_prune_skipped(self):
+        notifier = _make_notifier(body_format="markdown")
+        result = NotifyResult(
+            status=ExportStatus.PARTIAL, local="/bkps/x_partial.tgz",
+            failed_nodes=["books/x"], prune_skipped=True)
+        body = notifier._get_message_text(None, result=result)
+        assert "**Pruned:** skipped (partial run)" in body
 
     def test_markdown_unrecoverable_error_bolded_and_code_wrapped(self):
         notifier = _make_notifier(body_format="markdown")

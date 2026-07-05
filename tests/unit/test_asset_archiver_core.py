@@ -2,10 +2,12 @@
 # pylint: disable=redefined-outer-name,protected-access
 """Unit tests for AssetArchiver markdown link-rewrite behavior (Phase 0 + Phase 1)."""
 import logging
+from unittest.mock import MagicMock
 
 import pytest
 
 from bookstack_file_exporter.archiver.asset_archiver import (
+    AssetDecodeError,
     AttachmentNode,
     ImageNode,
 )
@@ -293,3 +295,19 @@ def test_create_image_map_groups_by_page(asset_archiver):
     ]
     result = asset_archiver._create_image_map(json_data)
     assert [n.id_ for n in result[7]] == [1, 2]
+
+
+@pytest.mark.parametrize("response_setup", [
+    {"json.side_effect": ValueError("Expecting value")},  # non-JSON body
+    {"json.return_value": {"name": "x"}},                 # missing 'content'
+    {"json.return_value": {"content": None}},             # content not a string
+    {"json.return_value": {"content": "AAA"}},            # bad base64 padding
+])
+def test_get_asset_bytes_attachment_decode_failure_raises_asset_decode_error(
+        asset_archiver, response_setup):
+    response = MagicMock()
+    response.configure_mock(**response_setup)
+    asset_archiver.http_client.http_get_request.return_value = response
+    with pytest.raises(AssetDecodeError):
+        asset_archiver.get_asset_bytes(
+            "attachments", "https://wiki.example.com/api/attachments/6")

@@ -91,7 +91,7 @@ object_storage:
 | `prefix` | `str` | `false` | `""` | Optional object key prefix. Empty means bucket root. |
 | `addressing_style` | `str` | `false` | `None` (inferred) | Passed straight to boto3: `path`, `virtual`, or `auto`. Left unset, `path` is inferred when `endpoint` is set (MinIO/Ceph work out of the box) and `auto` (virtual-hosted) for AWS. Use `virtual` for compat stores that require virtual-hosted addressing (e.g. DigitalOcean Spaces, Backblaze B2) — note boto3 treats `auto` the same as `path` when a custom `endpoint` is set, so `virtual` is the only way to get virtual-hosted there. |
 | `ambient_auth` | `bool` | `false` | `false` | Opt in to the boto3 SDK's own ambient credential chain: environment variables, shared config/profile, **IRSA or Pod Identity (EKS/Kubernetes)**, IMDS instance profile (EC2), or assume-role. Required whenever no `access_key(_env)` pair is configured on the entry — there is no silent fallback to ambient credentials. |
-| `keep_last` | `int` | `false` | `0` | Retention pruning of this target's uploaded objects. `0` = keep all (no pruning). `1+` = retain that many most-recently-modified archives, deleting older ones. A negative value is a no-op — logged as a warning, nothing is deleted. Only objects directly under `prefix` are scanned — archives you move into nested "subfolders" are never deletion candidates. |
+| `keep_last` | `int` | `false` | `0` | Retention pruning of this target's uploaded objects. `0` = keep all (no pruning). `1+` = retain that many most-recently-modified archives, deleting older ones. A negative value is a no-op — logged as a warning, nothing is deleted. Only objects directly under `prefix` are scanned — archives you move into nested "subfolders" are never deletion candidates. Remote pruning is also skipped for partial runs unless `prune_on_partial: true`. |
 | `access_key` / `secret_key` | `str` | `false` | `""` | Inline static credentials. Must be set together — one without the other is a config error. |
 | `access_key_env` / `secret_key_env` | `str` | `false` | `None` | Names of environment variables to read for the access/secret key. Must be set together. Once configured, both named vars are **required** at run time — if either is unset or empty, the run fails immediately (no silent fallthrough to inline creds or ambient auth). |
 
@@ -171,7 +171,9 @@ content, or fewer durable copies exist than configured (for upload failures: at 
 survived, a remote target or the local `.tgz` when `keep_last >= 0`). It is reported via the
 `on_failure` notification so it is not silently treated as a clean success. When `keep_last < 0`
 (local archive deleted) AND every upload fails, the run is a hard failure — the local archive is
-preserved so the run can be retried.
+preserved so the run can be retried. A run degraded by dropped content (not by upload failure)
+also skips retention pruning entirely — remote pruning is skipped right along with local, for
+every target, unless `prune_on_partial: true` is set.
 
 A target that uploads successfully but whose retention cleanup (pruning old objects per `keep_last`)
 fails also yields a **Partial** run — the backup is safely stored, but the failed cleanup is surfaced

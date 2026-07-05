@@ -38,11 +38,24 @@ def entrypoint(args: argparse.Namespace) -> int:
 
     inputs = config.user_inputs
     if args.run_once or (not inputs.run_interval and not inputs.run_schedule):
+        # One-shot never starts the health server, so no bind failure to catch here.
         return _run_once(config)
-    if inputs.run_schedule:
-        return _run_scheduled(
-            config, lambda: seconds_until_next_cron(inputs.run_schedule, datetime.now()))
-    return _run_scheduled(config, lambda: inputs.run_interval)
+    # The only OSError that escapes _run_scheduled is the pre-loop health-bind
+    # failure (per-cycle errors are caught and mark_failed inside the loop). It has
+    # already logged an operator-readable line before re-raising, so mirror the
+    # config-error path above: suppress the redundant top-level traceback (debug
+    # only) and exit cleanly with 1 instead of dumping a traceback. If another
+    # OSError source is ever introduced on a non-cycle path, it must log its own
+    # operator-readable line before reaching this catch, or it will be silently
+    # reduced to exit 1 with only a debug-level traceback.
+    try:
+        if inputs.run_schedule:
+            return _run_scheduled(
+                config, lambda: seconds_until_next_cron(inputs.run_schedule, datetime.now()))
+        return _run_scheduled(config, lambda: inputs.run_interval)
+    except OSError:
+        log.debug("Traceback:", exc_info=True)
+        return 1
 
 
 def _install_signal_handlers(stop: threading.Event) -> dict:
@@ -82,9 +95,9 @@ def _run_once(config: ConfigNode) -> int:
     Cancellation is cooperative via a shared threading.Event -- the same
     mechanism scheduled mode uses. The export polls it at checkpoints (fetch,
     node, per-format, per-asset boundaries) and bails; the exporter's `finally`
-    still runs discard_partial, which matters for ephemeral one-shot containers
+    still runs discard_incomplete, which matters for ephemeral one-shot containers
     (`docker run --rm`, a k8s Job) where no later run exists to sweep a
-    stranded `.tgz.partial` off the output volume. The first signal restores
+    stranded `.tgz.incomplete` off the output volume. The first signal restores
     the default disposition for both signals so a second signal force-kills
     via the kernel. Exit code is 128+signum (SIGINT->130, SIGTERM->143).
 
@@ -159,8 +172,17 @@ def _run_scheduled(config: ConfigNode, next_wait: Callable[[], float]) -> int:
         status = None
         if config.user_inputs.health_port:
             status = RunStatus()
-            server = start_health_server(
-                config.user_inputs.health_host, config.user_inputs.health_port, status)
+            try:
+                server = start_health_server(
+                    config.user_inputs.health_host, config.user_inputs.health_port, status)
+            except OSError as err:
+                # Fail-fast stays (a silently missing monitoring endpoint is worse),
+                # but with an operator-readable message instead of a bare traceback.
+                log.error(
+                    "Health endpoint failed to bind %s:%s (%s); fix health_port/"
+                    "health_host or free the port",
+                    config.user_inputs.health_host, config.user_inputs.health_port, err)
+                raise
             log.info("Health endpoint listening on %s:%s",
                      config.user_inputs.health_host, config.user_inputs.health_port)
 
@@ -196,7 +218,7 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
         result = exporter(config, stop)
         # Terminal outcome roll-up for the logs, independent of notifications:
         # WARNING for a degraded run so it is visible in scheduled mode (where the
-        # process still exits 0 and per-cycle status otherwise only reaches /health).
+        # process still exits 0 and per-cycle status otherwise only reaches /healthz).
         if result is not None:
             summary_level = (logging.WARNING if result.status is ExportStatus.PARTIAL
                              else logging.INFO)
@@ -231,6 +253,28 @@ def run(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult
         # raise original error instead of notification error
         raise run_err
 
+def _run_local_cleanup(archive: Archiver) -> tuple[list[str], str | None]:
+    """Prune local stale archives after upload. A failed delete is housekeeping, not
+    a run failure -- caught here and downgraded to PARTIAL by the caller, same
+    treatment as a remote retention failure in archiver._upload. Stale local files
+    are harmless; the next run prunes them."""
+    try:
+        return archive.clean_up(), None
+    except Exception as err:  # pylint: disable=broad-except
+        log.error("Local cleanup failed (export and uploads succeeded): %s", err)
+        return [], str(err) or "local cleanup failed"
+
+
+def _warn_if_pruning_skipped(archive: Archiver) -> None:
+    """Log once when this run's content loss disabled retention pruning everywhere
+    (local and every remote target), but only when pruning was actually configured
+    -- no point warning about a skip of an action that would never have run."""
+    if not archive.prune_allowed and archive.retention_configured:
+        log.warning(
+            "Retention pruning skipped (local and all remote targets): this run "
+            "is partial; set prune_on_partial: true to prune on partial runs")
+
+
 def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """export bookstack nodes and archive locally and/or remotely"""
 
@@ -264,7 +308,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
     # create export directory if not exists
     archive.create_export_dir()
 
-    # Remove orphaned .tar/.tgz.partial from prior runs (SIGKILL backstop) before
+    # Remove orphaned .tar/.tgz.incomplete from prior runs (SIGKILL backstop) before
     # this cycle writes anything.
     archive.sweep_orphans()
 
@@ -297,10 +341,10 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         # get all content for each node
         archive.get_bookstack_exports(nodes)
 
-        # Graceful shutdown requested mid-cycle: drop the partial archive and skip
+        # Graceful shutdown requested mid-cycle: drop the incomplete archive and skip
         # finalize/upload/cleanup so a cancelled cycle never produces an archive.
         if stop is not None and stop.is_set():
-            log.info("Shutdown requested mid-cycle; discarding partial export")
+            log.info("Shutdown requested mid-cycle; discarding incomplete export")
             return None
 
         # Gate on DOCUMENT content, not the archive stream: assets/meta alone are not a
@@ -319,6 +363,7 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # close the archive stream and publish the .tgz
         archive.create_archive()
+        _warn_if_pruning_skipped(archive)
 
         # attempt every remote target, then derive status (raises only when no copy survives)
         outcomes = archive.archive_remote()
@@ -331,28 +376,23 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # Local retention pruning is housekeeping: at this point durable copies exist
         # (resolve_remote_status raised otherwise), so a failed local delete downgrades
-        # the run to PARTIAL instead of failing it — same treatment as a remote
-        # retention failure in archiver._upload. Stale local files are harmless; the
-        # next run prunes them.
-        removed: list[str] = []
-        cleanup_error: str | None = None
-        try:
-            removed = archive.clean_up()
-        except Exception as err:  # pylint: disable=broad-except
-            log.error("Local cleanup failed (export and uploads succeeded): %s", err)
+        # the run to PARTIAL instead of failing the whole run.
+        removed, cleanup_error = _run_local_cleanup(archive)
+        if cleanup_error:
             status = ExportStatus.PARTIAL
-            cleanup_error = str(err)
 
-        log.info("Created file archive: %s.tgz", archive.archive_dir)
+        log.info("Created file archive: %s", archive.archive_file)
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
                             removed=removed, cleanup_error=cleanup_error,
+                            prune_skipped=(not archive.prune_allowed
+                                           and archive.retention_configured),
                             failed_nodes=archive.failed_nodes,
                             failed_assets=archive.failed_assets,
                             export_level=export_level)
     finally:
-        # Eager cleanup of THIS cycle's partial on every terminal path (stop,
-        # exception). No-op on success: the stream is already closed and the
-        # .partial renamed away. The run-start sweep is the backstop for
+        # Eager cleanup of THIS cycle's incomplete archive on every terminal path
+        # (stop, exception). No-op on success: the stream is already closed and
+        # the .incomplete renamed away. The run-start sweep is the backstop for
         # SIGKILL, which kills the process before finally runs.
-        archive.discard_partial()
+        archive.discard_incomplete()

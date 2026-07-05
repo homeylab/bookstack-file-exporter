@@ -20,11 +20,11 @@ class TestConstruction:
                                 asset_archiver=MagicMock())
         assert archiver.archive_file == f"{archive_dir}.tgz"
 
-    def test_partial_file_is_tgz_partial(self, tmp_path):
+    def test_incomplete_file_is_tgz_incomplete(self, tmp_path):
         archive_dir = str(tmp_path / "bookstack-20260514")
         archiver = PageArchiver(archive_dir, _make_config(), MagicMock(),
                                 asset_archiver=MagicMock())
-        assert archiver.partial_file == f"{archiver.archive_file}.partial"
+        assert archiver.incomplete_file == f"{archiver.archive_file}.incomplete"
         assert archiver.archive_file.endswith(".tgz")
 
     def test_archive_base_path_is_last_segment(self, tmp_path):

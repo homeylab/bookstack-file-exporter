@@ -4,22 +4,26 @@ Exporter-level tests live in test_run_exporter.py."""
 # pylint: disable=missing-class-docstring,missing-function-docstring,unused-argument,protected-access
 import logging
 import signal
+import socket
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from bookstack_file_exporter import run
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult
 
 
-def _config(run_interval, run_once=False, run_schedule=None, health_port=None):
+def _config(run_interval, run_once=False, run_schedule=None, health_port=None,
+            health_host="0.0.0.0"):
     """Return a minimal fake args + config pair for entrypoint tests."""
     return SimpleNamespace(
         user_inputs=SimpleNamespace(
             run_interval=run_interval,
             run_schedule=run_schedule,
             health_port=health_port,
-            health_host="0.0.0.0",
+            health_host=health_host,
         )
     )
 
@@ -640,6 +644,37 @@ class TestScheduledHealthServer:
         fake_status.mark_failed.assert_called_once()
         fake_status.mark_success.assert_not_called()
         fake_status.mark_degraded.assert_not_called()
+
+    def test_health_bind_failure_logs_clear_error(self, caplog):
+        """A port already in use must fail fast (a silently missing health
+        endpoint is worse) but with an operator-readable log line instead of
+        a bare traceback."""
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            cfg = _config(run_interval=5, health_port=port, health_host="127.0.0.1")
+            with patch("bookstack_file_exporter.run.signal.signal"), \
+                 caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"), \
+                 pytest.raises(OSError):
+                run._run_scheduled(cfg, lambda: 1)
+        assert "Health endpoint failed to bind" in caplog.text
+
+    def test_entrypoint_health_bind_failure_exits_clean(self, caplog):
+        """Via entrypoint, a health-bind failure must exit cleanly with code 1
+        (no propagated OSError / top-level traceback), mirroring the config-error
+        path -- while still emitting the operator-readable bind-failure line."""
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            cfg = _config(run_interval=5, health_port=port, health_host="127.0.0.1")
+            with patch.object(run, "ConfigNode", return_value=cfg), \
+                 patch("bookstack_file_exporter.run.signal.signal"), \
+                 caplog.at_level(logging.ERROR, logger="bookstack_file_exporter.run"):
+                # entrypoint must RETURN 1 here, not raise -- an escaping OSError
+                # would fault this assignment and fail the test.
+                result = run.entrypoint(args=_args(run_once=False))
+        assert result == 1
+        assert "Health endpoint failed to bind" in caplog.text
 
 
 # ---------------------------------------------------------------------------

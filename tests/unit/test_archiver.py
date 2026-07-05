@@ -29,16 +29,24 @@ from tests.fixtures.mock_config import make_mock_config as _make_config
 def mock_config():
     config = MagicMock()
     config.base_dir_name = "bkps"
+    config.output_dir = ""
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
     config.user_inputs.export_level = "pages"
+    config.user_inputs.prune_on_partial = False
     config.object_storage_config = []
     return config
 
 
 @pytest.fixture
 def archiver_instance(mock_config, mock_http_client):
-    return Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
+    archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
+    # Real empty lists (not a truthy MagicMock) so prune_allowed's `failed_nodes or
+    # failed_assets` check reflects a clean run by default; tests that need a
+    # degraded run overwrite these locally.
+    archiver._archiver.failed_node_exports = []
+    archiver._archiver.failed_asset_downloads = []
+    return archiver
 
 
 # ---------------------------------------------------------------------------
@@ -52,88 +60,88 @@ class TestSetStop:
         archiver_instance._archiver.set_stop.assert_called_once_with(ev)
 
 
-class TestDiscardPartial:
-    """discard_partial aborts the stream and removes only this run's .partial."""
+class TestDiscardIncomplete:
+    """discard_incomplete aborts the stream and removes only this run's .incomplete."""
 
-    def test_removes_partial_and_leaves_final_tgz(self, archiver_instance, tmp_path):
-        partial = tmp_path / "bkps_2026.tgz.partial"
+    def test_removes_incomplete_and_leaves_final_tgz(self, archiver_instance, tmp_path):
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
         final = tmp_path / "bkps_2026.tgz"
-        partial.write_bytes(b"partial")
+        incomplete.write_bytes(b"incomplete")
         final.write_bytes(b"final")
-        archiver_instance._archiver.partial_file = str(partial)
-        archiver_instance.discard_partial()
-        assert not partial.exists()
+        archiver_instance._archiver.incomplete_file = str(incomplete)
+        archiver_instance.discard_incomplete()
+        assert not incomplete.exists()
         assert final.exists()
 
     def test_noop_when_nothing_on_disk(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
-        archiver_instance.discard_partial()  # no raise
+        archiver_instance._archiver.incomplete_file = str(tmp_path / "absent.tgz.incomplete")
+        archiver_instance.discard_incomplete()  # no raise
 
     def test_aborts_stream_before_unlink(self, archiver_instance, tmp_path):
         # The archiver_instance fixture injects a MagicMock node archiver,
         # so assert the ORDERING contract on the mock:
-        # abort_archive must run while the .partial is still on disk.
-        partial = tmp_path / "bkps_2026.tgz.partial"
-        partial.write_bytes(b"stream")
-        archiver_instance._archiver.partial_file = str(partial)
+        # abort_archive must run while the .incomplete is still on disk.
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
+        incomplete.write_bytes(b"stream")
+        archiver_instance._archiver.incomplete_file = str(incomplete)
         order = []
         archiver_instance._archiver.abort_archive.side_effect = (
-            lambda: order.append(("abort", partial.exists())))
-        archiver_instance.discard_partial()
+            lambda: order.append(("abort", incomplete.exists())))
+        archiver_instance.discard_incomplete()
         assert order == [("abort", True)]
-        assert not partial.exists()
+        assert not incomplete.exists()
 
 
 class TestSweepOrphans:
-    def test_removes_prior_tar_and_partial_orphans(self, archiver_instance, tmp_path):
+    def test_removes_prior_tar_and_incomplete_orphans(self, archiver_instance, tmp_path):
         archiver_instance.config.base_dir_name = str(tmp_path / "bkps")
         archiver_instance._archiver.file_extension_map = _FILE_EXTENSION_MAP
         orphan_tar = tmp_path / "bkps_2026-01-01.tar"
-        orphan_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
+        orphan_incomplete = tmp_path / "bkps_2026-01-01.tgz.incomplete"
         keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
-        for f in (orphan_tar, orphan_partial, keep_tgz):
+        for f in (orphan_tar, orphan_incomplete, keep_tgz):
             f.write_bytes(b"x")
 
         archiver_instance.sweep_orphans()
 
         assert not orphan_tar.exists()
-        assert not orphan_partial.exists()
+        assert not orphan_incomplete.exists()
         assert keep_tgz.exists()  # finished archives are not swept
 
     def test_sweeps_orphans_across_export_levels(self, mock_config, mock_http_client,
                                                  tmp_path):
-        """Orphan intermediates are always junk, so the sweep clears partials left by
+        """Orphan intermediates are always junk, so the sweep clears incompletes left by
         prior runs at OTHER export levels, not just its own level's base."""
         mock_config.base_dir_name = str(tmp_path / "bkps")
         mock_config.user_inputs.export_level = "books"
         archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
         archiver._archiver.file_extension_map = _FILE_EXTENSION_MAP
-        pages_partial = tmp_path / "bkps_2026-01-01.tgz.partial"
-        books_partial = tmp_path / "bkps_books_2026-01-01.tgz.partial"
-        chapters_partial = tmp_path / "bkps_chapters_2026-01-01.tgz.partial"
+        pages_incomplete = tmp_path / "bkps_2026-01-01.tgz.incomplete"
+        books_incomplete = tmp_path / "bkps_books_2026-01-01.tgz.incomplete"
+        chapters_incomplete = tmp_path / "bkps_chapters_2026-01-01.tgz.incomplete"
         keep_tgz = tmp_path / "bkps_2026-01-01.tgz"
-        for f in (pages_partial, books_partial, chapters_partial, keep_tgz):
+        for f in (pages_incomplete, books_incomplete, chapters_incomplete, keep_tgz):
             f.write_bytes(b"x")
 
         archiver.sweep_orphans()
 
-        assert not pages_partial.exists()
-        assert not books_partial.exists()
-        assert not chapters_partial.exists()
+        assert not pages_incomplete.exists()
+        assert not books_incomplete.exists()
+        assert not chapters_incomplete.exists()
         assert keep_tgz.exists()  # finished archives are never swept
 
 
 class TestHasExportedContent:
-    """has_exported_content reflects whether the streaming .partial exists on disk."""
+    """has_exported_content reflects whether the streaming .incomplete exists on disk."""
 
-    def test_false_when_no_partial(self, archiver_instance, tmp_path):
-        archiver_instance._archiver.partial_file = str(tmp_path / "absent.tgz.partial")
+    def test_false_when_no_incomplete(self, archiver_instance, tmp_path):
+        archiver_instance._archiver.incomplete_file = str(tmp_path / "absent.tgz.incomplete")
         assert archiver_instance.has_exported_content is False
 
-    def test_true_when_partial_exists(self, archiver_instance, tmp_path):
-        partial = tmp_path / "bkps_2026.tgz.partial"
-        partial.write_bytes(b"stream")
-        archiver_instance._archiver.partial_file = str(partial)
+    def test_true_when_incomplete_exists(self, archiver_instance, tmp_path):
+        incomplete = tmp_path / "bkps_2026.tgz.incomplete"
+        incomplete.write_bytes(b"stream")
+        archiver_instance._archiver.incomplete_file = str(incomplete)
         assert archiver_instance.has_exported_content is True
 
 
@@ -387,8 +395,8 @@ def test_get_stale_archives_empty_list(
 def test_create_export_dir_empty_path_skips_create_dir(
     monkeypatch, archiver_instance, mock_config
 ):
-    """output_path='' → util.create_dir NOT called."""
-    mock_config.user_inputs.output_path = ""
+    """output_dir='' → util.create_dir NOT called."""
+    mock_config.output_dir = ""
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
@@ -401,8 +409,8 @@ def test_create_export_dir_empty_path_skips_create_dir(
 def test_create_export_dir_with_path_calls_create_dir(
     monkeypatch, archiver_instance, mock_config
 ):
-    """output_path='x/y' → util.create_dir called with that path."""
-    mock_config.user_inputs.output_path = "x/y"
+    """output_dir='x/y' → util.create_dir called with that path."""
+    mock_config.output_dir = "x/y"
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
@@ -416,7 +424,7 @@ def test_create_export_dir_permission_error_fails_fast(
     monkeypatch, archiver_instance, mock_config, caplog
 ):
     """util.create_dir raises PermissionError → pointed error logged, exception propagates."""
-    mock_config.user_inputs.output_path = "some/path"
+    mock_config.output_dir = "some/path"
 
     def _raise_perm(path):
         raise PermissionError("access denied")
@@ -617,6 +625,25 @@ def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instan
     assert "delete denied" in outcomes[0].warning
 
 
+def test_remote_prune_skipped_when_degraded(archiver_instance, mock_config):
+    """A degraded run (content loss) still uploads to remote targets but must not
+    trigger remote retention -- mirrors clean_up's local prune_allowed gate."""
+    mock_config.object_storage_config = [_provider_entry("s3/aws")]
+    inst = MagicMock()
+    inst.upload_backup.return_value = "s3-aws/a.tgz"
+    archiver_instance._s3_archiver_cls = MagicMock(return_value=inst)
+    archiver_instance._archiver.archive_file = "/local/archive.tgz"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+
+    outcomes = archiver_instance.archive_remote()
+
+    assert outcomes[0].dest == "s3-aws/a.tgz"
+    assert outcomes[0].pruned == 0
+    inst.clean_up.assert_not_called()
+
+
 def test_resolve_status_upload_ok_but_warning_is_partial(archiver_instance):
     out = [UploadOutcome(label="a", dest="a/x.tgz", error=None, warning="prune failed")]
     assert archiver_instance.resolve_remote_status(out) is ExportStatus.PARTIAL
@@ -692,6 +719,56 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
     result = archiver_instance.clean_up()
     assert result == file_list[:2]
     assert file_list[2] not in result
+
+
+# ---------------------------------------------------------------------------
+# prune_allowed / retention_configured (Task 5)
+# ---------------------------------------------------------------------------
+
+def test_clean_up_skipped_when_content_degraded(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """A partial run (failed node export) skips pruning even though keep_last > 0
+    and stale archives exist -- degraded backups must never evict complete ones."""
+    mock_config.user_inputs.keep_last = 2
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+    patch_scan_archives(["old1.tgz", "old2.tgz"])
+    archiver_instance._delete_files = MagicMock()
+
+    assert archiver_instance.prune_allowed is False
+    result = archiver_instance.clean_up()
+
+    assert result == []
+    archiver_instance._delete_files.assert_not_called()
+
+
+def test_clean_up_runs_when_degraded_but_prune_on_partial(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """prune_on_partial: true restores v2 unconditional-prune behavior even on a
+    degraded (partial) run."""
+    mock_config.user_inputs.keep_last = 2
+    mock_config.user_inputs.prune_on_partial = True
+    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_asset_downloads = []
+    stale = ["old1.tgz", "old2.tgz"]
+    archiver_instance._get_stale_archives = MagicMock(return_value=stale)
+    archiver_instance._delete_files = MagicMock()
+
+    assert archiver_instance.prune_allowed is True
+    result = archiver_instance.clean_up()
+
+    assert result == stale
+    archiver_instance._delete_files.assert_called_once_with(stale)
+
+
+def test_prune_allowed_true_on_clean_run(archiver_instance, mock_config):
+    """No failed nodes/assets -> pruning is allowed regardless of prune_on_partial."""
+    archiver_instance._archiver.failed_node_exports = []
+    archiver_instance._archiver.failed_asset_downloads = []
+
+    assert archiver_instance.prune_allowed is True
 
 
 # ---------------------------------------------------------------------------

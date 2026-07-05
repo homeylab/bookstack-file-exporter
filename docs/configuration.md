@@ -39,6 +39,7 @@ formats:
   - zip
 http_config:
   verify_ssl: true      # verify the BookStack TLS cert (default); false for self-signed
+  # ca_bundle: "/certs/ca.pem"   # verify against a private CA (excludes verify_ssl: false)
   timeout: 30
   backoff_factor: 2.5
   retry_codes: [413, 429, 500, 502, 503, 504]
@@ -107,12 +108,14 @@ More descriptions can be found for each section below:
 | `assets.export_meta` | `bool` | `false` | Optional (default: `false`), export metadata about each archived page, book, or chapter in a json file. |
 | `http_config` | `object` | `false` | Optional section to override default http configuration. |
 | `http_config.verify_ssl` | `bool` | `false` | Optional (default: `true`). Verify the BookStack server's TLS certificate when using https — on by default so the API token is not exposed to interception. Set `false` for a self-signed/internal-CA BookStack, or point the `REQUESTS_CA_BUNDLE` env var at your CA bundle. **The default flipped from `false` to `true` in v3.0.0** — see [Potential Breaking Upgrades](../README.md#potential-breaking-upgrades). |
+| `http_config.ca_bundle` | `str` | `false` | Optional (default: `""`). Path to a CA bundle to verify the BookStack server's TLS certificate against a private/internal CA. Mutually exclusive with `verify_ssl: false`. Equivalent to setting the `REQUESTS_CA_BUNDLE` env var. |
 | `http_config.timeout` | `int` | `false` | Optional (default: `30`), set the timeout, in seconds, for http requests. |
 | `http_config.retry_count` | `int` | `false` | Optional (default: `5`), the number of http retries after initial failure. |
 | `http_config.retry_codes` | `List[int]` | `false` | Optional (default: `[413, 429, 500, 502, 503, 504]`), which http response status codes trigger a retry. |
 | `http_config.backoff_factor` | `float` | `false` | Optional (default: `2.5`), set the backoff_factor for http request retries. Default backoff_factor `2.5` means we wait 5, 10, 20, and then 40 seconds (with default `http_config.retry_count: 5`) before our last retry. This should allow for per minute rate limits to be refreshed. |
 | `http_config.additional_headers` | `object` | `false` | Optional (default: `{}`), specify key/value pairs that will be added as additional headers to http requests. |
-| `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` if you want to delete all archives after each run (useful if you only want to upload to object storage)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
+| `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` to delete all local archives after each run — valid only when at least one `object_storage` target is configured (rejected at config load otherwise)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done. |
+| `prune_on_partial` | `bool` | `false` | Optional (default: `false`). Runs that drop content (partial) skip ALL retention pruning — local `keep_last` and every `object_storage` `keep_last` — so a degraded backup never evicts complete ones. Set `true` to restore unconditional (v2) pruning. |
 | `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. |
 | `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
 | `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](getting-started.md#health-endpoint). |
@@ -170,6 +173,8 @@ For non-default levels the archive filename is suffixed with the level (e.g. `bk
 **Tuning:** raising `export_workers` speeds up large exports, but only until your BookStack server becomes the limiting factor — beyond that, more workers could just add load without much benefit. How much you gain depends on how quickly your BookStack instance serves requests, which varies with its resources, configuration, and deployment, so the ideal value differs between setups. In local testing a handful of workers gave roughly a 2x speedup over serial with gains flattening after that; treat `export_workers` as a knob to tune for your environment rather than a guaranteed multiplier.
 
 **Rate limiting:** more workers means more concurrent API requests. BookStack rate-limits the API (`API_REQUESTS_PER_MIN`, default `180`/min per user → HTTP `429`). If you raise `export_workers` and start seeing `429`s, raise `API_REQUESTS_PER_MIN` in BookStack's `.env`.
+
+**Node failures:** regardless of `export_workers`, a node that fails to export (for example an unexpected API response) is skipped and recorded — the run completes and reports `PARTIAL` (exit code `3`) instead of aborting. The exception is an archive-write failure, which poisons the archive stream and aborts the run.
 
 Values above `16` emit a startup warning — a heads-up for users, not a hard cap.
 

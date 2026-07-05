@@ -45,6 +45,11 @@ class HttpHelper:
         self.retry_count = config.retry_count
         self.http_timeout = config.timeout
         self.verify_ssl = config.verify_ssl
+        # ca_bundle (a CA path) wins over the bool: pass it as requests' `verify`.
+        # Empty ca_bundle + verify_ssl True -> pass True, which lets requests honor
+        # REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE env. ca_bundle with verify_ssl False is
+        # rejected at config load, so `ca_bundle or verify_ssl` is unambiguous.
+        self._verify = config.ca_bundle or config.verify_ssl
         # Size the urllib3 connection pool so export_workers concurrent GETs do
         # not exhaust it. Floor at requests' own default (DEFAULT_POOLSIZE) so a low
         # worker count never shrinks the pool below stock behavior; we track that
@@ -92,11 +97,12 @@ class HttpHelper:
     # more details on options: https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
     def http_get_request(self, url: str) -> requests.Response:
         """make http requests and return response object"""
-        # verify is passed per-call because requests gives env vars precedence
-        # over session.verify: with no call-level value, REQUESTS_CA_BUNDLE/
-        # CURL_CA_BUNDLE would override an explicit verify_ssl: false config.
+        # verify is passed per-call because requests gives env vars precedence over
+        # session.verify: with no call-level value, REQUESTS_CA_BUNDLE/CURL_CA_BUNDLE
+        # would override an explicit verify_ssl: false. self._verify is the resolved
+        # value (ca_bundle path if set, else the verify_ssl bool).
         response = self._session.get(url, headers=self._headers,
-                                     verify=self.verify_ssl, timeout=self.http_timeout)
+                                     verify=self._verify, timeout=self.http_timeout)
         try:
             #raise_for_status() throws an exception on codes 400-599
             response.raise_for_status()
@@ -172,6 +178,10 @@ def seconds_until_next_cron(schedule: str, now: datetime) -> float:
     `now` is naive/container-local; the result is always strictly positive
     (croniter returns the next future tick), so a cycle that overran its slot
     waits for the next clock match rather than firing immediately.
+
+    The returned wall-clock delta is slept as real seconds (stop.wait), so a
+    sleep spanning a DST transition drifts by the offset (~1h early/late for
+    that one cycle); the schedule self-corrects at the next tick.
     """
     return (croniter(schedule, now).get_next(datetime) - now).total_seconds()
 

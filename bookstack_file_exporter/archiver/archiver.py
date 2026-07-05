@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import functools
 import logging
 import os
 
@@ -87,25 +88,25 @@ class Archiver:
 
     def create_export_dir(self):
         """create directory for archiving"""
-        if not self.config.user_inputs.output_path:
+        output_dir = self.config.output_dir
+        if not output_dir:
             log.info("No output path specified, using current directory for archive")
             return
-        log.info("Creating base directory for archive: %s",
-                 self.config.user_inputs.output_path)
+        log.info("Creating base directory for archive: %s", output_dir)
         try:
-            util.create_dir(self.config.user_inputs.output_path)
+            util.create_dir(output_dir)
         except PermissionError as perm_err:
             # create_dir uses mkdir(exist_ok=True), which never raises for an
             # existing directory (writable or not) — the docker mounted-volume
-            # case is tolerated there, not here. Reaching this catch means
-            # output_path is missing AND creating it was denied: a real
+            # case is tolerated there, not here. Reaching this catch means the
+            # resolved output dir is missing AND creating it was denied: a real
             # misconfig, so fail now with a pointed message instead of dying
             # later at the first archive write.
             log.error(
                 "Cannot create export directory '%s': %s - the path does not "
-                "exist and creation was denied; fix output_path or its "
+                "exist and creation was denied; fix output_path/-o or its "
                 "parent directory permissions",
-                self.config.user_inputs.output_path, perm_err)
+                output_dir, perm_err)
             raise
 
     def set_stop(self, stop):
@@ -116,25 +117,25 @@ class Archiver:
         """
         self._archiver.set_stop(stop)
 
-    def discard_partial(self):
-        """Abort the archive stream and remove this run's .tgz.partial; never the final .tgz.
+    def discard_incomplete(self):
+        """Abort the archive stream and remove this run's .tgz.incomplete; never the final .tgz.
 
         Abort-then-unlink: the stream handle is closed (best-effort) before the
         file is removed, and abort poisons the stream so no straggler write can
-        recreate the .partial after cleanup. Idempotent and missing-file
+        recreate the .incomplete after cleanup. Idempotent and missing-file
         tolerant: on the success path finalize() already detached the handle and
-        renamed the .partial away, so this is a no-op.
+        renamed the .incomplete away, so this is a no-op.
         """
         self._archiver.abort_archive()
-        partial = self._archiver.partial_file
-        if os.path.exists(partial):
-            log.info("Cleaning up partial archive: %s", partial)
-            util.remove_file(partial)
+        incomplete = self._archiver.incomplete_file
+        if os.path.exists(incomplete):
+            log.info("Cleaning up incomplete archive: %s", incomplete)
+            util.remove_file(incomplete)
 
     def sweep_orphans(self):
-        """Delete prior-run .tar / .tgz.partial orphans (SIGKILL backstop).
+        """Delete prior-run .tar / .tgz.incomplete orphans (SIGKILL backstop).
 
-        Run at the start of a cycle, BEFORE this run writes any tar or .partial.
+        Run at the start of a cycle, BEFORE this run writes any tar or .incomplete.
         Safety comes from that ordering, not the glob: scan_archives globs
         {base}_*{ext}, which would also match this run's own filenames — but none
         exist on disk yet, so only earlier runs' leftovers are removed. Moving this
@@ -142,14 +143,14 @@ class Archiver:
 
         Globs on the unscoped base_dir_name (e.g. `bkps`), not the level-scoped
         base_dir (`bkps_books`): intermediates are always junk regardless of export
-        level, so `bkps_*` clears partials stranded by prior runs at any level. The
+        level, so `bkps_*` clears incompletes stranded by prior runs at any level. The
         `bkps_` prefix still anchors the scan so unrelated files are never touched.
         (keep_last retention deliberately stays level-scoped — those are deliverables.)
         Also retro-cleans .tar orphans stranded by pre-v3 versions (which staged
         an intermediate .tar before gzipping) and by past failed cycles.
         """
         tgz_ext = self._archiver.file_extension_map['tgz']
-        for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.partial"):
+        for ext in (self._archiver.file_extension_map['tar'], f"{tgz_ext}.incomplete"):
             for path in util.scan_archives(self.config.base_dir_name, ext):
                 util.remove_file(path)
 
@@ -160,14 +161,14 @@ class Archiver:
 
     @property
     def has_exported_content(self) -> bool:
-        """True if the streaming .partial exists, i.e. at least one file was written.
+        """True if the streaming .incomplete exists, i.e. at least one file was written.
 
         Checked against the archive on disk (ground truth) rather than a flag
         threaded up from the archivers, so it cannot drift from what was actually
         archived. The stream opens lazily on the first write, so mere Archiver
         construction never creates the file.
         """
-        return os.path.exists(self._archiver.partial_file)
+        return os.path.exists(self._archiver.incomplete_file)
 
     def create_archive(self):
         """finalize the streaming archive: close and atomically rename to .tgz"""
@@ -192,13 +193,16 @@ class Archiver:
         entries = self.config.object_storage_config or []
         if not entries:
             return []
+        allow_prune = self.prune_allowed
         if len(entries) == 1:
-            return [self._upload(entries[0])]
+            return [self._upload(entries[0], allow_prune=allow_prune)]
         workers = min(len(entries), _MAX_UPLOAD_WORKERS)
+        upload = functools.partial(self._upload, allow_prune=allow_prune)
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(executor.map(self._upload, entries))
+            return list(executor.map(upload, entries))
 
-    def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
+    def _upload(self, provider_config: S3ProviderConfig,
+                allow_prune: bool = True) -> UploadOutcome:
         label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)
@@ -207,6 +211,10 @@ class Archiver:
             # attempt-all: record and continue so other targets still run
             log.error("Upload to target '%s' failed: %s", label, err)
             return UploadOutcome(label=label, dest=None, error=str(err))
+        # Partial run: the degraded archive still uploads (a thin copy beats no
+        # copy) but must not trigger retention that evicts complete backups.
+        if not allow_prune:
+            return UploadOutcome(label=label, dest=dest, error=None)
         # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
         # keep dest (never flip to failed) but flag a warning so the run is degraded.
         try:
@@ -240,6 +248,8 @@ class Archiver:
         # this captures keep_last = 0
         if not self.config.user_inputs.keep_last:
             return []
+        if not self.prune_allowed:
+            return []
         to_delete = self._get_stale_archives()
         if to_delete:
             self._delete_files(to_delete)
@@ -264,6 +274,29 @@ class Archiver:
     def content_written(self) -> bool:
         """True once at least one node (document) export landed in the tar."""
         return self._archiver.content_written
+
+    @property
+    def prune_allowed(self) -> bool:
+        """False when this run dropped content and the user has not opted into
+        prune_on_partial: a degraded (partial) archive must never evict complete
+        backups, locally or remotely. Content loss only — a failed upload never
+        prunes its own target anyway, and resolve_remote_status guards the
+        no-durable-copy case. Consumed by clean_up, archive_remote, and run.py's
+        NotifyResult."""
+        if self.config.user_inputs.prune_on_partial:
+            return True
+        return not (self.failed_nodes or self.failed_assets)
+
+    @property
+    def retention_configured(self) -> bool:
+        """True when any pruning could actually happen (top-level keep_last set,
+        or any object_storage target with keep_last > 0). Gates the 'pruning
+        skipped' messaging so keep_last-less users are not told about a skip of
+        an action that was never going to run."""
+        if self.config.user_inputs.keep_last:
+            return True
+        return any(t.keep_last > 0
+                   for t in self.config.user_inputs.object_storage or [])
 
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage

@@ -180,7 +180,7 @@ Pass `--run-once` to force a single run regardless of `run_interval` or `run_sch
 ## Graceful Shutdown And Grace Periods
 
 Both modes handle `SIGTERM`/`SIGINT` the same cooperative way: the exporter stops at the
-next asset/format/node boundary and discards any partial archive. A second signal
+next asset/format/node boundary and discards any incomplete archive. A second signal
 force-kills immediately (`130` for SIGINT, `143` for SIGTERM) in both modes.
 
 Where they differ is the exit code. Scheduled mode exits `0` on a clean shutdown — that
@@ -198,7 +198,7 @@ mid-request, so give the container time to drain:
 - Kubernetes: set `terminationGracePeriodSeconds: 60`.
 
 If the grace window elapses the orchestrator sends an uncatchable SIGKILL, which can
-strand a partial archive. The next run sweeps leftover `.tar`/`.tgz.partial` files (at
+strand an incomplete archive. The next run sweeps leftover `.tar`/`.tgz.incomplete` files (at
 any export level) before it writes anything; a finished `.tgz` is never touched.
 
 ## Health Endpoint

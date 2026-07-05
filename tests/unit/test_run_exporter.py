@@ -461,7 +461,7 @@ class TestExporterReturnValue:
 
 
 # ---------------------------------------------------------------------------
-# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_partial)
+# exporter() — stop-flag wiring (set_stop / sweep_orphans / discard_incomplete)
 # ---------------------------------------------------------------------------
 
 class TestExporterStopWiring:
@@ -511,7 +511,7 @@ class TestExporterStopWiring:
         archive.create_archive.assert_not_called()
         assert result is None
 
-    def test_exporter_discards_partial_on_mid_archive_stop(self):
+    def test_exporter_discards_incomplete_on_mid_archive_stop(self):
         cfg = self._cfg()
         stop = threading.Event()  # not set during fetch
         archive = MagicMock()
@@ -526,12 +526,12 @@ class TestExporterStopWiring:
             result = run.exporter(cfg, stop)
 
         archive.get_bookstack_exports.assert_called_once()
-        # mid-cycle stop -> discard the partial tar, never gzip/upload
+        # mid-cycle stop -> discard the incomplete tar, never gzip/upload
         archive.create_archive.assert_not_called()
-        archive.discard_partial.assert_called_once()
+        archive.discard_incomplete.assert_called_once()
         assert result is None
 
-    def test_exporter_discards_partial_on_exception(self):
+    def test_exporter_discards_incomplete_on_exception(self):
         cfg = self._cfg()
         archive = MagicMock()
         archive.get_bookstack_exports.side_effect = RuntimeError("mid-cycle boom")
@@ -543,7 +543,7 @@ class TestExporterStopWiring:
             mock_exp.return_value.get_all_pages.return_value = {1: MagicMock()}
             with pytest.raises(RuntimeError):
                 run.exporter(cfg, None)
-        archive.discard_partial.assert_called_once()
+        archive.discard_incomplete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -653,6 +653,63 @@ class TestExporterContentLoss:
 
 
 # ---------------------------------------------------------------------------
+# prune_skipped / "Retention pruning skipped" WARNING wiring (exporter()-level)
+# ---------------------------------------------------------------------------
+
+class TestExporterPruneSkippedWiring:
+    def _partial_archiver(self, mock_archiver):
+        mock_archiver.has_exported_content = True
+        mock_archiver.archive_remote.return_value = []
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
+        mock_archiver.clean_up.return_value = []
+        mock_archiver.archive_file = "/local/export.tgz"
+        mock_archiver.failed_nodes = ["book/x.md"]
+
+    def test_prune_skipped_true_and_warning_logged_when_retention_configured(
+        self, monkeypatch, caplog
+    ):
+        """not prune_allowed and retention_configured -> prune_skipped True and the
+        run.py-level WARNING fires (pinning exporter()'s NotifyResult.prune_skipped
+        wiring and _warn_if_pruning_skipped's call site together)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._partial_archiver(mock_archiver)
+        mock_archiver.prune_allowed = False
+        mock_archiver.retention_configured = True
+
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.prune_skipped is True
+        assert any("Retention pruning skipped" in r.message for r in caplog.records)
+
+    def test_prune_skipped_false_and_no_warning_when_retention_not_configured(
+        self, monkeypatch, caplog
+    ):
+        """not prune_allowed but retention NOT configured -> prune_skipped False and
+        no WARNING (nothing to warn about: pruning was never going to run anyway)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        self._partial_archiver(mock_archiver)
+        mock_archiver.prune_allowed = False
+        mock_archiver.retention_configured = False
+
+        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
+            result = run.exporter(config)
+
+        assert isinstance(result, NotifyResult)
+        assert result.prune_skipped is False
+        assert not any("Retention pruning skipped" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
 # A poisoned archive stream must hard-fail the run, never publish as PARTIAL
 # ---------------------------------------------------------------------------
 
@@ -662,7 +719,8 @@ class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
 
         Earlier nodes succeeded (content_written True, ledger non-empty), so run.py
         would otherwise downgrade to PARTIAL -- but create_archive (finalize) raises
-        because the stream is poisoned, and the finally block discards the partial.
+        because the stream is poisoned, and the finally block discards the incomplete
+        archive.
         """
         config = _make_exporter_config("pages")
         mock_archiver, _ = _patch_exporter_collaborators(
@@ -678,5 +736,5 @@ class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
         with pytest.raises(ArchiveWriteError):
             run.exporter(config)
 
-        mock_archiver.discard_partial.assert_called_once()
+        mock_archiver.discard_incomplete.assert_called_once()
         mock_archiver.archive_remote.assert_not_called()

@@ -59,9 +59,9 @@ class TestConstruction:
         archiver = _make_book_archiver(tmp_path)
         assert archiver.archive_file.endswith(".tgz")
 
-    def test_partial_file_ends_with_tgz_partial(self, tmp_path):
+    def test_incomplete_file_ends_with_tgz_incomplete(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)
-        assert archiver.partial_file.endswith(".tgz.partial")
+        assert archiver.incomplete_file.endswith(".tgz.incomplete")
 
     def test_archive_base_path_is_last_segment(self, tmp_path):
         archiver = _make_book_archiver(tmp_path)

@@ -9,15 +9,15 @@ from bookstack_file_exporter.archiver.util import ArchiveWriteError
 
 
 # ---------------------------------------------------------------------------
-# 4. finalize_archive closes the stream then renames .tgz.partial -> .tgz
+# 4. finalize_archive closes the stream then renames .tgz.incomplete -> .tgz
 # ---------------------------------------------------------------------------
 class TestFinalizeArchive:
 
-    def test_finalize_renames_partial_to_final(self, page_archiver):
+    def test_finalize_renames_incomplete_to_final(self, page_archiver):
         page_archiver.write_data("notes/page.md", b"# hi")
         page_archiver.finalize_archive()
         assert os.path.exists(page_archiver.archive_file)
-        assert not os.path.exists(page_archiver.partial_file)
+        assert not os.path.exists(page_archiver.incomplete_file)
         with tarfile.open(page_archiver.archive_file, "r:gz") as tar:
             assert tar.getnames() == ["notes/page.md"]
 
@@ -40,6 +40,29 @@ class TestFinalizeArchive:
         page_archiver.write_data("notes/page.md", b"# hi")
         page_archiver.abort_archive()
         page_archiver.abort_archive()
+
+    def test_finalize_renames_to_partial_marker_on_failed_node_exports(self, page_archiver):
+        page_archiver.write_data("notes/page.md", b"# hi")
+        page_archiver.failed_node_exports.append("books/broken-page")
+        page_archiver.finalize_archive()
+        assert page_archiver.archive_file.endswith("_partial.tgz")
+        assert os.path.exists(page_archiver.archive_file)
+        assert not os.path.exists(page_archiver.incomplete_file)
+
+    def test_finalize_renames_to_partial_marker_on_failed_asset_downloads(self, page_archiver):
+        page_archiver.write_data("notes/page.md", b"# hi")
+        page_archiver.failed_asset_downloads.append("images/broken-image.png")
+        page_archiver.finalize_archive()
+        assert page_archiver.archive_file.endswith("_partial.tgz")
+        assert os.path.exists(page_archiver.archive_file)
+        assert not os.path.exists(page_archiver.incomplete_file)
+
+    def test_finalize_keeps_plain_name_on_clean_run(self, page_archiver):
+        page_archiver.write_data("notes/page.md", b"# hi")
+        page_archiver.finalize_archive()
+        assert not page_archiver.archive_file.endswith("_partial.tgz")
+        assert page_archiver.archive_file.endswith(".tgz")
+        assert os.path.exists(page_archiver.archive_file)
 
 
 class TestPoisonedStreamChain:

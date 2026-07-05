@@ -238,6 +238,25 @@ def test_delete_objects_raises_on_partial_errors(aws, provider):
     assert "uploads/bad.tgz" in str(exc.value)
 
 
+def test_clean_up_never_deletes_just_uploaded_archive(aws, tmp_path, provider):
+    client = boto3.client("s3", region_name="us-east-1")
+    # seeded (older) keys are named to sort lexicographically BEFORE the fresh
+    # upload's basename, so a same-second moto timestamp tie is broken deterministically
+    # by _filter_objects' stable sort (which falls back to listing order on ties).
+    _seed(client, "test-bucket",
+          ["uploads/bookstack_export_2020-01-01_00-00-00.tgz",
+           "uploads/bookstack_export_2020-01-01_00-00-01.tgz"])
+    arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
+    f = tmp_path / "bookstack_export_2020-01-02_00-00-00.tgz"
+    f.write_bytes(b"x")
+    dest = arch.upload_backup(str(f))
+    arch.clean_up(".tgz")
+    remaining = {o["Key"] for o in
+                 client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert dest.split("/", 1)[1] in remaining      # the fresh upload survived its own cleanup
+    assert len([k for k in remaining if "bookstack_export_" in k]) == 1  # older ones pruned
+
+
 def test_scan_ignores_lookalike_user_objects(aws, provider):
     # substring 'bookstack_export_' in a USER-named object must not make it a retention
     # candidate; only basenames that START with the managed marker are ours to delete

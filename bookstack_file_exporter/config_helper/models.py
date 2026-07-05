@@ -8,6 +8,15 @@ from croniter import croniter, CroniterError
 
 log = logging.getLogger(__name__)
 
+def _reject_ca_bundle_without_verify(ca_bundle: str, verify_ssl: bool, ctx: str) -> None:
+    """'ca_bundle' means "verify against this CA"; 'verify_ssl: false' means "do not
+    verify at all" — both together is a contradiction, not a precedence question. Shared
+    by the object_storage and http_config schemas; ctx names the offending section."""
+    if ca_bundle and not verify_ssl:
+        raise ValueError(
+            f"{ctx}: 'ca_bundle' and 'verify_ssl: false' are mutually exclusive - "
+            "a custom CA bundle implies verification is on.")
+
 def normalize_prefix(raw: str | None) -> str:
     """Canonical object-key prefix: no leading/trailing '/'. Single definition so the
     duplicate-destination warning and S3ProviderConfig resolution always agree on what
@@ -26,7 +35,11 @@ class StrictModel(BaseModel):
     Dev note: those before-validators are migration UX only, not a safety layer —
     extra='forbid' alone still rejects the legacy keys, just with a generic
     unknown-key error. They can be deleted once v2-era configs have aged out."""
-    model_config = ConfigDict(extra="forbid")
+    # hide_input_in_errors: validation errors land in logs/stderr, and a value
+    # pasted into the wrong field is often a credential — suppress the
+    # input_value echo for every field (error location + reason still shown)
+    # rather than guess which fields are secret.
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     @staticmethod
     def _reject_keys(raw, hints: dict[str, str]):
@@ -138,12 +151,8 @@ class S3StorageConfig(StrictModel):
 
     @model_validator(mode="after")
     def _check_tls_verify_options(self):
-        """'ca_bundle' means "verify against this CA"; 'verify_ssl: false' means "do not
-        verify at all" — both together is a contradiction, not a precedence question."""
-        if self.ca_bundle and not self.verify_ssl:
-            raise ValueError(
-                f"object_storage target {self.name!r}: 'ca_bundle' and 'verify_ssl: false' "
-                "are mutually exclusive - a custom CA bundle implies verification is on.")
+        _reject_ca_bundle_without_verify(
+            self.ca_bundle, self.verify_ssl, f"object_storage target {self.name!r}")
         return self
 
 # pylint: disable=too-few-public-methods
@@ -176,14 +185,20 @@ class HttpConfig(StrictModel):
     """YAML schema for user provided http settings"""
     # verifies the BookStack server's TLS cert by default -- the API token rides
     # this connection, so an unverified default would expose it to MITM. Users with
-    # a self-signed/internal-CA BookStack opt out with verify_ssl: false (or point
-    # REQUESTS_CA_BUNDLE at their CA).
+    # a self-signed/internal-CA BookStack opt out with verify_ssl: false, or point
+    # ca_bundle (or the REQUESTS_CA_BUNDLE env var) at their CA to keep verification on.
     verify_ssl: bool = True
+    ca_bundle: str = ""
     timeout: int = 30
     backoff_factor: float = 2.5
     retry_codes: list[int] = [413, 429, 500, 502, 503, 504]
     retry_count: int = 5
     additional_headers: dict[str, str] = {}
+
+    @model_validator(mode="after")
+    def _check_tls_verify_options(self):
+        _reject_ca_bundle_without_verify(self.ca_bundle, self.verify_ssl, "http_config")
+        return self
 
 class AppRiseNotifyConfig(StrictModel):
     """YAML schema for user provided app rise settings"""
@@ -260,6 +275,11 @@ class UserInput(StrictModel):
     assets: Assets = Assets()
     object_storage: list[S3StorageConfig] | None = None
     keep_last: int = 0
+    # Retention safety: a run that dropped content (partial archive) skips ALL
+    # retention pruning (local keep_last and every object_storage keep_last) so a
+    # degraded backup can never evict complete ones. Opt back into unconditional
+    # pruning (v2 behavior) for tight-disk setups that accept that tradeoff.
+    prune_on_partial: bool = False
     # Opt-in node-level parallel fetch. Default 1 = today's exact serial behavior.
     # ge=1 because ThreadPoolExecutor(max_workers=0) raises ValueError — reject
     # nonsense at config-parse time, not mid-run. No hard upper bound: huge values
@@ -351,4 +371,16 @@ class UserInput(StrictModel):
             except CroniterError as err:
                 raise ValueError(
                     f"run_schedule cron expression never fires: {self.run_schedule!r}") from err
+        return self
+
+    @model_validator(mode="after")
+    def _check_negative_keep_last_requires_remote(self):
+        """keep_last < 0 deletes EVERY local archive after each run, including the
+        one just created. Without at least one object_storage target that is
+        guaranteed total data loss reported as SUCCESS, so reject it at config
+        load (fail-fast) rather than warn at runtime."""
+        if self.keep_last < 0 and not self.object_storage:
+            raise ValueError(
+                "keep_last < 0 deletes every local archive after each run; it is "
+                "only valid with at least one object_storage target to upload to first")
         return self

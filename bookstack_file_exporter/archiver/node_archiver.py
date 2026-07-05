@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from requests.exceptions import HTTPError, RetryError
 from bookstack_file_exporter.exporter.node import Node
 from bookstack_file_exporter.archiver import util as archiver_util
-from bookstack_file_exporter.archiver.asset_archiver import AssetArchiver, ImageNode, AttachmentNode
+from bookstack_file_exporter.archiver.asset_archiver import (
+    AssetArchiver, AssetDecodeError, ImageNode, AttachmentNode)
 from bookstack_file_exporter.config_helper.config_helper import ConfigNode
 from bookstack_file_exporter.common.util import HttpHelper
 
@@ -35,7 +36,7 @@ _REWRITABLE_FORMATS = {"markdown", "html"}
 # fast the BookStack instance answers concurrent requests, which varies by deployment,
 # so we advise rather than cap. User-facing rate-limit /
 # 429 guidance is the single source of truth on the field in config_helper/models.py.
-# NOTE: README's "Parallel Export" section mirrors this 16 in prose; keep in sync.
+# NOTE: docs/configuration.md "Parallel Export" mirrors this 16 in prose; keep in sync.
 _EXPORT_WORKERS_SOFT_MAX = 16
 
 
@@ -82,8 +83,8 @@ class NodeArchiver:
         # full path with .tgz extension
         self.archive_file = f"{archive_dir}{_FILE_EXTENSION_MAP['tgz']}"
         # streaming archive target; renamed to archive_file on finalize
-        self.partial_file = f"{self.archive_file}.partial"
-        self._tar_stream = archiver_util.TarStream(self.partial_file)
+        self.incomplete_file = f"{self.archive_file}.incomplete"
+        self._tar_stream = archiver_util.TarStream(self.incomplete_file)
         # base folder name inside the tgz archive
         self.archive_base_path = os.path.basename(archive_dir)
         # asset handling (shared by page/book/chapter); None => disabled
@@ -205,10 +206,11 @@ class NodeArchiver:
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(
                     asset_type, asset_node.download_url)
-            except (HTTPError, RetryError):
+            except (HTTPError, RetryError, AssetDecodeError) as exc:
                 failed_assets.add(asset_node.id_)
                 log.error("Failed to get image or attachment data "
-                          "for asset located at: %s - skipping", asset_node.download_url)
+                          "for asset located at: %s - skipping (%s)",
+                          asset_node.download_url, exc)
                 continue
             asset_path = f"{node_base_path}/{asset_node.get_relative_path(page_name)}"
             self.write_data(asset_path, asset_data)
@@ -293,8 +295,9 @@ class NodeArchiver:
 
         The only caller (_archive_level) always passes real maps (empty when
         modify_links is off), so no None-defaulting is needed. export_workers==1
-        runs serially (byte-identical to pre-parallel behavior); >1 fans node
-        fetches across a thread pool.
+        runs serially; >1 fans node fetches across a thread pool. Both paths
+        share the same error contract: a failing node is skipped and recorded
+        (-> PARTIAL); ArchiveWriteError aborts.
         """
         if (self.export_images or self.export_attachments) and not self.modify_links:
             log.info("Assets downloaded but links not rewritten (modify_links disabled)")
@@ -306,12 +309,24 @@ class NodeArchiver:
     def _export_nodes_serial(self, nodes: dict[int, Node], resource_type: str,
                              image_map: dict[int, list],
                              attachment_map: dict[int, list]):
-        """Today's exact serial path: one node at a time, stop at node boundary."""
+        """One node at a time. Same skip-and-continue contract as
+        _export_nodes_parallel: a node raising a non-HTTP error is logged and
+        recorded in the ledger (-> PARTIAL) instead of aborting the run --
+        EXCEPT ArchiveWriteError, which poisons the shared tar stream for
+        every later node, so it propagates and fails the run fast.
+        """
         for _, node in nodes.items():
             if self._stop_requested():
                 return
-            self._merge_failures(
-                self._export_node(node, resource_type, image_map, attachment_map))
+            try:
+                self._merge_failures(
+                    self._export_node(node, resource_type, image_map, attachment_map))
+            except archiver_util.ArchiveWriteError:
+                raise
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                log.error("Node export failed, skipping node: %s", exc)
+                self.failed_node_exports.append(
+                    f"{self._node_output_path(node)} (export error)")
 
     def _export_nodes_parallel(self, nodes: dict[int, Node], resource_type: str,
                                image_map: dict[int, list],
@@ -378,7 +393,7 @@ class NodeArchiver:
                     # formats already exported before the crash are unknown here,
                     # so the entry carries no extension
                     self.failed_node_exports.append(
-                        f"{self._node_output_path(futures[future])} (worker error)")
+                        f"{self._node_output_path(futures[future])} (export error)")
                 # Honor stop only AFTER the just-completed result is recorded, so the
                 # node yielded this iteration (already in the tar) is merged, not dropped.
                 # This narrows the ledger gap; it does not fully close it - futures already
@@ -483,22 +498,36 @@ class NodeArchiver:
         self._tar_stream.write(file_path, data)
 
     def finalize_archive(self):
-        """Close the stream and atomically publish .tgz.partial as the final .tgz.
+        """Close the stream and atomically publish .tgz.incomplete as the final .tgz.
 
         Close-before-rename is load-bearing: a consumer or the next run never
         observes a half-written .tgz (a SIGKILL/crash mid-run leaves only the
-        .partial, which the run-start sweep removes). finalize() raises if the
+        .incomplete, which the run-start sweep removes). finalize() raises if the
         stream is poisoned or the closing flush fails, so a corrupt archive is
         never renamed into place. The unconditional os.rename never sees a
-        missing .partial: run.py only calls create_archive() after its
+        missing .incomplete: run.py only calls create_archive() after its
         has_exported_content / content_written gates proved a write happened —
         do not call this on an empty run.
+
+        If the run ledger recorded any content loss (failed node exports or
+        failed asset downloads), the published name gets a `_partial` marker
+        inserted before the extension, e.g. `bookstack-<ts>_partial.tgz`. This
+        only reflects content loss known at this point — upload-stage failures
+        happen after this rename and can't be folded into the name. The marker
+        goes after the timestamp (not as a prefix) so lexical and chronological
+        order stay identical for local retention, and so the remote managed-object
+        prefix filter (a startswith match on the timestamped base name) still
+        matches partial archives.
         """
         self._tar_stream.finalize()
-        os.rename(self.partial_file, self.archive_file)
+        if self.failed_node_exports or self.failed_asset_downloads:
+            tgz_ext = _FILE_EXTENSION_MAP['tgz']
+            self.archive_file = (
+                f"{self.archive_file.removesuffix(tgz_ext)}_partial{tgz_ext}")
+        os.rename(self.incomplete_file, self.archive_file)
 
     def abort_archive(self):
-        """Close the stream best-effort so the discard path can unlink the .partial."""
+        """Close the stream best-effort so the discard path can unlink the .incomplete."""
         self._tar_stream.abort()
 
     @property
