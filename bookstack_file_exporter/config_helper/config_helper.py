@@ -83,7 +83,14 @@ class ConfigNode:
     def __init__(self, args: argparse.Namespace):
         self.unassigned_book_dir = _UNASSIGNED_BOOKS_DIR
         self.user_inputs = self._generate_config(args.config_file)
-        self._base_dir_name = self._set_base_dir(args.output_dir)
+        # Resolve the export directory once: CLI -o wins, else config output_path, else "" (CWD).
+        # Both the archive base path and the pre-create step read this single value so they
+        # can never diverge (previously create_export_dir read output_path raw, ignoring -o).
+        cmd_output_dir = args.output_dir
+        self._output_dir = cmd_output_dir or self.user_inputs.output_path
+        if cmd_output_dir:
+            log.debug("Output directory overwritten by command line option")
+        self._base_dir_name = self._set_base_dir()
         self._token_id, self._token_secret = self._generate_credentials()
         self._headers = self._generate_headers()
         self._urls = self._generate_urls()
@@ -139,13 +146,10 @@ class ConfigNode:
         log.debug("api urls: %s", urls)
         return urls
 
-    def _set_base_dir(self, cmd_output_dir: str) -> str:
-        output_dir = cmd_output_dir or self.user_inputs.output_path
-        if cmd_output_dir:
-            log.debug("Output directory overwritten by command line option")
-        if not output_dir:
+    def _set_base_dir(self) -> str:
+        if not self._output_dir:
             return _BASE_DIR_NAME
-        return f"{output_dir.rstrip('/')}/{_BASE_DIR_NAME}"
+        return f"{self._output_dir.rstrip('/')}/{_BASE_DIR_NAME}"
 
     @property
     def headers(self) -> dict[str, str]:
@@ -161,6 +165,11 @@ class ConfigNode:
     def base_dir_name(self) -> str:
         """get base dir of output target"""
         return self._base_dir_name
+
+    @property
+    def output_dir(self) -> str:
+        """Resolved export directory: CLI -o, else config output_path, else '' (CWD)."""
+        return self._output_dir
 
     @property
     def object_storage_config(self) -> list[S3ProviderConfig]:

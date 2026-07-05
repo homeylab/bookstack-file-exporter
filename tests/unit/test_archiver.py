@@ -29,6 +29,7 @@ from tests.fixtures.mock_config import make_mock_config as _make_config
 def mock_config():
     config = MagicMock()
     config.base_dir_name = "bkps"
+    config.output_dir = ""
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
     config.user_inputs.export_level = "pages"
@@ -394,8 +395,8 @@ def test_get_stale_archives_empty_list(
 def test_create_export_dir_empty_path_skips_create_dir(
     monkeypatch, archiver_instance, mock_config
 ):
-    """output_path='' → util.create_dir NOT called."""
-    mock_config.user_inputs.output_path = ""
+    """output_dir='' → util.create_dir NOT called."""
+    mock_config.output_dir = ""
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
@@ -408,8 +409,8 @@ def test_create_export_dir_empty_path_skips_create_dir(
 def test_create_export_dir_with_path_calls_create_dir(
     monkeypatch, archiver_instance, mock_config
 ):
-    """output_path='x/y' → util.create_dir called with that path."""
-    mock_config.user_inputs.output_path = "x/y"
+    """output_dir='x/y' → util.create_dir called with that path."""
+    mock_config.output_dir = "x/y"
     calls: List[str] = []
     monkeypatch.setattr(
         "bookstack_file_exporter.archiver.archiver.util.create_dir",
@@ -423,7 +424,7 @@ def test_create_export_dir_permission_error_fails_fast(
     monkeypatch, archiver_instance, mock_config, caplog
 ):
     """util.create_dir raises PermissionError → pointed error logged, exception propagates."""
-    mock_config.user_inputs.output_path = "some/path"
+    mock_config.output_dir = "some/path"
 
     def _raise_perm(path):
         raise PermissionError("access denied")

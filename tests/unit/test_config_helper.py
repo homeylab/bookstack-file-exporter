@@ -7,6 +7,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from bookstack_file_exporter.common.util import EXPORT_BASENAME
 from bookstack_file_exporter.config_helper import models
 from bookstack_file_exporter.config_helper.config_helper import (
     ConfigNode,
@@ -226,3 +227,25 @@ def test_generate_remote_config_raises_on_invalid_entry():
     (fail-closed schema validation), not inside _generate_remote_config."""
     with pytest.raises(ValidationError, match="region"):
         models.S3StorageConfig(name="t", bucket="b", access_key="a", secret_key="s")
+
+
+# ---------------------------------------------------------------------------
+# ConfigNode.output_dir — CLI -o vs config output_path precedence (Change A)
+# ---------------------------------------------------------------------------
+
+def test_output_dir_prefers_cli_over_config_output_path(tmp_path):
+    """When both -o (args.output_dir) and config output_path are set to different
+    values, the CLI flag must win end-to-end: config.output_dir (and therefore
+    base_dir_name) resolves to the -o path, not the config path. This is the actual
+    bug: create_export_dir previously read output_path raw and ignored -o, so the
+    archive and the pre-create mkdir could target different directories."""
+    raw = dict(_VALID_RAW)
+    raw["output_path"] = "config/dir"
+    config_file = tmp_path / "config.yml"
+    config_file.write_text(yaml.dump(raw), encoding="utf-8")
+
+    args = SimpleNamespace(config_file=str(config_file), output_dir="/cli/dir")
+    config = ConfigNode(args)
+
+    assert config.output_dir == "/cli/dir"
+    assert config.base_dir_name == f"/cli/dir/{EXPORT_BASENAME}"
