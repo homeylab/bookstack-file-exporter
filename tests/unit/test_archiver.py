@@ -340,41 +340,40 @@ def test_get_stale_archives_keep_last_negative(
 
 
 def test_get_stale_archives_keep_last_zero_with_archives(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last=0: clean_up returns early before calling _get_stale_archives.
-    But _get_stale_archives itself with keep_last=0 and 3 files:
-    len(3) > 0 → calls _filter_archives(list) which returns 3 oldest."""
+    """keep_last=0 called directly on _get_stale_archives (clean_up short-circuits
+    keep_last=0 before reaching here): oldest_beyond_keep(3, keep_last=0) marks all
+    3 as stale (to_delete = 3 - 0), returned oldest-first by basename."""
     mock_config.user_inputs.keep_last = 0
     file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz", f"{EXPORT_BASENAME}_c.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = dict(zip(file_list, [100, 200, 300]))
-    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
-    # to_delete = 3 - 0 = 3, so all 3 are returned
     assert result == file_list
 
 
 def test_get_stale_archives_count_lte_keep_last(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last > 0, count <= keep_last → returns []."""
+    """keep_last > 0, count <= keep_last → returns [] (nothing beyond the window).
+
+    Names must be EXPORT_BASENAME-prefixed so they survive the level filter and
+    actually reach the count<=keep_last branch -- unmanaged names would be dropped
+    earlier and pass this assertion for the wrong reason."""
     mock_config.user_inputs.keep_last = 5
-    patch_scan_archives(["a.tgz", "b.tgz"])
+    patch_scan_archives([f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz"])
     result = archiver_instance._get_stale_archives()
     assert not result
 
 
 def test_get_stale_archives_count_gt_keep_last(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last > 0, count > keep_last → returns oldest excess."""
+    """keep_last > 0, count > keep_last → returns oldest excess (by basename order)."""
     mock_config.user_inputs.keep_last = 2
     file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz",
                  f"{EXPORT_BASENAME}_c.tgz", f"{EXPORT_BASENAME}_d.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = dict(zip(file_list, [100, 200, 300, 400]))
-    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
     assert result == [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz"]
 
