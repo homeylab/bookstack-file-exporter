@@ -26,7 +26,7 @@ A few behaviors worth knowing about partial runs and pruning:
 - In-progress (mid-write) archives are written as `*.tgz.incomplete` and are swept automatically at the start of the next run.
 
 ### File Naming
-For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced in page names/titles. If your page has an empty `slug` value for some reason (draft that was never fully saved), the exporter will use page name with the `slugify` function from Django to generate a valid slug. Example: `My Page.bin Name!` will be converted to `my-page-bin-name`.
+For file names, `slug` names (from Bookstack API) are used, as such certain characters like `!`, `/` will be ignored and spaces replaced in page names/titles. If a page has an empty `slug` but is not an ignored draft (see [Empty/New Pages](#emptynew-pages)), the exporter falls back to the page name run through Django's `slugify` function to generate a valid slug. Example: `My Page.bin Name!` will be converted to `my-page-bin-name`.
 
 You may also notice some directories (books) and/or files (pages) in the archive have a random string at the end, example - `nKA`: `user-and-group-management-nKA`. This is expected and is because there were resources with the same name created in another shelve and bookstack adds a string at the end to ensure uniqueness.
 
@@ -112,7 +112,9 @@ bookstack_export_2023-11-28_06-24-25/programming/react/nextjs.pdf
 Books without a shelf will be put in a shelve folder named `unassigned`.
 
 ### Empty/New Pages
-Empty/New Pages are ignored: they have not been modified from creation, so they have no content and no valid slug. From the Bookstack API they appear as `"name": "New Page"` with an empty `"slug": ""`.
+Unsaved **draft** pages are ignored: a page created but never saved has no content and no slug, so the exporter skips it. BookStack returns these as `"name": "New Page"` with an empty `"slug": ""`, and the exporter recognizes them by that default *New Page* name — so a non-English instance whose default title differs is not matched.
+
+A **saved** page with a real slug but an empty body is *not* a draft and is *not* ignored: it is exported normally (title only). Empty containers behave symmetrically — a book or chapter with no pages produces no files, since only pages (leaves) yield output.
 
 ## Images
 Images will be dumped in a separate directory, `images` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/images/{page}/{image_name}`. As shown earlier:
