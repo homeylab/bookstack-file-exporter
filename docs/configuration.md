@@ -162,7 +162,7 @@ The shelf/book/chapter hierarchy is preserved as directories inside the archive 
 
 `assets.export_meta` applies at all levels: when enabled, a `_meta.json` file is written alongside each exported node.
 
-For non-default levels the archive filename is suffixed with the level (e.g. `bkps_books_<timestamp>.tgz`, `bkps_chapters_<timestamp>.tgz`); `pages` keeps the unsuffixed `bkps_<timestamp>.tgz`. Because `keep_last` cleanup matches on this prefix, archive retention is scoped independently per level.
+For non-default levels the archive filename is suffixed with the level (e.g. `bookstack_export_books_<timestamp>.tgz`, `bookstack_export_chapters_<timestamp>.tgz`); `pages` keeps the unsuffixed `bookstack_export_<timestamp>.tgz`. Because `keep_last` cleanup matches on this prefix, archive retention is scoped independently per level.
 
 ## Parallel Export
 

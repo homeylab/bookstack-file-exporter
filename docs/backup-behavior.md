@@ -2,25 +2,26 @@
 
 [← Back to README](../README.md#documentation)
 
-- [General](#general)
+- [Format](#format)
   - [File Naming](#file-naming)
   - [Directory Layout](#directory-layout)
   - [Empty/New Pages](#emptynew-pages)
 - [Images](#images)
+  - [Secure image storage](#secure-image-storage)
 - [Attachments](#attachments)
 - [Modify Links](#modify-links)
   - [Markdown example](#markdown-example)
   - [HTML example](#html-example)
   - [Known limitations](#known-limitations)
 
-## General
-Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). The timestamp is **UTC** as of v3.0.0 (earlier versions used the host's local time); notification bodies use the same UTC clock. *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
+## Format
+Backups are exported in `.tgz` format and generated based off timestamp. Export names will be in the format: `%Y-%m-%d_%H-%M-%S` (Year-Month-Day_Hour-Minute-Second). The timestamp is **UTC** and notification bodies use the same UTC clock. *Files are first pulled locally to create the tarball and then can be sent to object storage if needed*. Example file name: `bookstack_export_2023-09-22_07-19-54.tgz`.
 
 The exporter can also do housekeeping duties and keep a configured number of archives and delete older ones. See `keep_last` property in the [Configuration](configuration.md#options-and-descriptions) section. Object storage provider configurations include their own `keep_last` property for flexibility.
 
-A few behaviors worth knowing about partial runs and pruning:
-- A run that drops content (a failed node export or asset download) publishes its archive as `bookstack_export_<timestamp>_partial.tgz`. The `_partial` marker reflects **content** loss only — an upload-stage failure happens after the archive is named and does not add the marker.
-- Retention pruning is **skipped entirely** on a partial run — neither the top-level local `keep_last` nor any `object_storage` target's `keep_last` runs — unless `prune_on_partial: true` is set in the config. This trades loud disk growth for never letting a degraded backup evict a complete one. See the `prune_on_partial` property in the [Configuration](configuration.md#options-and-descriptions) section.
+**A few behaviors worth knowing about partial runs and pruning**:
+- A run that drops content (a failed node export or asset download) publishes its archive as `bookstack_export_<timestamp>_partial.tgz`. The `_partial` marker reflects **content** loss only; a failure that occurs after archive is completely written/named does not add the marker.
+- Retention pruning is **skipped entirely** on a partial run — neither the top-level local `keep_last` nor any `object_storage` target's `keep_last` runs — unless `prune_on_partial: true` is set in the config. This trades disk growth for never letting a degraded backup evict a complete one. See the `prune_on_partial` property in the [Configuration](configuration.md#options-and-descriptions) section.
 - `*_partial.tgz` archives still **count toward** `keep_last` slots and are pruned as they age by later successful runs, both locally and on remote targets — pruning is only skipped by the partial run itself, not by the runs that follow it.
 - With `keep_last: -1`, repeated partial runs accumulate one `*_partial.tgz` per run until the next clean run deletes all local copies — this is expected, and each partial run logs a WARNING calling out the skipped pruning.
 - In-progress (mid-write) archives are written as `*.tgz.incomplete` and are swept automatically at the start of the next run.

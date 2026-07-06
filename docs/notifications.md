@@ -4,6 +4,7 @@
 
 - [General](#general)
 - [Format](#format)
+  - [Body Format](#body-format)
 - [apprise](#apprise)
 
 ## General
