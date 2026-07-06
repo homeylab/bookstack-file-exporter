@@ -130,7 +130,12 @@ bookstack_export_2023-11-28_06-24-25/programming/react/images/nextjs/tips.png
 
 If an API call to get an image or its metadata fails, the exporter will skip the image and log the error. If using `modify_links` option, the image links in the document will be untouched and in its original form. All API calls are retried 3 times after initial failure.
 
-Images stored with BookStack **secure image storage** (`STORAGE_IMAGE_TYPE=local_secure` or `local_secure_restricted`) are fetched through the authenticated image API, which requires **BookStack v25.11+**. On older BookStack a secure image cannot be exported and is skipped (the run is marked partial); public image storage (`local`, `s3`) works on all versions.
+### Secure image storage
+By default the exporter fetches each image from its **public image URL** (`/uploads/images/...`) — the URL BookStack embeds in page content, served directly and unauthenticated for `local` and `s3` storage.
+
+If BookStack uses **secure image storage** (`STORAGE_IMAGE_TYPE=local_secure` or `local_secure_restricted`), that public URL is not token-authenticated: it redirects to the login page instead of returning the image. The exporter detects the login/HTML response and automatically retries through the **authenticated image API** (`GET /api/image-gallery/{id}/data`), which is permission-checked inside BookStack and requires **BookStack v25.11+**.
+
+No configuration is required — an instance with a mix of public and secure images works with no toggling, at the cost of one extra request per secure image (public images are unaffected). On BookStack older than v25.11 a secure image cannot be retrieved by any route and is skipped, marking the run partial; public image storage works on all versions.
 
 ## Attachments
 Attachments will be dumped in a separate directory, `attachments` within the page parent (book/chapter) directory it belongs to. The relative path will be `{parent}/attachments/{page}/{attachment_name}`. As shown earlier:

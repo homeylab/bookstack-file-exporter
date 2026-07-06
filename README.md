@@ -25,6 +25,7 @@ What it does:
 - Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
 - Additional page content — images, attachments, and metadata — can also be exported
+- Works with BookStack [secure image storage](docs/backup-behavior.md#secure-image-storage) (`local_secure` / `local_secure_restricted`): images are fetched via the authenticated image API automatically, no config toggling (requires BookStack v25.11+ for secure images; public storage works on all versions)
 - The exporter can also [Modify Links](docs/backup-behavior.md#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
 - Fine grained filtering and selectable export levels.
 - YAML configuration file for repeatable and easy runs
@@ -61,7 +62,7 @@ Detailed docs live under [`docs/`](docs/):
 - [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication
 - [Configuration](docs/configuration.md) — full `config.yml` reference, all options, environment variables, export level, parallel export
 - [Filters](docs/filters.md) — include/exclude shelves, books, chapters, pages by name
-- [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images, attachments, modify-links
+- [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images (incl. secure image storage), attachments, modify-links
 - [Remote Storage](docs/remote-storage.md) — MinIO / S3 upload, credential resolution, multi-target behavior, v2→v3 migration
 - [Notifications](docs/notifications.md) — apprise notifications on export success/failure
 
