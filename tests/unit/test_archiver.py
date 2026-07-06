@@ -34,7 +34,6 @@ def mock_config():
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
     config.user_inputs.export_level = "pages"
-    config.user_inputs.prune_on_partial = False
     config.object_storage_config = []
     return config
 

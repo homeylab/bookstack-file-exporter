@@ -115,6 +115,15 @@ def test_build_user_input_raises_on_invalid_schema():
         build_user_input(dict(_INVALID_RAW))
 
 
+def test_prune_on_partial_key_is_rejected():
+    """The removed (never-shipped) prune_on_partial key must fail-loud, not be
+    silently ignored (StrictModel forbids extras)."""
+    raw = dict(_VALID_RAW)
+    raw["prune_on_partial"] = False
+    with pytest.raises(ValidationError):
+        build_user_input(raw)
+
+
 def test_build_user_input_logs_error_on_schema_failure(caplog):
     """build_user_input logs the schema validation error message before re-raising."""
     logger_name = "bookstack_file_exporter.config_helper.config_helper"
