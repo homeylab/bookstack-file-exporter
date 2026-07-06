@@ -141,10 +141,11 @@ class Archiver:
         exist on disk yet, so only earlier runs' leftovers are removed. Moving this
         call after any write would make it delete the live tar.
 
-        Globs on the unscoped base_dir_name (e.g. `bkps`), not the level-scoped
-        base_dir (`bkps_books`): intermediates are always junk regardless of export
-        level, so `bkps_*` clears incompletes stranded by prior runs at any level. The
-        `bkps_` prefix still anchors the scan so unrelated files are never touched.
+        Globs on the unscoped base_dir_name (e.g. `bkps/bookstack_export`), not the
+        level-scoped base_dir (`bkps/bookstack_export_books`): intermediates are always
+        junk regardless of export level, so `bkps/bookstack_export_*` clears incompletes
+        stranded by prior runs at any level. The `bkps/bookstack_export_` prefix still
+        anchors the scan so unrelated files are never touched.
         (keep_last retention deliberately stays level-scoped — those are deliverables.)
         Also retro-cleans .tar orphans stranded by pre-v3 versions (which staged
         an intermediate .tar before gzipping) and by past failed cycles.
