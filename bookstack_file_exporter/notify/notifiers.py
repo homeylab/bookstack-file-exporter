@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from apprise import Apprise, AppriseAsset, AppriseConfig, NotifyFormat
 
 from bookstack_file_exporter.config_helper import notifications
-from bookstack_file_exporter.notify.models import NotifyResult, ExportStatus, STATUS_EFFECTS
+from bookstack_file_exporter.notify.models import (
+    NotifyResult, ExportStatus, STATUS_EFFECTS, LEVEL_SINGULAR)
 
 _DEFAULT_TITLE_PREFIX = "Bookstack File Exporter "
 
@@ -61,10 +62,6 @@ def _pruned_group_lines(pruned: list[str], header: str, markdown: bool) -> list[
     lines.extend(pruned)
     return lines
 
-# export_level -> singular noun for the content-failure bullet. Explicit map
-# (not level[:-1]) so an unexpected value degrades to a readable fallback.
-_LEVEL_SINGULAR = {"pages": "page", "books": "book", "chapters": "chapter"}
-
 
 def _content_failure_bullets(result: NotifyResult | None) -> list[str]:
     """Count-only bullets for content dropped from the archive, shared by both
@@ -76,7 +73,7 @@ def _content_failure_bullets(result: NotifyResult | None) -> list[str]:
         return []
     bullets = []
     if result.failed_nodes:
-        label = _LEVEL_SINGULAR.get(result.export_level, "node")
+        label = LEVEL_SINGULAR.get(result.export_level, "node")
         bullets.append(
             f"- content: {len(result.failed_nodes)} {label} export(s) failed")
     if result.failed_assets:
