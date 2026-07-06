@@ -49,25 +49,17 @@ def _pruned_bullets(result: NotifyResult, local_abs: str, removed_abs: set[str],
             bullets.append(f"- {label}: {outcome.pruned} archive(s)")
     return bullets
 
-def _pruned_group_lines(pruned: list[str], prune_skipped: bool, header: str,
-                        skipped_line: str, markdown: bool) -> list[str]:
-    """Lines for the whole Pruned: group, shared by both renderers: bullets when
-    pruning ran, a one-line skip notice when it was skipped for a partial run
-    (retention configured but prune_on_partial is false), or nothing at all.
-    markdown=True adds the blank line after the header/notice that CommonMark
-    needs to keep it from being lazily absorbed into the surrounding text."""
-    if pruned:
-        lines = ["", header]
-        if markdown:
-            lines.append("")
-        lines.extend(pruned)
-        return lines
-    if prune_skipped:
-        lines = ["", skipped_line]
-        if markdown:
-            lines.append("")
-        return lines
-    return []
+def _pruned_group_lines(pruned: list[str], header: str, markdown: bool) -> list[str]:
+    """Lines for the Pruned: group, shared by both renderers: header + bullets when
+    pruning ran, or nothing. markdown=True adds the blank line after the header that
+    CommonMark needs so it is not lazily absorbed into surrounding text."""
+    if not pruned:
+        return []
+    lines = ["", header]
+    if markdown:
+        lines.append("")
+    lines.extend(pruned)
+    return lines
 
 # export_level -> singular noun for the content-failure bullet. Explicit map
 # (not level[:-1]) so an unexpected value degrades to a readable fallback.
@@ -205,8 +197,7 @@ class AppRiseNotify:
                 elif outcome.warning:
                     warnings.append(f"- {outcome.label}: {outcome.warning}")
             pruned = _pruned_bullets(result, local_abs, removed_abs)
-            lines.extend(_pruned_group_lines(pruned, result.prune_skipped, "Pruned:",
-                                             "Pruned: skipped (partial run)", markdown=False))
+            lines.extend(_pruned_group_lines(pruned, "Pruned:", markdown=False))
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {result.cleanup_error}")
         if failed:
@@ -266,8 +257,7 @@ class AppRiseNotify:
                 elif outcome.warning:
                     warnings.append(f"- {_md_code(outcome.label)}: {_md_code(outcome.warning)}")
             pruned = _pruned_bullets(result, local_abs, removed_abs, wrap_labels=True)
-            lines.extend(_pruned_group_lines(pruned, result.prune_skipped, "**Pruned:**",
-                                             "**Pruned:** skipped (partial run)", markdown=True))
+            lines.extend(_pruned_group_lines(pruned, "**Pruned:**", markdown=True))
         if result is not None and result.cleanup_error:
             warnings.append(f"- local cleanup failed: {_md_code(result.cleanup_error)}")
         # Blank line before AND after each group header: without the leading one,
