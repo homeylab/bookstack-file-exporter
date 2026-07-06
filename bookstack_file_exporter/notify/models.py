@@ -69,6 +69,14 @@ class NotifyResult:  # pylint: disable=too-many-instance-attributes
     export_level: str = "pages"
 
 
+# export_level -> singular noun for prose that reads "1 <thing> export(s) failed":
+# the notifier body (notifiers.py) and the no-content error (run.py). The log
+# summary uses the plural "<level>_failed" key form instead and needs no map.
+# Explicit map (not export_level[:-1]) so an unexpected value degrades to a
+# readable "node" fallback instead of a mangled slice.
+LEVEL_SINGULAR = {"pages": "page", "books": "book", "chapters": "chapter"}
+
+
 def format_run_summary(result: NotifyResult) -> str:
     """One-line plaintext run summary for the logs, mirroring the fields a
     notification carries. Distinct from the markdown notifier body: this is the
@@ -80,7 +88,7 @@ def format_run_summary(result: NotifyResult) -> str:
     total = len(result.uploads)
     if total:
         ok = sum(1 for u in result.uploads if u.dest is not None)
-        parts.append(f"uploads={ok}/{total} ok")
+        parts.append(f"uploads_ok={ok}/{total}")
         failed = [u.label for u in result.uploads if u.dest is None]
         if failed:
             parts.append(f"(failed: {', '.join(failed)})")
@@ -88,9 +96,11 @@ def format_run_summary(result: NotifyResult) -> str:
         if warned:
             parts.append(f"(retention-warned: {', '.join(warned)})")
     if result.failed_nodes or result.failed_assets:
-        parts.append(
-            f"content-loss={len(result.failed_nodes)} node/"
-            f"{len(result.failed_assets)} asset")
+        # export_level is already plural (pages/books/chapters), so a
+        # "<level>_failed" key needs no singular/plural handling and matches the
+        # key=value shape of the rest of the line.
+        parts.append(f"{result.export_level}_failed={len(result.failed_nodes)}")
+        parts.append(f"assets_failed={len(result.failed_assets)}")
     if result.removed:
         parts.append(f"removed={len(result.removed)}")
     pruned = sum(u.pruned for u in result.uploads)

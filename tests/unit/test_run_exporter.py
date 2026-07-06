@@ -620,7 +620,7 @@ class TestExporterContentLoss:
             run.exporter(config)
 
         # counts in the message: it becomes the failure notification body
-        assert "1 node export(s)" in str(exc_info.value)
+        assert "1 page export(s)" in str(exc_info.value)
         assert "0 asset download(s)" in str(exc_info.value)
 
     def test_assets_survive_but_no_documents_still_raises(self, monkeypatch):

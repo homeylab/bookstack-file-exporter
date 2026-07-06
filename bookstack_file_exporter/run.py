@@ -13,7 +13,7 @@ from bookstack_file_exporter.archiver.archiver import Archiver
 from bookstack_file_exporter.common.util import HttpHelper, seconds_until_next_cron
 from bookstack_file_exporter.notify.handler import NotifyHandler
 from bookstack_file_exporter.notify.models import (
-    NotifyResult, ExportStatus, STATUS_EFFECTS, format_run_summary)
+    NotifyResult, ExportStatus, STATUS_EFFECTS, LEVEL_SINGULAR, format_run_summary)
 from bookstack_file_exporter.health.status import RunStatus
 from bookstack_file_exporter.health.server import start_health_server
 
@@ -118,7 +118,9 @@ def _run_once(config: ConfigNode) -> int:
             log.info("Interrupted by signal %s, exiting", signum)
             return 128 + signum
         code = STATUS_EFFECTS[result.status].exit_code
-        log.info("One-shot run exit code: %d", code)
+        # Outcome already surfaced at INFO via the "Run summary [STATUS]" line;
+        # the resolved code is a debug breadcrumb, not a second INFO announcement.
+        log.debug("One-shot run exit code: %d", code)
         return code
     except KeyboardInterrupt:
         # Backstop only: a Ctrl-C landing in the brief window before the
@@ -343,9 +345,10 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         # survived). Empty ledger + empty tar is a benign empty instance.
         if archive.failed_nodes or archive.failed_assets:
             if not archive.content_written:
+                level_word = LEVEL_SINGULAR.get(export_level, "node")
                 raise NoContentArchivedError(
                     f"no {export_level} content was archived: "
-                    f"{len(archive.failed_nodes)} node export(s) and "
+                    f"{len(archive.failed_nodes)} {level_word} export(s) and "
                     f"{len(archive.failed_assets)} asset download(s) failed")
         elif not archive.has_exported_content:
             log.warning("No %s content was archived. Nothing to upload", export_level)

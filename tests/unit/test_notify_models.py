@@ -79,14 +79,28 @@ class TestFormatRunSummary:
                                   UploadOutcome("s3/dr", None, "boom")],
                          failed_nodes=["p1", "p2"], failed_assets=["img1"],
                          removed=["old.tgz"])
-        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads=1/2 ok "
-                                         "(failed: s3/dr) content-loss=2 node/1 asset removed=1")
+        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads_ok=1/2 "
+                                         "(failed: s3/dr) pages_failed=2 assets_failed=1 removed=1")
 
     def test_summary_success_pruned(self):
         r = NotifyResult(status=ExportStatus.SUCCESS, local="/data/bkps.tgz",
                          export_level="books",
                          uploads=[UploadOutcome("minio/b", "minio-b/a.tgz", pruned=3)])
-        assert format_run_summary(r) == "level=books archive=/data/bkps.tgz uploads=1/1 ok pruned=3"
+        assert format_run_summary(r) == "level=books archive=/data/bkps.tgz uploads_ok=1/1 pruned=3"
+
+    def test_summary_content_loss_uses_plural_level_key(self):
+        # failed-document count is keyed by the (already plural) export_level,
+        # matching the key=value shape of the rest of the line.
+        r = NotifyResult(status=ExportStatus.PARTIAL, export_level="books",
+                         failed_nodes=["shelf/infra.pdf"], failed_assets=["img1", "img2"])
+        assert "books_failed=1 assets_failed=2" in format_run_summary(r)
+
+    def test_summary_content_loss_reports_both_keys_when_only_assets_fail(self):
+        # assets-only loss still shows the zero document count, so the two
+        # failure axes are always both visible.
+        r = NotifyResult(status=ExportStatus.PARTIAL, export_level="pages",
+                         failed_assets=["img1"])
+        assert "pages_failed=0 assets_failed=1" in format_run_summary(r)
 
     def test_summary_empty(self):
         r = NotifyResult(status=ExportStatus.EMPTY, export_level="pages")
@@ -97,7 +111,7 @@ class TestFormatRunSummary:
                          export_level="pages",
                          uploads=[UploadOutcome("minio/b", "minio-b/a.tgz",
                                                 warning="cleanup slow")])
-        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads=1/1 ok "
+        assert format_run_summary(r) == ("level=pages archive=/data/bkps.tgz uploads_ok=1/1 "
                                          "(retention-warned: minio/b)")
 
     def test_summary_flattens_newline_in_cleanup_error(self):
