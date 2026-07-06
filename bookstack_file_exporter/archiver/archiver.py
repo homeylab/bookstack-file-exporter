@@ -292,8 +292,8 @@ class Archiver:
         # each keeping the newest keep_last. A partial run adds a partial, so it can
         # never push the full count over keep_last -> partials never evict fulls.
         partial_suffix = f"_partial{self._archiver.file_extension_map['tgz']}"
-        partials = [p for p in archive_list if os.path.basename(p).endswith(partial_suffix)]
-        fulls = [p for p in archive_list if not os.path.basename(p).endswith(partial_suffix)]
+        partials = [p for p in archive_list if p.endswith(partial_suffix)]
+        fulls = [p for p in archive_list if not p.endswith(partial_suffix)]
         return self._filter_archives(fulls) + self._filter_archives(partials)
 
     def _filter_archives(self, file_list: list[str]) -> list[str]:
