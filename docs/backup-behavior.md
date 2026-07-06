@@ -21,9 +21,9 @@ The exporter can also do housekeeping duties and keep a configured number of arc
 
 **A few behaviors worth knowing about partial runs and pruning**:
 - A run that drops content (a failed node export or asset download) publishes its archive as `bookstack_export_<timestamp>_partial.tgz`. The `_partial` marker reflects **content** loss only; a failure that occurs after archive is completely written/named does not add the marker.
-- Retention pruning is **skipped entirely** on a partial run — neither the top-level local `keep_last` nor any `object_storage` target's `keep_last` runs — unless `prune_on_partial: true` is set in the config. This trades disk growth for never letting a degraded backup evict a complete one. See the `prune_on_partial` property in the [Configuration](configuration.md#options-and-descriptions) section.
-- `*_partial.tgz` archives still **count toward** `keep_last` slots and are pruned as they age by later successful runs, both locally and on remote targets — pruning is only skipped by the partial run itself, not by the runs that follow it.
-- With `keep_last: -1`, repeated partial runs accumulate one `*_partial.tgz` per run until the next clean run deletes all local copies — this is expected, and each partial run logs a WARNING calling out the skipped pruning.
+- Retention is scoped to the run's `export_level`; a run of one level never prunes another level's archives, whether local or on a remote `object_storage` target.
+- Within a level, complete archives and `*_partial.tgz` archives are independent retention groups: `keep_last` keeps the newest `N` of each group separately. A partial run only adds to the partial group, so it can never push the complete-archive count over `keep_last` — a partial run structurally cannot evict a complete backup. (If the complete count already exceeds `keep_last` — for example because `keep_last` was lowered — the surplus is pruned down to `N` on a later run, the same as any other retention pass.)
+- With `keep_last: -1`, a partial run now also deletes local copies for that level, same as a clean run — but only after at least one remote upload for the run succeeds; there is no per-partial WARNING or `prune_on_partial` toggle anymore.
 - In-progress (mid-write) archives are written as `*.tgz.incomplete` and are swept automatically at the start of the next run.
 
 ### File Naming

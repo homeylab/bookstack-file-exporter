@@ -319,8 +319,11 @@ class Archiver:
         """Append the export level to the archive base name for non-default levels.
 
         `pages` (the default) stays byte-identical to prior behavior; `books` and
-        `chapters` get a distinguishable name (e.g. `bkps_books`). Because keep_last
-        cleanup globs on this base, retention is naturally scoped per level.
+        `chapters` get a distinguishable name (e.g. `bkps_books`). Retention scoping
+        per level is enforced separately by `common_util.same_export_level`, not by
+        this base name alone: the glob on this base is a superset for `pages` (it
+        also matches legacy pre-v3 pages archives with no level token) and remote
+        retention filters objects by prefix, not by this local base dir at all.
         """
         if export_level == "pages":
             return base_dir

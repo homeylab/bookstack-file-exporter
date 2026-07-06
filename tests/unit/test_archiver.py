@@ -41,9 +41,9 @@ def mock_config():
 @pytest.fixture
 def archiver_instance(mock_config, mock_http_client):
     archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
-    # Real empty lists (not a truthy MagicMock) so prune_allowed's `failed_nodes or
-    # failed_assets` check reflects a clean run by default; tests that need a
-    # degraded run overwrite these locally.
+    # Real empty lists (not a truthy MagicMock) so `failed_nodes`/`failed_assets`
+    # reflect a clean run by default; tests that need a degraded run overwrite
+    # these locally.
     archiver._archiver.failed_node_exports = []
     archiver._archiver.failed_asset_downloads = []
     return archiver
