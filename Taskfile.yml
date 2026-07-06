@@ -59,6 +59,20 @@ tasks:
     interactive: true
     cmd: uv run bookstack-file-exporter -c {{.TASKFILE_DIR}}/.local/config.yml
 
+  minio:up:
+    desc: Start a throwaway local minio + create the lt-bookstack bucket the retention scenarios target (LT_MINIO in .local/mkcfg.py)
+    cmd: |
+      docker run -d --rm --name lt-minio -p 9000:9000 \
+        -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+        minio/minio server /data
+      docker run --rm --network host --entrypoint sh minio/mc -c \
+        'until mc alias set lt http://localhost:9000 minioadmin minioadmin 2>/dev/null; do sleep 0.5; done; mc mb --ignore-existing lt/lt-bookstack'
+      echo "lt-minio up: localhost:9000 (minioadmin/minioadmin), bucket lt-bookstack ready"
+
+  minio:down:
+    desc: Stop the throwaway local minio started by task minio:up
+    cmd: docker stop lt-minio || true
+
   publish:
     desc: Publish to PyPI (uv publish)
     interactive: true
