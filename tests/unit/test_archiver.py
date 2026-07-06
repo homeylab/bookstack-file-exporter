@@ -18,6 +18,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     PageArchiver,
     _FILE_EXTENSION_MAP,
 )
+from bookstack_file_exporter.common.util import EXPORT_BASENAME
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
@@ -333,7 +334,7 @@ def test_get_stale_archives_keep_last_negative(
 ):
     """keep_last < 0 returns full archive list."""
     mock_config.user_inputs.keep_last = -1
-    file_list = ["a.tgz", "b.tgz", "c.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz", f"{EXPORT_BASENAME}_c.tgz"]
     patch_scan_archives(file_list)
     result = archiver_instance._get_stale_archives()
     assert result == file_list
@@ -346,13 +347,13 @@ def test_get_stale_archives_keep_last_zero_with_archives(
     But _get_stale_archives itself with keep_last=0 and 3 files:
     len(3) > 0 → calls _filter_archives(list) which returns 3 oldest."""
     mock_config.user_inputs.keep_last = 0
-    file_list = ["a.tgz", "b.tgz", "c.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz", f"{EXPORT_BASENAME}_c.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = {"a.tgz": 100, "b.tgz": 200, "c.tgz": 300}
+    fake_ctimes = dict(zip(file_list, [100, 200, 300]))
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
     # to_delete = 3 - 0 = 3, so all 3 are returned
-    assert result == ["a.tgz", "b.tgz", "c.tgz"]
+    assert result == file_list
 
 
 def test_get_stale_archives_count_lte_keep_last(
@@ -370,12 +371,13 @@ def test_get_stale_archives_count_gt_keep_last(
 ):
     """keep_last > 0, count > keep_last → returns oldest excess."""
     mock_config.user_inputs.keep_last = 2
-    file_list = ["a.tgz", "b.tgz", "c.tgz", "d.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz",
+                 f"{EXPORT_BASENAME}_c.tgz", f"{EXPORT_BASENAME}_d.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = {"a.tgz": 100, "b.tgz": 200, "c.tgz": 300, "d.tgz": 400}
+    fake_ctimes = dict(zip(file_list, [100, 200, 300, 400]))
     monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
-    assert result == ["a.tgz", "b.tgz"]
+    assert result == [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz"]
 
 
 def test_get_stale_archives_empty_list(
@@ -386,6 +388,96 @@ def test_get_stale_archives_empty_list(
     patch_scan_archives([])
     result = archiver_instance._get_stale_archives()
     assert not result
+
+
+def _name(level_token: str, ts: str, partial: bool = False) -> str:
+    """Build a production-shaped archive path for retention tests."""
+    infix = f"{level_token}_" if level_token else ""
+    suffix = "_partial" if partial else ""
+    return f"/data/{EXPORT_BASENAME}_{infix}{ts}{suffix}.tgz"
+
+
+def test_get_stale_archives_splits_full_and_partial_independently(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last=1 pages run: keep newest full + newest partial, prune the rest of
+    each group; the two groups never evict each other."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    # file_extension_map must resolve to a real ".tgz" so the production code's
+    # partial-suffix check (built from this map) can actually match filenames;
+    # the bare MagicMock default returns an unconfigured mock instead of ".tgz".
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-01_00-00-00", partial=True),
+                _name("", "2026-01-02_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
+
+    stale = sorted(archiver_instance._get_stale_archives())
+
+    # oldest of each group pruned, newest of each kept
+    assert stale == sorted([fulls[0], partials[0]])
+
+
+def test_get_stale_archives_partial_run_never_evicts_full(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """N fulls already at cap + a fresh partial: fulls untouched (nothing added a
+    full), only surplus partials (none here) pruned."""
+    mock_config.user_inputs.keep_last = 2
+    mock_config.user_inputs.export_level = "pages"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-03_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
+
+    assert archiver_instance._get_stale_archives() == []
+
+
+def test_get_stale_archives_is_level_scoped(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """A pages run must not consider books/chapters archives (pages-superset bug)."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    pages = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    others = [_name("books", "2026-01-01_00-00-00"),
+              _name("chapters", "2026-01-01_00-00-00")]
+    patch_scan_archives(pages + others)
+
+    stale = archiver_instance._get_stale_archives()
+
+    assert stale == [pages[0]]          # only the oldest pages full
+    assert all(o not in stale for o in others)
+
+
+def test_get_stale_archives_books_run_only_books(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "books"
+    books = [_name("books", "2026-01-01_00-00-00"), _name("books", "2026-01-02_00-00-00")]
+    pages = [_name("", "2026-01-01_00-00-00")]
+    patch_scan_archives(books + pages)
+
+    assert archiver_instance._get_stale_archives() == [books[0]]
+
+
+def test_get_stale_archives_keep_last_negative_wipes_only_current_level(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last<0 wipes this level's archives (both groups) but leaves other levels."""
+    mock_config.user_inputs.keep_last = -1
+    mock_config.user_inputs.export_level = "pages"
+    pages = [_name("", "2026-01-01_00-00-00"),
+             _name("", "2026-01-02_00-00-00", partial=True)]
+    others = [_name("books", "2026-01-01_00-00-00")]
+    patch_scan_archives(pages + others)
+
+    stale = sorted(archiver_instance._get_stale_archives())
+
+    assert stale == sorted(pages)
+    assert others[0] not in stale
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +782,8 @@ def test_clean_up_keep_last_negative_returns_full_list(
 ):
     """keep_last < 0: all archives are in the returned deleted list (current .tgz included)."""
     mock_config.user_inputs.keep_last = -1
-    file_list = ["/data/current.tgz", "/data/old.tgz", "/data/older.tgz"]
+    file_list = [f"/data/{EXPORT_BASENAME}_current.tgz", f"/data/{EXPORT_BASENAME}_old.tgz",
+                 f"/data/{EXPORT_BASENAME}_older.tgz"]
     patch_scan_archives(file_list)
     archiver_instance._delete_files = MagicMock()
     result = archiver_instance.clean_up()
@@ -706,9 +799,9 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
     # Three archives, filenames carry the run timestamp; keep_last=1 -> the 2
     # oldest by filename should be deleted, newest kept.
     file_list = [
-        "bkps_2024-01-01_00-00-00.tgz",
-        "bkps_2024-01-02_00-00-00.tgz",
-        "bkps_2024-01-03_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-02_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-03_00-00-00.tgz",
     ]
     patch_scan_archives(file_list)
     # ctimes are deliberately reversed to prove prune order follows the filename

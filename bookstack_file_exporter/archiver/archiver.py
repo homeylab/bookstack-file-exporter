@@ -307,18 +307,25 @@ class Archiver:
         if not archive_list:
             log.debug("No archive files found to clean up")
             return []
-        # if negative number, we remove all local archives
+        # Retention only ever touches THIS run's export level -- a pages run must
+        # not prune books/chapters archives that share the output directory.
+        export_level = self.config.user_inputs.export_level
+        archive_list = [p for p in archive_list
+                        if common_util.same_export_level(os.path.basename(p), export_level)]
+        if not archive_list:
+            return []
+        # if negative number, we remove all local archives for this level
         # assume user is using remote storage and will upload there
         if self.config.user_inputs.keep_last < 0:
             log.debug("Local archive files will be deleted, keep_last: -1")
             return archive_list
-        # keep_last > 0 condition
-        to_delete = []
-        if len(archive_list) > self.config.user_inputs.keep_last:
-            log.debug("Number of archives is greater than 'keep_last'")
-            log.debug("Running clean up of local archives")
-            to_delete = self._filter_archives(archive_list)
-        return to_delete
+        # keep_last > 0: full and partial archives are independent retention groups,
+        # each keeping the newest keep_last. A partial run adds a partial, so it can
+        # never push the full count over keep_last -> partials never evict fulls.
+        partial_suffix = f"_partial{self._archiver.file_extension_map['tgz']}"
+        partials = [p for p in archive_list if os.path.basename(p).endswith(partial_suffix)]
+        fulls = [p for p in archive_list if not os.path.basename(p).endswith(partial_suffix)]
+        return self._filter_archives(fulls) + self._filter_archives(partials)
 
     def _filter_archives(self, file_list: list[str]) -> list[str]:
         """get older archives based on keep number"""
