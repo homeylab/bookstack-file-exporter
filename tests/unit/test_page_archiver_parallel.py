@@ -389,8 +389,8 @@ class TestFailureLedger:
 
         mock_asset_archiver.get_asset_nodes.return_value = {40: [bad, ok]}
 
-        def _get_bytes(asset_type, url):
-            if url is bad.download_url:
+        def _get_bytes(asset_type, node):
+            if node is bad:
                 raise HTTPError("404")
             return b"img"
 

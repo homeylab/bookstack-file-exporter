@@ -205,7 +205,7 @@ class NodeArchiver:
                 break
             try:
                 asset_data = self.asset_archiver.get_asset_bytes(
-                    asset_type, asset_node.download_url)
+                    asset_type, asset_node)
             except (HTTPError, RetryError, AssetDecodeError) as exc:
                 failed_assets.add(asset_node.id_)
                 log.error("Failed to get image or attachment data "
