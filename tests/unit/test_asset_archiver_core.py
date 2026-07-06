@@ -317,7 +317,7 @@ def test_get_asset_bytes_attachment_decode_failure_raises_asset_decode_error(
 
 
 # ---------------------------------------------------------------------------
-# Issue #145 — legacy-first image fetch with authenticated image-data API
+# Issue #145 — public-first image fetch with authenticated image-data API
 # fallback + defense-in-depth login/HTML detection.
 # ---------------------------------------------------------------------------
 
@@ -337,8 +337,8 @@ def _make_http_error(status_code: int) -> HTTPError:
     return error
 
 
-class TestGetImageBytesLegacyFirst:
-    """Legacy-first fetch with authenticated /data recovery on login/HTML."""
+class TestGetImageBytesPublicFirst:
+    """Public-first fetch with authenticated /data recovery on login/HTML."""
 
     def test_saved_filename_derives_from_content_url_not_data_route(
             self, asset_archiver, image_node):
@@ -355,9 +355,9 @@ class TestGetImageBytesLegacyFirst:
         assert relative_path == "images/my-page/screenshot.png"
         assert not relative_path.endswith("data")
 
-    def test_public_image_uses_legacy_url_only(self, asset_archiver, image_node):
-        """Public image (STORAGE_IMAGE_TYPE local/s3): legacy 200s with real
-        bytes, so the /data API is never requested."""
+    def test_public_image_uses_public_url_only(self, asset_archiver, image_node):
+        """Public image (STORAGE_IMAGE_TYPE local/s3): the public URL 200s with
+        real bytes, so the /data API is never requested."""
         asset_archiver.http_client.http_get_request.return_value = _make_response(
             b"real_png_bytes")
 
@@ -369,7 +369,7 @@ class TestGetImageBytesLegacyFirst:
 
     def test_secure_image_login_html_falls_back_to_data_api(
             self, asset_archiver, image_node):
-        """The #145 fix: legacy redirects a secure image to a login page
+        """The #145 fix: the public URL redirects a secure image to a login page
         (HTML body); the detector raises AssetDecodeError internally and the
         authenticated /data API recovers the real bytes."""
         login_response = _make_response(b"<!DOCTYPE html><html>login</html>")
@@ -387,7 +387,7 @@ class TestGetImageBytesLegacyFirst:
 
     def test_secure_image_login_redirect_falls_back_to_data_api(
             self, asset_archiver, image_node):
-        """Rule (b) path: legacy 200s with non-HTML-looking bytes but the
+        """Rule (b) path: the public URL 200s with non-HTML-looking bytes but the
         request was redirected to /login — still triggers the /data fallback."""
         redirect_response = _make_response(
             b"not html, not empty",
@@ -406,9 +406,9 @@ class TestGetImageBytesLegacyFirst:
         assert calls[0].args[0] == image_node.download_url
         assert calls[1].args[0] == f"{asset_archiver.api_urls['images']}/{image_node.id_}/data"
 
-    def test_missing_image_legacy_404_propagates_without_api_fallback(
+    def test_missing_image_public_404_propagates_without_api_fallback(
             self, asset_archiver, image_node):
-        """A deleted/missing image (legacy 404) must fail cleanly — no
+        """A deleted/missing image (public URL 404) must fail cleanly — no
         wasteful detour into the /data API on a non-login error."""
         asset_archiver.http_client.http_get_request.side_effect = _make_http_error(404)
 
@@ -418,9 +418,9 @@ class TestGetImageBytesLegacyFirst:
         asset_archiver.http_client.http_get_request.assert_called_once_with(
             image_node.download_url)
 
-    def test_transient_legacy_5xx_propagates_without_api_fallback(
+    def test_transient_public_5xx_propagates_without_api_fallback(
             self, asset_archiver, image_node):
-        """A transient legacy RetryError must propagate — not trigger the
+        """A transient public-URL RetryError must propagate — not trigger the
         /data fallback (that's reserved for the login/HTML signal only)."""
         asset_archiver.http_client.http_get_request.side_effect = RetryError("max retries")
 
@@ -432,9 +432,9 @@ class TestGetImageBytesLegacyFirst:
 
     def test_secure_image_on_pre_v25_11_data_api_404s_and_propagates(
             self, asset_archiver, image_node):
-        """Secure image on a pre-v25.11 instance: legacy login-HTML triggers
-        the fallback attempt, but /data 404s there too (route doesn't exist
-        yet) -> propagates -> caller marks the run PARTIAL."""
+        """Secure image on a pre-v25.11 instance: the public URL's login-HTML
+        triggers the fallback attempt, but /data 404s there too (route doesn't
+        exist yet) -> propagates -> caller marks the run PARTIAL."""
         login_response = _make_response(b"<!DOCTYPE html><html>login</html>")
         asset_archiver.http_client.http_get_request.side_effect = [
             login_response, _make_http_error(404),
