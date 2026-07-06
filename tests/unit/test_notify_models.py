@@ -108,8 +108,3 @@ class TestFormatRunSummary:
         summary = format_run_summary(r)
         assert "\n" not in summary
         assert summary == "level=pages cleanup_error=permission denied /data/old.tgz"
-
-    def test_run_summary_reports_prune_skipped(self):
-        result = NotifyResult(status=ExportStatus.PARTIAL, local="/bkps/x_partial.tgz",
-                              failed_nodes=["books/x"], prune_skipped=True)
-        assert "prune=skipped(partial)" in format_run_summary(result)

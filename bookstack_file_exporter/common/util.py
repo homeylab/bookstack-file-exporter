@@ -26,6 +26,32 @@ log = logging.getLogger(__name__)
 # objects whose name it recognizes as tool-created.
 EXPORT_BASENAME = "bookstack_export"
 
+# Non-default export levels. `pages` is the default and carries NO level token in
+# its archive name (`bookstack_export_<ts>.tgz`), so it is matched by exclusion.
+# MUST stay in sync with the export_level Literal in config_helper.models.UserInput
+# (a level added there but omitted here would leak into pages pruning); the
+# test_level_tokens_track_export_level_literal drift test enforces this.
+_LEVEL_TOKENS = frozenset({"books", "chapters"})
+
+
+def same_export_level(basename: str, level: str) -> bool:
+    """True when a managed archive basename belongs to `level`.
+
+    books/chapters carry a `_<level>_` infix right after EXPORT_BASENAME; pages has
+    none, so it is 'a managed name without any known level token'. Names are
+    machine-generated (EXPORT_BASENAME_[level_]timestamp[_partial].tgz), so the
+    timestamp can never spell a level token -- the predicate is collision-free.
+
+    Backward-compat note: legacy (pre-v3) pages archives are also tokenless, so the
+    exclusion branch classifies them as pages and keeps pruning them. An
+    always-emit-a-pages-token scheme would orphan those legacy files instead.
+    """
+    if level in _LEVEL_TOKENS:
+        return basename.startswith(f"{EXPORT_BASENAME}_{level}_")
+    return (basename.startswith(f"{EXPORT_BASENAME}_")
+            and not any(basename.startswith(f"{EXPORT_BASENAME}_{token}_")
+                        for token in _LEVEL_TOKENS))
+
 # pylint: disable=too-many-instance-attributes
 class HttpHelper:
     """

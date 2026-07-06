@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-import functools
 import logging
 import os
 
@@ -194,16 +193,13 @@ class Archiver:
         entries = self.config.object_storage_config or []
         if not entries:
             return []
-        allow_prune = self.prune_allowed
         if len(entries) == 1:
-            return [self._upload(entries[0], allow_prune=allow_prune)]
+            return [self._upload(entries[0])]
         workers = min(len(entries), _MAX_UPLOAD_WORKERS)
-        upload = functools.partial(self._upload, allow_prune=allow_prune)
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(executor.map(upload, entries))
+            return list(executor.map(self._upload, entries))
 
-    def _upload(self, provider_config: S3ProviderConfig,
-                allow_prune: bool = True) -> UploadOutcome:
+    def _upload(self, provider_config: S3ProviderConfig) -> UploadOutcome:
         label = provider_config.name
         try:
             archiver = self._s3_archiver_cls(provider_config)
@@ -212,14 +208,12 @@ class Archiver:
             # attempt-all: record and continue so other targets still run
             log.error("Upload to target '%s' failed: %s", label, err)
             return UploadOutcome(label=label, dest=None, error=str(err))
-        # Partial run: the degraded archive still uploads (a thin copy beats no
-        # copy) but must not trigger retention that evicts complete backups.
-        if not allow_prune:
-            return UploadOutcome(label=label, dest=dest, error=None)
         # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
         # keep dest (never flip to failed) but flag a warning so the run is degraded.
         try:
-            pruned = archiver.clean_up(self._archiver.file_extension_map['tgz'])
+            pruned = archiver.clean_up(
+                self._archiver.file_extension_map['tgz'],
+                self.config.user_inputs.export_level)
         except Exception as err:  # pylint: disable=broad-except
             log.error("Remote retention cleanup for target '%s' failed (upload OK): %s",
                       label, err)
@@ -249,8 +243,6 @@ class Archiver:
         # this captures keep_last = 0
         if not self.config.user_inputs.keep_last:
             return []
-        if not self.prune_allowed:
-            return []
         to_delete = self._get_stale_archives()
         if to_delete:
             self._delete_files(to_delete)
@@ -276,29 +268,6 @@ class Archiver:
         """True once at least one node (document) export landed in the tar."""
         return self._archiver.content_written
 
-    @property
-    def prune_allowed(self) -> bool:
-        """False when this run dropped content and the user has not opted into
-        prune_on_partial: a degraded (partial) archive must never evict complete
-        backups, locally or remotely. Content loss only — a failed upload never
-        prunes its own target anyway, and resolve_remote_status guards the
-        no-durable-copy case. Consumed by clean_up, archive_remote, and run.py's
-        NotifyResult."""
-        if self.config.user_inputs.prune_on_partial:
-            return True
-        return not (self.failed_nodes or self.failed_assets)
-
-    @property
-    def retention_configured(self) -> bool:
-        """True when any pruning could actually happen (top-level keep_last set,
-        or any object_storage target with keep_last > 0). Gates the 'pruning
-        skipped' messaging so keep_last-less users are not told about a skip of
-        an action that was never going to run."""
-        if self.config.user_inputs.keep_last:
-            return True
-        return any(t.keep_last > 0
-                   for t in self.config.user_inputs.object_storage or [])
-
     def _get_stale_archives(self) -> list[str]:
         # if user is uploading to object storage
         # delete the local .tgz archive since we have it there already
@@ -307,18 +276,25 @@ class Archiver:
         if not archive_list:
             log.debug("No archive files found to clean up")
             return []
-        # if negative number, we remove all local archives
+        # Retention only ever touches THIS run's export level -- a pages run must
+        # not prune books/chapters archives that share the output directory.
+        export_level = self.config.user_inputs.export_level
+        archive_list = [p for p in archive_list
+                        if common_util.same_export_level(os.path.basename(p), export_level)]
+        if not archive_list:
+            return []
+        # if negative number, we remove all local archives for this level
         # assume user is using remote storage and will upload there
         if self.config.user_inputs.keep_last < 0:
             log.debug("Local archive files will be deleted, keep_last: -1")
             return archive_list
-        # keep_last > 0 condition
-        to_delete = []
-        if len(archive_list) > self.config.user_inputs.keep_last:
-            log.debug("Number of archives is greater than 'keep_last'")
-            log.debug("Running clean up of local archives")
-            to_delete = self._filter_archives(archive_list)
-        return to_delete
+        # keep_last > 0: full and partial archives are independent retention groups,
+        # each keeping the newest keep_last. A partial run adds a partial, so it can
+        # never push the full count over keep_last -> partials never evict fulls.
+        partial_suffix = f"_partial{self._archiver.file_extension_map['tgz']}"
+        partials = [p for p in archive_list if p.endswith(partial_suffix)]
+        fulls = [p for p in archive_list if not p.endswith(partial_suffix)]
+        return self._filter_archives(fulls) + self._filter_archives(partials)
 
     def _filter_archives(self, file_list: list[str]) -> list[str]:
         """get older archives based on keep number"""
@@ -343,8 +319,11 @@ class Archiver:
         """Append the export level to the archive base name for non-default levels.
 
         `pages` (the default) stays byte-identical to prior behavior; `books` and
-        `chapters` get a distinguishable name (e.g. `bkps_books`). Because keep_last
-        cleanup globs on this base, retention is naturally scoped per level.
+        `chapters` get a distinguishable name (e.g. `bkps_books`). Retention scoping
+        per level is enforced separately by `common_util.same_export_level`, not by
+        this base name alone: the glob on this base is a superset for `pages` (it
+        also matches legacy pre-v3 pages archives with no level token) and remote
+        retention filters objects by prefix, not by this local base dir at all.
         """
         if export_level == "pages":
             return base_dir

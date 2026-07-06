@@ -60,9 +60,6 @@ class NotifyResult:  # pylint: disable=too-many-instance-attributes
     uploads: list[UploadOutcome] = field(default_factory=list)  # one per configured target
     removed: list[str] = field(default_factory=list)    # local files clean_up() deleted
     cleanup_error: str | None = None    # str(exception) when local retention pruning failed
-    # True when retention pruning (local + remote) was skipped because the run
-    # was partial and prune_on_partial is false.
-    prune_skipped: bool = False
     # Content-loss ledger: names of node exports / asset downloads that were
     # skipped after fetch failures. Non-empty => status was downgraded to PARTIAL.
     failed_nodes: list[str] = field(default_factory=list)
@@ -99,8 +96,6 @@ def format_run_summary(result: NotifyResult) -> str:
     pruned = sum(u.pruned for u in result.uploads)
     if pruned:
         parts.append(f"pruned={pruned}")
-    if result.prune_skipped:
-        parts.append("prune=skipped(partial)")
     if result.cleanup_error:
         parts.append(f"cleanup_error={result.cleanup_error}")
     # Flatten any embedded newline so the summary stays a single grep-able line

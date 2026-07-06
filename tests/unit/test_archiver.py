@@ -10,7 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bookstack_file_exporter.archiver.archiver import Archiver, AggregateUploadError
+from bookstack_file_exporter.archiver.archiver import (
+    Archiver,
+    AggregateUploadError,
+    _DATE_STR_FORMAT,
+)
 from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,
@@ -18,6 +22,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     PageArchiver,
     _FILE_EXTENSION_MAP,
 )
+from bookstack_file_exporter.common.util import EXPORT_BASENAME, same_export_level
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
@@ -33,7 +38,6 @@ def mock_config():
     config.user_inputs.keep_last = 1
     config.user_inputs.output_path = ""
     config.user_inputs.export_level = "pages"
-    config.user_inputs.prune_on_partial = False
     config.object_storage_config = []
     return config
 
@@ -41,9 +45,9 @@ def mock_config():
 @pytest.fixture
 def archiver_instance(mock_config, mock_http_client):
     archiver = Archiver(mock_config, mock_http_client, node_archiver=MagicMock())
-    # Real empty lists (not a truthy MagicMock) so prune_allowed's `failed_nodes or
-    # failed_assets` check reflects a clean run by default; tests that need a
-    # degraded run overwrite these locally.
+    # Real empty lists (not a truthy MagicMock) so `failed_nodes`/`failed_assets`
+    # reflect a clean run by default; tests that need a degraded run overwrite
+    # these locally.
     archiver._archiver.failed_node_exports = []
     archiver._archiver.failed_asset_downloads = []
     return archiver
@@ -333,49 +337,49 @@ def test_get_stale_archives_keep_last_negative(
 ):
     """keep_last < 0 returns full archive list."""
     mock_config.user_inputs.keep_last = -1
-    file_list = ["a.tgz", "b.tgz", "c.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz", f"{EXPORT_BASENAME}_c.tgz"]
     patch_scan_archives(file_list)
     result = archiver_instance._get_stale_archives()
     assert result == file_list
 
 
 def test_get_stale_archives_keep_last_zero_with_archives(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last=0: clean_up returns early before calling _get_stale_archives.
-    But _get_stale_archives itself with keep_last=0 and 3 files:
-    len(3) > 0 → calls _filter_archives(list) which returns 3 oldest."""
+    """keep_last=0 called directly on _get_stale_archives (clean_up short-circuits
+    keep_last=0 before reaching here): oldest_beyond_keep(3, keep_last=0) marks all
+    3 as stale (to_delete = 3 - 0), returned oldest-first by basename."""
     mock_config.user_inputs.keep_last = 0
-    file_list = ["a.tgz", "b.tgz", "c.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz", f"{EXPORT_BASENAME}_c.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = {"a.tgz": 100, "b.tgz": 200, "c.tgz": 300}
-    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
-    # to_delete = 3 - 0 = 3, so all 3 are returned
-    assert result == ["a.tgz", "b.tgz", "c.tgz"]
+    assert result == file_list
 
 
 def test_get_stale_archives_count_lte_keep_last(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last > 0, count <= keep_last → returns []."""
+    """keep_last > 0, count <= keep_last → returns [] (nothing beyond the window).
+
+    Names must be EXPORT_BASENAME-prefixed so they survive the level filter and
+    actually reach the count<=keep_last branch -- unmanaged names would be dropped
+    earlier and pass this assertion for the wrong reason."""
     mock_config.user_inputs.keep_last = 5
-    patch_scan_archives(["a.tgz", "b.tgz"])
+    patch_scan_archives([f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz"])
     result = archiver_instance._get_stale_archives()
     assert not result
 
 
 def test_get_stale_archives_count_gt_keep_last(
-    monkeypatch, archiver_instance, mock_config, patch_scan_archives
+    archiver_instance, mock_config, patch_scan_archives
 ):
-    """keep_last > 0, count > keep_last → returns oldest excess."""
+    """keep_last > 0, count > keep_last → returns oldest excess (by basename order)."""
     mock_config.user_inputs.keep_last = 2
-    file_list = ["a.tgz", "b.tgz", "c.tgz", "d.tgz"]
+    file_list = [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz",
+                 f"{EXPORT_BASENAME}_c.tgz", f"{EXPORT_BASENAME}_d.tgz"]
     patch_scan_archives(file_list)
-    fake_ctimes = {"a.tgz": 100, "b.tgz": 200, "c.tgz": 300, "d.tgz": 400}
-    monkeypatch.setattr(os, "stat", _make_stat_patcher(fake_ctimes))
     result = archiver_instance._get_stale_archives()
-    assert result == ["a.tgz", "b.tgz"]
+    assert result == [f"{EXPORT_BASENAME}_a.tgz", f"{EXPORT_BASENAME}_b.tgz"]
 
 
 def test_get_stale_archives_empty_list(
@@ -386,6 +390,128 @@ def test_get_stale_archives_empty_list(
     patch_scan_archives([])
     result = archiver_instance._get_stale_archives()
     assert not result
+
+
+def test_mint_timestamp_format_is_lexically_chronological():
+    """CONTRACT: retention orders archives by string-sorting their names, which is
+    correct ONLY while the minted timestamp format is big-endian (lexical order ==
+    chronological). Lock it so a future _DATE_STR_FORMAT change (e.g. to %m/%d/%Y)
+    can't silently break retention ordering with no test failing."""
+    earlier = datetime(2024, 1, 1, 23, 59, 59, tzinfo=timezone.utc)
+    later = datetime(2024, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+    assert earlier.strftime(_DATE_STR_FORMAT) < later.strftime(_DATE_STR_FORMAT)
+
+
+def test_generate_root_folder_name_shape_matches_retention_parse():
+    """CONTRACT: the minted archive base must match the shape the retention path and
+    same_export_level expect -- EXPORT_BASENAME_<sortable-timestamp>. Guards the
+    implicit coupling between the name minter and the retention name reader."""
+    name = Archiver._generate_root_folder(EXPORT_BASENAME)
+    assert re.fullmatch(
+        rf"{EXPORT_BASENAME}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}", name)
+
+
+@pytest.mark.parametrize("level", ["pages", "books", "chapters"])
+def test_minted_name_classifies_as_its_own_level_end_to_end(level):
+    """END-TO-END CONTRACT: the base name the minter produces for a level
+    (_level_base_dir + _generate_root_folder) must be classified as THAT level by
+    same_export_level, and by no other. Locks the name<->retention coupling for BOTH
+    non-default (infix) and default (exclusion) levels -- the pages-only shape test
+    above would stay green if the books/chapters infix separator convention drifted."""
+    minted = Archiver._generate_root_folder(Archiver._level_base_dir(EXPORT_BASENAME, level))
+    assert same_export_level(minted, level) is True
+    for other in {"pages", "books", "chapters"} - {level}:
+        assert same_export_level(minted, other) is False
+
+
+def _name(level_token: str, ts: str, partial: bool = False) -> str:
+    """Build a production-shaped archive path for retention tests."""
+    infix = f"{level_token}_" if level_token else ""
+    suffix = "_partial" if partial else ""
+    return f"/data/{EXPORT_BASENAME}_{infix}{ts}{suffix}.tgz"
+
+
+def test_get_stale_archives_splits_full_and_partial_independently(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last=1 pages run: keep newest full + newest partial, prune the rest of
+    each group; the two groups never evict each other."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    # file_extension_map must resolve to a real ".tgz" so the production code's
+    # partial-suffix check (built from this map) can actually match filenames;
+    # the bare MagicMock default returns an unconfigured mock instead of ".tgz".
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-01_00-00-00", partial=True),
+                _name("", "2026-01-02_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
+
+    stale = sorted(archiver_instance._get_stale_archives())
+
+    # oldest of each group pruned, newest of each kept
+    assert stale == sorted([fulls[0], partials[0]])
+
+
+def test_get_stale_archives_partial_run_never_evicts_full(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """N fulls already at cap + a fresh partial: fulls untouched (nothing added a
+    full), only surplus partials (none here) pruned."""
+    mock_config.user_inputs.keep_last = 2
+    mock_config.user_inputs.export_level = "pages"
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-03_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
+
+    assert archiver_instance._get_stale_archives() == []
+
+
+def test_get_stale_archives_is_level_scoped(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """A pages run must not consider books/chapters archives (pages-superset bug)."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    pages = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    others = [_name("books", "2026-01-01_00-00-00"),
+              _name("chapters", "2026-01-01_00-00-00")]
+    patch_scan_archives(pages + others)
+
+    stale = archiver_instance._get_stale_archives()
+
+    assert stale == [pages[0]]          # only the oldest pages full
+    assert all(o not in stale for o in others)
+
+
+def test_get_stale_archives_books_run_only_books(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "books"
+    books = [_name("books", "2026-01-01_00-00-00"), _name("books", "2026-01-02_00-00-00")]
+    pages = [_name("", "2026-01-01_00-00-00")]
+    patch_scan_archives(books + pages)
+
+    assert archiver_instance._get_stale_archives() == [books[0]]
+
+
+def test_get_stale_archives_keep_last_negative_wipes_only_current_level(
+    archiver_instance, mock_config, patch_scan_archives
+):
+    """keep_last<0 wipes this level's archives (both groups) but leaves other levels."""
+    mock_config.user_inputs.keep_last = -1
+    mock_config.user_inputs.export_level = "pages"
+    pages = [_name("", "2026-01-01_00-00-00"),
+             _name("", "2026-01-02_00-00-00", partial=True)]
+    others = [_name("books", "2026-01-01_00-00-00")]
+    patch_scan_archives(pages + others)
+
+    stale = sorted(archiver_instance._get_stale_archives())
+
+    assert stale == sorted(pages)
+    assert others[0] not in stale
 
 
 # ---------------------------------------------------------------------------
@@ -625,23 +751,23 @@ def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instan
     assert "delete denied" in outcomes[0].warning
 
 
-def test_remote_prune_skipped_when_degraded(archiver_instance, mock_config):
-    """A degraded run (content loss) still uploads to remote targets but must not
-    trigger remote retention -- mirrors clean_up's local prune_allowed gate."""
+def test_archive_remote_prunes_on_partial_run(archiver_instance, mock_config):
+    """Remote retention now runs even when the run is degraded (structural safety)."""
     mock_config.object_storage_config = [_provider_entry("s3/aws")]
+    mock_config.user_inputs.export_level = "pages"
     inst = MagicMock()
     inst.upload_backup.return_value = "s3-aws/a.tgz"
+    inst.clean_up.return_value = 2
     archiver_instance._s3_archiver_cls = MagicMock(return_value=inst)
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_node_exports = ["books/x"]  # degraded
     archiver_instance._archiver.failed_asset_downloads = []
 
     outcomes = archiver_instance.archive_remote()
 
-    assert outcomes[0].dest == "s3-aws/a.tgz"
-    assert outcomes[0].pruned == 0
-    inst.clean_up.assert_not_called()
+    assert outcomes[0].pruned == 2
+    inst.clean_up.assert_called_once_with(".tgz", "pages")
 
 
 def test_resolve_status_upload_ok_but_warning_is_partial(archiver_instance):
@@ -690,7 +816,8 @@ def test_clean_up_keep_last_negative_returns_full_list(
 ):
     """keep_last < 0: all archives are in the returned deleted list (current .tgz included)."""
     mock_config.user_inputs.keep_last = -1
-    file_list = ["/data/current.tgz", "/data/old.tgz", "/data/older.tgz"]
+    file_list = [f"/data/{EXPORT_BASENAME}_current.tgz", f"/data/{EXPORT_BASENAME}_old.tgz",
+                 f"/data/{EXPORT_BASENAME}_older.tgz"]
     patch_scan_archives(file_list)
     archiver_instance._delete_files = MagicMock()
     result = archiver_instance.clean_up()
@@ -706,9 +833,9 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
     # Three archives, filenames carry the run timestamp; keep_last=1 -> the 2
     # oldest by filename should be deleted, newest kept.
     file_list = [
-        "bkps_2024-01-01_00-00-00.tgz",
-        "bkps_2024-01-02_00-00-00.tgz",
-        "bkps_2024-01-03_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-02_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2024-01-03_00-00-00.tgz",
     ]
     patch_scan_archives(file_list)
     # ctimes are deliberately reversed to prove prune order follows the filename
@@ -722,53 +849,29 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 
 
 # ---------------------------------------------------------------------------
-# prune_allowed / retention_configured (Task 5)
+# retention always runs (Task 4)
 # ---------------------------------------------------------------------------
 
-def test_clean_up_skipped_when_content_degraded(
+def test_clean_up_runs_on_partial_run(
     archiver_instance, mock_config, patch_scan_archives
 ):
-    """A partial run (failed node export) skips pruning even though keep_last > 0
-    and stale archives exist -- degraded backups must never evict complete ones."""
-    mock_config.user_inputs.keep_last = 2
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    """A partial run now prunes (retention is always allowed); safety is structural
+    -- a partial only adds a partial, so fulls within keep_last are never evicted."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    archiver_instance._archiver.failed_node_exports = ["books/x"]  # degraded run
     archiver_instance._archiver.failed_asset_downloads = []
-    patch_scan_archives(["old1.tgz", "old2.tgz"])
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-03_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
     archiver_instance._delete_files = MagicMock()
 
-    assert archiver_instance.prune_allowed is False
     result = archiver_instance.clean_up()
 
-    assert result == []
-    archiver_instance._delete_files.assert_not_called()
-
-
-def test_clean_up_runs_when_degraded_but_prune_on_partial(
-    archiver_instance, mock_config, patch_scan_archives
-):
-    """prune_on_partial: true restores v2 unconditional-prune behavior even on a
-    degraded (partial) run."""
-    mock_config.user_inputs.keep_last = 2
-    mock_config.user_inputs.prune_on_partial = True
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
-    archiver_instance._archiver.failed_asset_downloads = []
-    stale = ["old1.tgz", "old2.tgz"]
-    archiver_instance._get_stale_archives = MagicMock(return_value=stale)
-    archiver_instance._delete_files = MagicMock()
-
-    assert archiver_instance.prune_allowed is True
-    result = archiver_instance.clean_up()
-
-    assert result == stale
-    archiver_instance._delete_files.assert_called_once_with(stale)
-
-
-def test_prune_allowed_true_on_clean_run(archiver_instance, mock_config):
-    """No failed nodes/assets -> pruning is allowed regardless of prune_on_partial."""
-    archiver_instance._archiver.failed_node_exports = []
-    archiver_instance._archiver.failed_asset_downloads = []
-
-    assert archiver_instance.prune_allowed is True
+    # oldest full pruned; the fresh partial kept; groups independent
+    assert result == [fulls[0]]
+    archiver_instance._delete_files.assert_called_once_with([fulls[0]])
 
 
 # ---------------------------------------------------------------------------

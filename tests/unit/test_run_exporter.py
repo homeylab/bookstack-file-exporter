@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bookstack_file_exporter import run
+from bookstack_file_exporter.archiver.archiver import AggregateUploadError
 from bookstack_file_exporter.archiver.util import ArchiveWriteError
 from bookstack_file_exporter.notify.models import ExportStatus, NotifyResult, UploadOutcome
 
@@ -653,63 +654,6 @@ class TestExporterContentLoss:
 
 
 # ---------------------------------------------------------------------------
-# prune_skipped / "Retention pruning skipped" WARNING wiring (exporter()-level)
-# ---------------------------------------------------------------------------
-
-class TestExporterPruneSkippedWiring:
-    def _partial_archiver(self, mock_archiver):
-        mock_archiver.has_exported_content = True
-        mock_archiver.archive_remote.return_value = []
-        mock_archiver.resolve_remote_status.return_value = ExportStatus.SUCCESS
-        mock_archiver.clean_up.return_value = []
-        mock_archiver.archive_file = "/local/export.tgz"
-        mock_archiver.failed_nodes = ["book/x.md"]
-
-    def test_prune_skipped_true_and_warning_logged_when_retention_configured(
-        self, monkeypatch, caplog
-    ):
-        """not prune_allowed and retention_configured -> prune_skipped True and the
-        run.py-level WARNING fires (pinning exporter()'s NotifyResult.prune_skipped
-        wiring and _warn_if_pruning_skipped's call site together)."""
-        config = _make_exporter_config("pages")
-        mock_archiver, _ = _patch_exporter_collaborators(
-            monkeypatch, config, book_nodes={1: MagicMock()},
-            chapter_nodes={}, page_nodes={10: MagicMock()}
-        )
-        self._partial_archiver(mock_archiver)
-        mock_archiver.prune_allowed = False
-        mock_archiver.retention_configured = True
-
-        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
-            result = run.exporter(config)
-
-        assert isinstance(result, NotifyResult)
-        assert result.prune_skipped is True
-        assert any("Retention pruning skipped" in r.message for r in caplog.records)
-
-    def test_prune_skipped_false_and_no_warning_when_retention_not_configured(
-        self, monkeypatch, caplog
-    ):
-        """not prune_allowed but retention NOT configured -> prune_skipped False and
-        no WARNING (nothing to warn about: pruning was never going to run anyway)."""
-        config = _make_exporter_config("pages")
-        mock_archiver, _ = _patch_exporter_collaborators(
-            monkeypatch, config, book_nodes={1: MagicMock()},
-            chapter_nodes={}, page_nodes={10: MagicMock()}
-        )
-        self._partial_archiver(mock_archiver)
-        mock_archiver.prune_allowed = False
-        mock_archiver.retention_configured = False
-
-        with caplog.at_level(logging.WARNING, logger="bookstack_file_exporter.run"):
-            result = run.exporter(config)
-
-        assert isinstance(result, NotifyResult)
-        assert result.prune_skipped is False
-        assert not any("Retention pruning skipped" in r.message for r in caplog.records)
-
-
-# ---------------------------------------------------------------------------
 # A poisoned archive stream must hard-fail the run, never publish as PARTIAL
 # ---------------------------------------------------------------------------
 
@@ -738,3 +682,66 @@ class TestExporterPoisonedStream:  # pylint: disable=too-few-public-methods
 
         mock_archiver.discard_incomplete.assert_called_once()
         mock_archiver.archive_remote.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Partial run + keep_last<0: retention now always runs (Task 4 removed the
+# prune_allowed/allow_prune gate), so a partial run wipes local -- but only
+# after a durable remote copy survives. resolve_remote_status raises
+# AggregateUploadError (archiver.py) BEFORE _run_local_cleanup runs whenever
+# every upload target fails, so local cleanup never executes in that case.
+# ---------------------------------------------------------------------------
+
+class TestExporterPartialKeepLastNegativeWipe:
+    def test_partial_keep_last_negative_one_upload_ok_wipes_local(self, monkeypatch):
+        """partial run (failed_nodes non-empty) + keep_last<0 + >=1 upload OK ->
+        local archive still gets wiped (clean_up runs and reports it removed), and
+        the run reports PARTIAL (content loss, not the upload outcome, drives the
+        downgrade -- see exporter()'s failed_nodes/failed_assets downgrade, run.py:374-375)."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.failed_nodes = ["my-book/secret.md"]
+        mock_archiver.archive_remote.return_value = [
+            UploadOutcome("s3/a", "bucket/export.tgz", None),
+            UploadOutcome("s3/b", None, "connection refused"),
+        ]
+        mock_archiver.resolve_remote_status.return_value = ExportStatus.PARTIAL
+        mock_archiver.clean_up.return_value = ["/local/export.tgz"]
+        mock_archiver.archive_file = "/local/export.tgz"
+
+        result = run.exporter(config)
+
+        mock_archiver.clean_up.assert_called_once()
+        assert result.status is ExportStatus.PARTIAL
+        assert result.removed == ["/local/export.tgz"]
+
+    def test_partial_keep_last_negative_all_uploads_fail_raises_before_cleanup(
+        self, monkeypatch
+    ):
+        """Same partial run, but every upload target fails: resolve_remote_status
+        raises AggregateUploadError (no durable copy survives with keep_last<0)
+        BEFORE _run_local_cleanup runs (run.py:369-380), so the local archive is
+        never deleted."""
+        config = _make_exporter_config("pages")
+        mock_archiver, _ = _patch_exporter_collaborators(
+            monkeypatch, config, book_nodes={1: MagicMock()},
+            chapter_nodes={}, page_nodes={10: MagicMock()}
+        )
+        mock_archiver.has_exported_content = True
+        mock_archiver.failed_nodes = ["my-book/secret.md"]
+        mock_archiver.archive_remote.return_value = [
+            UploadOutcome("s3/a", None, "connection refused"),
+            UploadOutcome("s3/b", None, "timeout"),
+        ]
+        mock_archiver.resolve_remote_status.side_effect = AggregateUploadError(
+            "all upload targets failed; only the local copy remains and keep_last<0 "
+            "means a later successful run will prune it: s3/a, s3/b")
+
+        with pytest.raises(AggregateUploadError):
+            run.exporter(config)
+
+        mock_archiver.clean_up.assert_not_called()

@@ -1,11 +1,19 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 """Unit tests for common utility functions."""
 import json
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
-from bookstack_file_exporter.common.util import check_var, resolve_env_json
+from bookstack_file_exporter.common.util import (
+    EXPORT_BASENAME,
+    _LEVEL_TOKENS,
+    check_var,
+    resolve_env_json,
+    same_export_level,
+)
+from bookstack_file_exporter.config_helper.models import UserInput
 
 
 def test_check_var_env_wins_over_default(monkeypatch):
@@ -99,3 +107,36 @@ class TestResolveEnvJson:
         monkeypatch.setenv("MY_URLS", json.dumps([1, 2]))
         with pytest.raises(ValidationError):
             resolve_env_json("MY_URLS", list[str], [])
+
+
+@pytest.mark.parametrize("basename, level, expected", [
+    # pages: no infix -> matches pages, not books/chapters
+    (f"{EXPORT_BASENAME}_2026-07-05_00-00-00.tgz", "pages", True),
+    (f"{EXPORT_BASENAME}_2026-07-05_00-00-00_partial.tgz", "pages", True),
+    (f"{EXPORT_BASENAME}_2026-07-05_00-00-00.tgz", "books", False),
+    (f"{EXPORT_BASENAME}_2026-07-05_00-00-00.tgz", "chapters", False),
+    # books infix
+    (f"{EXPORT_BASENAME}_books_2026-07-05_00-00-00.tgz", "books", True),
+    (f"{EXPORT_BASENAME}_books_2026-07-05_00-00-00_partial.tgz", "books", True),
+    (f"{EXPORT_BASENAME}_books_2026-07-05_00-00-00.tgz", "pages", False),
+    (f"{EXPORT_BASENAME}_books_2026-07-05_00-00-00.tgz", "chapters", False),
+    # chapters infix
+    (f"{EXPORT_BASENAME}_chapters_2026-07-05_00-00-00.tgz", "chapters", True),
+    (f"{EXPORT_BASENAME}_chapters_2026-07-05_00-00-00.tgz", "pages", False),
+    # non-managed name never matches any level
+    ("unrelated_2026-07-05_00-00-00.tgz", "pages", False),
+])
+def test_same_export_level(basename, level, expected):
+    assert same_export_level(basename, level) is expected
+
+
+def test_level_tokens_track_export_level_literal():
+    """Drift guard: a level added to the export_level Literal must be added to
+    _LEVEL_TOKENS, else its archives fall through the pages exclusion branch and a
+    pages run would prune them."""
+    # pylint false positive: model_fields is a pydantic ClassVar[Dict], pylint's
+    # type inference doesn't resolve it as subscriptable without the pydantic plugin.
+    literal_levels = set(
+        get_args(UserInput.model_fields["export_level"].annotation)  # pylint: disable=unsubscriptable-object
+    )
+    assert _LEVEL_TOKENS == literal_levels - {"pages"}
