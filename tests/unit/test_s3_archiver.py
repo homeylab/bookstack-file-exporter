@@ -14,6 +14,7 @@ from moto import mock_aws
 from urllib3.exceptions import InsecureRequestWarning
 
 from bookstack_file_exporter.archiver.s3_archiver import S3CompatibleArchiver
+from bookstack_file_exporter.common.util import EXPORT_BASENAME
 
 
 @pytest.fixture
@@ -147,7 +148,7 @@ def _seed(client, bucket, keys):
 def test_clean_up_deletes_oldest_beyond_keep_last(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", [f"uploads/bookstack_export_{i}.tgz" for i in range(5)])
-    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=2)).clean_up(".tgz")
+    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=2)).clean_up(".tgz", "pages")
     remaining = client.list_objects_v2(Bucket="test-bucket").get("Contents", [])
     assert len(remaining) == 2
     assert deleted == 3
@@ -156,7 +157,7 @@ def test_clean_up_deletes_oldest_beyond_keep_last(aws, provider):
 def test_clean_up_keep_last_zero_deletes_nothing(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket", ["uploads/bookstack_export_1.tgz", "uploads/unrelated.tgz"])
-    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=0)).clean_up(".tgz")
+    deleted = S3CompatibleArchiver(provider(prefix="uploads", keep_last=0)).clean_up(".tgz", "pages")
     assert len(client.list_objects_v2(Bucket="test-bucket").get("Contents", [])) == 2
     assert deleted == 0
 
@@ -186,7 +187,7 @@ def test_clean_up_preserves_unmanaged_objects(aws, provider):
     client = boto3.client("s3", region_name="us-east-1")
     _seed(client, "test-bucket",
           [f"uploads/bookstack_export_{i}.tgz" for i in range(3)] + ["uploads/unrelated.tgz"])
-    S3CompatibleArchiver(provider(prefix="uploads", keep_last=1)).clean_up(".tgz")
+    S3CompatibleArchiver(provider(prefix="uploads", keep_last=1)).clean_up(".tgz", "pages")
     keys = {o["Key"] for o in client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
     assert "uploads/unrelated.tgz" in keys          # non-managed object never a deletion candidate
     assert len([k for k in keys if "bookstack_export_" in k]) == 1  # 3 managed -> keep_last=1
@@ -208,7 +209,7 @@ def test_clean_up_never_deletes_nested_keys(aws, provider):
     _seed(client, "test-bucket",
           [f"uploads/bookstack_export_{i}.tgz" for i in range(3)]
           + ["uploads/archive/bookstack_export_keepme.tgz"])
-    S3CompatibleArchiver(provider(prefix="uploads", keep_last=1)).clean_up(".tgz")
+    S3CompatibleArchiver(provider(prefix="uploads", keep_last=1)).clean_up(".tgz", "pages")
     keys = {o["Key"] for o in
             client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
     assert "uploads/archive/bookstack_export_keepme.tgz" in keys
@@ -221,7 +222,7 @@ def test_delete_objects_uses_batch_api(aws, provider):
     arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
     with patch.object(arch._client, "delete_objects",
                       wraps=arch._client.delete_objects) as spy:
-        arch.clean_up(".tgz")
+        arch.clean_up(".tgz", "pages")
     assert spy.call_count == 1          # one batch call, not one per key
     remaining = {o["Key"] for o in
                  client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
@@ -250,7 +251,7 @@ def test_clean_up_never_deletes_just_uploaded_archive(aws, tmp_path, provider):
     f = tmp_path / "bookstack_export_2020-01-02_00-00-00.tgz"
     f.write_bytes(b"x")
     dest = arch.upload_backup(str(f))
-    arch.clean_up(".tgz")
+    arch.clean_up(".tgz", "pages")
     remaining = {o["Key"] for o in
                  client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
     assert dest.split("/", 1)[1] in remaining      # the fresh upload survived its own cleanup
@@ -266,3 +267,74 @@ def test_scan_ignores_lookalike_user_objects(aws, provider):
     arch = S3CompatibleArchiver(provider(prefix="uploads", keep_last=1))
     keys = [o["Key"] for o in arch._scan_objects(".tgz")]
     assert keys == ["uploads/bookstack_export_1.tgz"]
+
+
+def test_clean_up_splits_full_and_partial_per_group(aws, provider):
+    """keep_last=1: keep newest full + newest partial for the level, prune the rest."""
+    client = boto3.client("s3", region_name="us-east-1")
+    keys = [
+        f"uploads/{EXPORT_BASENAME}_2026-01-01_00-00-00.tgz",
+        f"uploads/{EXPORT_BASENAME}_2026-01-02_00-00-00.tgz",
+        f"uploads/{EXPORT_BASENAME}_2026-01-01_00-00-00_partial.tgz",
+        f"uploads/{EXPORT_BASENAME}_2026-01-02_00-00-00_partial.tgz",
+    ]
+    _seed(client, "test-bucket", keys)
+    deleted = S3CompatibleArchiver(
+        provider(prefix="uploads", keep_last=1)).clean_up(".tgz", "pages")
+    remaining = {o["Key"] for o in
+                 client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert deleted == 2
+    assert remaining == {
+        "uploads/" + f"{EXPORT_BASENAME}_2026-01-02_00-00-00.tgz",
+        "uploads/" + f"{EXPORT_BASENAME}_2026-01-02_00-00-00_partial.tgz",
+    }
+
+
+def test_clean_up_is_level_scoped(aws, provider):
+    """A pages run must not prune books/chapters objects (remote level-blindness)."""
+    client = boto3.client("s3", region_name="us-east-1")
+    keys = [
+        f"{EXPORT_BASENAME}_2026-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2026-01-02_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_books_2026-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_chapters_2026-01-01_00-00-00.tgz",
+    ]
+    _seed(client, "test-bucket", keys)
+    deleted = S3CompatibleArchiver(
+        provider(prefix=None, keep_last=1)).clean_up(".tgz", "pages")
+    remaining = {o["Key"] for o in
+                 client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert deleted == 1  # only oldest pages full
+    assert f"{EXPORT_BASENAME}_books_2026-01-01_00-00-00.tgz" in remaining
+    assert f"{EXPORT_BASENAME}_chapters_2026-01-01_00-00-00.tgz" in remaining
+
+
+def test_clean_up_books_run_only_books(aws, provider):
+    client = boto3.client("s3", region_name="us-east-1")
+    keys = [
+        f"{EXPORT_BASENAME}_books_2026-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_books_2026-01-02_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2026-01-01_00-00-00.tgz",
+    ]
+    _seed(client, "test-bucket", keys)
+    deleted = S3CompatibleArchiver(
+        provider(prefix=None, keep_last=1)).clean_up(".tgz", "books")
+    remaining = {o["Key"] for o in
+                 client.list_objects_v2(Bucket="test-bucket").get("Contents", [])}
+    assert deleted == 1
+    assert f"{EXPORT_BASENAME}_2026-01-01_00-00-00.tgz" in remaining
+
+
+def test_clean_up_negative_keep_last_warns_once(aws, provider, caplog):
+    """keep_last<0 keeps everything and logs the skip warning exactly once, not
+    once per completeness group."""
+    client = boto3.client("s3", region_name="us-east-1")
+    _seed(client, "test-bucket", [
+        f"{EXPORT_BASENAME}_2026-01-01_00-00-00.tgz",
+        f"{EXPORT_BASENAME}_2026-01-01_00-00-00_partial.tgz",
+    ])
+    with caplog.at_level(logging.WARNING):
+        deleted = S3CompatibleArchiver(
+            provider(prefix=None, keep_last=-1)).clean_up(".tgz", "pages")
+    assert deleted == 0
+    assert sum("negative" in r.message.lower() for r in caplog.records) == 1

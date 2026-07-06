@@ -95,11 +95,14 @@ class S3CompatibleArchiver:
         log.info("Uploaded object: %s to bucket: %s", object_path, self.bucket)
         return f"{self.bucket}/{object_path}"
 
-    def clean_up(self, file_extension: str) -> int:
-        """delete objects based on 'keep_last' number; return number deleted"""
+    def clean_up(self, file_extension: str, export_level: str) -> int:
+        """delete objects based on 'keep_last' number; return number deleted.
+
+        Scoped to export_level: a run of one level never prunes another level's
+        objects (they share the bucket/prefix)."""
         if not self.keep_last:  # captures keep_last == 0
             return 0
-        to_delete = self._get_stale_objects(file_extension)
+        to_delete = self._get_stale_objects(file_extension, export_level)
         if to_delete:
             self._delete_objects(to_delete)
         return len(to_delete)
@@ -120,20 +123,28 @@ class S3CompatibleArchiver:
                            and obj["Key"].removeprefix(prefix).startswith(_MANAGED_FILTER))
         return matched
 
-    def _get_stale_objects(self, file_extension: str) -> list[dict]:
+    def _get_stale_objects(self, file_extension: str, export_level: str) -> list[dict]:
         objects = self._scan_objects(file_extension)
+        # narrow to this run's export level before any retention decision
+        prefix = f"{self.prefix}/" if self.prefix else ""
+        objects = [o for o in objects
+                   if common_util.same_export_level(
+                       o["Key"].removeprefix(prefix), export_level)]
         if not objects:
             log.debug("No objects found to clean up")
             return []
+        # keep_last<0 is checked ONCE here (before the completeness split) so the
+        # warning is not emitted twice.
         if self.keep_last < 0:
             log.warning(
                 "'keep_last' for bucket %s is negative (%s); skipping retention "
                 "— no objects deleted", self.bucket, self.keep_last)
             return []
-        if len(objects) > self.keep_last:
-            log.debug("Number of objects is greater than 'keep_last'; running clean up")
-            return self._filter_objects(objects)
-        return []
+        # full and partial objects are independent retention groups
+        partial_suffix = f"_partial{file_extension}"
+        partials = [o for o in objects if o["Key"].endswith(partial_suffix)]
+        fulls = [o for o in objects if not o["Key"].endswith(partial_suffix)]
+        return self._filter_objects(fulls) + self._filter_objects(partials)
 
     def _filter_objects(self, objects: list[dict]) -> list[dict]:
         objects_to_clean = common_util.oldest_beyond_keep(

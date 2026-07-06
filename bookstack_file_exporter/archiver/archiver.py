@@ -219,7 +219,9 @@ class Archiver:
         # Upload landed. A retention-prune failure is housekeeping, not a backup failure:
         # keep dest (never flip to failed) but flag a warning so the run is degraded.
         try:
-            pruned = archiver.clean_up(self._archiver.file_extension_map['tgz'])
+            pruned = archiver.clean_up(
+                self._archiver.file_extension_map['tgz'],
+                self.config.user_inputs.export_level)
         except Exception as err:  # pylint: disable=broad-except
             log.error("Remote retention cleanup for target '%s' failed (upload OK): %s",
                       label, err)
