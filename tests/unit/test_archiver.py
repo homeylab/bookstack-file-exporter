@@ -717,23 +717,23 @@ def test_archive_remote_retention_failure_is_warning_not_failure(archiver_instan
     assert "delete denied" in outcomes[0].warning
 
 
-def test_remote_prune_skipped_when_degraded(archiver_instance, mock_config):
-    """A degraded run (content loss) still uploads to remote targets but must not
-    trigger remote retention -- mirrors clean_up's local prune_allowed gate."""
+def test_archive_remote_prunes_on_partial_run(archiver_instance, mock_config):
+    """Remote retention now runs even when the run is degraded (structural safety)."""
     mock_config.object_storage_config = [_provider_entry("s3/aws")]
+    mock_config.user_inputs.export_level = "pages"
     inst = MagicMock()
     inst.upload_backup.return_value = "s3-aws/a.tgz"
+    inst.clean_up.return_value = 2
     archiver_instance._s3_archiver_cls = MagicMock(return_value=inst)
     archiver_instance._archiver.archive_file = "/local/archive.tgz"
     archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    archiver_instance._archiver.failed_node_exports = ["books/x"]  # degraded
     archiver_instance._archiver.failed_asset_downloads = []
 
     outcomes = archiver_instance.archive_remote()
 
-    assert outcomes[0].dest == "s3-aws/a.tgz"
-    assert outcomes[0].pruned == 0
-    inst.clean_up.assert_not_called()
+    assert outcomes[0].pruned == 2
+    inst.clean_up.assert_called_once_with(".tgz", "pages")
 
 
 def test_resolve_status_upload_ok_but_warning_is_partial(archiver_instance):
@@ -815,53 +815,29 @@ def test_clean_up_keep_last_positive_returns_only_old_archives(
 
 
 # ---------------------------------------------------------------------------
-# prune_allowed / retention_configured (Task 5)
+# retention always runs (Task 4)
 # ---------------------------------------------------------------------------
 
-def test_clean_up_skipped_when_content_degraded(
+def test_clean_up_runs_on_partial_run(
     archiver_instance, mock_config, patch_scan_archives
 ):
-    """A partial run (failed node export) skips pruning even though keep_last > 0
-    and stale archives exist -- degraded backups must never evict complete ones."""
-    mock_config.user_inputs.keep_last = 2
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
+    """A partial run now prunes (retention is always allowed); safety is structural
+    -- a partial only adds a partial, so fulls within keep_last are never evicted."""
+    mock_config.user_inputs.keep_last = 1
+    mock_config.user_inputs.export_level = "pages"
+    archiver_instance._archiver.failed_node_exports = ["books/x"]  # degraded run
     archiver_instance._archiver.failed_asset_downloads = []
-    patch_scan_archives(["old1.tgz", "old2.tgz"])
+    archiver_instance._archiver.file_extension_map = {"tgz": ".tgz"}
+    fulls = [_name("", "2026-01-01_00-00-00"), _name("", "2026-01-02_00-00-00")]
+    partials = [_name("", "2026-01-03_00-00-00", partial=True)]
+    patch_scan_archives(fulls + partials)
     archiver_instance._delete_files = MagicMock()
 
-    assert archiver_instance.prune_allowed is False
     result = archiver_instance.clean_up()
 
-    assert result == []
-    archiver_instance._delete_files.assert_not_called()
-
-
-def test_clean_up_runs_when_degraded_but_prune_on_partial(
-    archiver_instance, mock_config, patch_scan_archives
-):
-    """prune_on_partial: true restores v2 unconditional-prune behavior even on a
-    degraded (partial) run."""
-    mock_config.user_inputs.keep_last = 2
-    mock_config.user_inputs.prune_on_partial = True
-    archiver_instance._archiver.failed_node_exports = ["books/x"]
-    archiver_instance._archiver.failed_asset_downloads = []
-    stale = ["old1.tgz", "old2.tgz"]
-    archiver_instance._get_stale_archives = MagicMock(return_value=stale)
-    archiver_instance._delete_files = MagicMock()
-
-    assert archiver_instance.prune_allowed is True
-    result = archiver_instance.clean_up()
-
-    assert result == stale
-    archiver_instance._delete_files.assert_called_once_with(stale)
-
-
-def test_prune_allowed_true_on_clean_run(archiver_instance, mock_config):
-    """No failed nodes/assets -> pruning is allowed regardless of prune_on_partial."""
-    archiver_instance._archiver.failed_node_exports = []
-    archiver_instance._archiver.failed_asset_downloads = []
-
-    assert archiver_instance.prune_allowed is True
+    # oldest full pruned; the fresh partial kept; groups independent
+    assert result == [fulls[0]]
+    archiver_instance._delete_files.assert_called_once_with([fulls[0]])
 
 
 # ---------------------------------------------------------------------------
