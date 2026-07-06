@@ -10,7 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bookstack_file_exporter.archiver.archiver import Archiver, AggregateUploadError
+from bookstack_file_exporter.archiver.archiver import (
+    Archiver,
+    AggregateUploadError,
+    _DATE_STR_FORMAT,
+)
 from bookstack_file_exporter.notify.models import ExportStatus, UploadOutcome
 from bookstack_file_exporter.archiver.node_archiver import (
     BookArchiver,
@@ -386,6 +390,25 @@ def test_get_stale_archives_empty_list(
     patch_scan_archives([])
     result = archiver_instance._get_stale_archives()
     assert not result
+
+
+def test_mint_timestamp_format_is_lexically_chronological():
+    """CONTRACT: retention orders archives by string-sorting their names, which is
+    correct ONLY while the minted timestamp format is big-endian (lexical order ==
+    chronological). Lock it so a future _DATE_STR_FORMAT change (e.g. to %m/%d/%Y)
+    can't silently break retention ordering with no test failing."""
+    earlier = datetime(2024, 1, 1, 23, 59, 59, tzinfo=timezone.utc)
+    later = datetime(2024, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+    assert earlier.strftime(_DATE_STR_FORMAT) < later.strftime(_DATE_STR_FORMAT)
+
+
+def test_generate_root_folder_name_shape_matches_retention_parse():
+    """CONTRACT: the minted archive base must match the shape the retention path and
+    same_export_level expect -- EXPORT_BASENAME_<sortable-timestamp>. Guards the
+    implicit coupling between the name minter and the retention name reader."""
+    name = Archiver._generate_root_folder(EXPORT_BASENAME)
+    assert re.fullmatch(
+        rf"{EXPORT_BASENAME}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}", name)
 
 
 def _name(level_token: str, ts: str, partial: bool = False) -> str:
