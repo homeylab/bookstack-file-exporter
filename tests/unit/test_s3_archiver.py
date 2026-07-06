@@ -171,18 +171,25 @@ def test_scan_paginates_beyond_1000(aws, provider):
     assert len(arch._scan_objects(".tgz")) == 1001
 
 
-def test_filter_objects_keeps_newest_by_lastmodified(aws, provider):
+def test_filter_objects_keeps_newest_by_name(aws, provider):
     arch = S3CompatibleArchiver(provider(keep_last=2))
-    # input deliberately NOT in chronological order to prove it sorts by LastModified
+    # Input deliberately NOT in chronological order, and LastModified deliberately
+    # INVERTED vs the filename timestamp, to prove ordering follows the embedded run
+    # timestamp in the object name -- not S3 upload time (which skews on backfill).
+    def _o(ts: str, last_modified: datetime) -> dict:
+        return {"Key": f"uploads/{EXPORT_BASENAME}_{ts}.tgz", "LastModified": last_modified}
     objs = [
-        {"Key": "new2", "LastModified": datetime(2024, 1, 5, tzinfo=timezone.utc)},
-        {"Key": "old0", "LastModified": datetime(2024, 1, 1, tzinfo=timezone.utc)},
-        {"Key": "new1", "LastModified": datetime(2024, 1, 4, tzinfo=timezone.utc)},
-        {"Key": "old1", "LastModified": datetime(2024, 1, 2, tzinfo=timezone.utc)},
-        {"Key": "old2", "LastModified": datetime(2024, 1, 3, tzinfo=timezone.utc)},
+        _o("2024-01-05_00-00-00", datetime(2024, 1, 1, tzinfo=timezone.utc)),  # newest name
+        _o("2024-01-01_00-00-00", datetime(2024, 1, 5, tzinfo=timezone.utc)),  # oldest name
+        _o("2024-01-04_00-00-00", datetime(2024, 1, 2, tzinfo=timezone.utc)),
+        _o("2024-01-02_00-00-00", datetime(2024, 1, 4, tzinfo=timezone.utc)),
+        _o("2024-01-03_00-00-00", datetime(2024, 1, 3, tzinfo=timezone.utc)),
     ]
     deleted = {o["Key"] for o in arch._filter_objects(objs)}
-    assert deleted == {"old0", "old1", "old2"}  # 3 oldest deleted, 2 newest kept
+    # 3 oldest BY NAME deleted, 2 newest BY NAME kept (LastModified ignored)
+    assert deleted == {f"uploads/{EXPORT_BASENAME}_2024-01-01_00-00-00.tgz",
+                       f"uploads/{EXPORT_BASENAME}_2024-01-02_00-00-00.tgz",
+                       f"uploads/{EXPORT_BASENAME}_2024-01-03_00-00-00.tgz"}
 
 
 def test_clean_up_preserves_unmanaged_objects(aws, provider):

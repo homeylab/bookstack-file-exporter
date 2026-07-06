@@ -1,5 +1,6 @@
 import logging
 import os
+import posixpath
 
 # pylint: disable=import-error
 import boto3
@@ -126,10 +127,9 @@ class S3CompatibleArchiver:
     def _get_stale_objects(self, file_extension: str, export_level: str) -> list[dict]:
         objects = self._scan_objects(file_extension)
         # narrow to this run's export level before any retention decision
-        prefix = f"{self.prefix}/" if self.prefix else ""
         objects = [o for o in objects
                    if common_util.same_export_level(
-                       o["Key"].removeprefix(prefix), export_level)]
+                       self._object_name(o), export_level)]
         if not objects:
             log.debug("No objects found to clean up")
             return []
@@ -146,9 +146,25 @@ class S3CompatibleArchiver:
         fulls = [o for o in objects if not o["Key"].endswith(partial_suffix)]
         return self._filter_objects(fulls) + self._filter_objects(partials)
 
+    @staticmethod
+    def _object_name(obj: dict) -> str:
+        """The object's name segment with the bucket prefix stripped -- the single
+        'name' concept used for BOTH level classification and retention ordering.
+
+        Retention orders by the run timestamp embedded in this name, not by S3
+        LastModified: upload time skews on backfill/re-upload and would diverge from
+        the local side, which sorts on the same filename timestamp (see
+        Archiver._filter_archives). The name embeds ..._%Y-%m-%d_%H-%M-%S[_partial],
+        which sorts lexicographically in chronological order.
+
+        posixpath (not os.path) because an S3 key is always '/'-delimited regardless
+        of host OS -- it is a remote object key, not a local path.
+        """
+        return posixpath.basename(obj["Key"])
+
     def _filter_objects(self, objects: list[dict]) -> list[dict]:
         objects_to_clean = common_util.oldest_beyond_keep(
-            objects, key=lambda d: d["LastModified"], keep_last=self.keep_last)
+            objects, key=self._object_name, keep_last=self.keep_last)
         log.debug("%d objects will be cleaned up", len(objects_to_clean))
         return objects_to_clean
 
