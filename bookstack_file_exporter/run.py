@@ -265,16 +265,6 @@ def _run_local_cleanup(archive: Archiver) -> tuple[list[str], str | None]:
         return [], str(err) or "local cleanup failed"
 
 
-def _warn_if_pruning_skipped(archive: Archiver) -> None:
-    """Log once when this run's content loss disabled retention pruning everywhere
-    (local and every remote target), but only when pruning was actually configured
-    -- no point warning about a skip of an action that would never have run."""
-    if not archive.prune_allowed and archive.retention_configured:
-        log.warning(
-            "Retention pruning skipped (local and all remote targets): this run "
-            "is partial; set prune_on_partial: true to prune on partial runs")
-
-
 def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyResult | None:
     """export bookstack nodes and archive locally and/or remotely"""
 
@@ -363,7 +353,6 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
 
         # close the archive stream and publish the .tgz
         archive.create_archive()
-        _warn_if_pruning_skipped(archive)
 
         # attempt every remote target, then derive status (raises only when no copy survives)
         outcomes = archive.archive_remote()
@@ -385,8 +374,6 @@ def exporter(config: ConfigNode, stop: threading.Event | None = None) -> NotifyR
         log.info("Completed run")
         return NotifyResult(status=status, local=archive.archive_file, uploads=outcomes,
                             removed=removed, cleanup_error=cleanup_error,
-                            prune_skipped=(not archive.prune_allowed
-                                           and archive.retention_configured),
                             failed_nodes=archive.failed_nodes,
                             failed_assets=archive.failed_assets,
                             export_level=export_level)
