@@ -53,6 +53,11 @@ assets:
   # like: last update, owner, revision count, etc.
   # omit this or set to false if not needed
   export_meta: false
+## optional - opt-in parallel node fetch; number of pages/books/chapters fetched
+# at once. Default 1 keeps the original serial behavior. Raising it speeds up large
+# exports but increases concurrent API load (BookStack rate-limits: API_REQUESTS_PER_MIN,
+# default 180/min/user -> HTTP 429). See docs/configuration.md#parallel-export for tuning.
+# export_workers: 1
 # optional - override default http_config; omit/comment out to use defaults
 # https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
 http_config:

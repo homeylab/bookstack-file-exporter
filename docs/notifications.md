@@ -8,7 +8,9 @@
 - [apprise](#apprise)
 
 ## General
-It is possible to send notifications when an export run succeeds or fails. Currently, the only supported notification service is [apprise](https://github.com/caronc/apprise). Apprise is a general purpose notification service and has a variety of integrations and includes generic HTTP POST.
+_Currently, [apprise](https://github.com/caronc/apprise) is the only supported notification service. Feel free to create a github issue to request something else_.
+
+The exporter can send notifications when an export run succeeds or fails using apprise. Apprise is a general purpose notification service and has a variety of integrations and includes sending generic HTTP POST.
 
 Notifications are optional and the `notification` section can be omitted/removed/commented out entirely to keep a smaller configuration if not required.
 
