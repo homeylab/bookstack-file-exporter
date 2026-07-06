@@ -5,14 +5,14 @@
 > [!NOTE]
 > Credentials: BookStack API token setup (role permissions + generating `tokenId`/`tokenSecret`) lives in [Authentication & Permissions](getting-started.md#authentication-and-permissions). Object-storage credentials are documented in [Remote Storage](remote-storage.md#object-storage-upload).
 
-- [General](#general)
+- [Prerequisites](#prerequisites)
 - [Full Example](#full-example)
 - [Options and Descriptions](#options-and-descriptions)
 - [Valid Environment Variables](#valid-environment-variables)
 - [Export Level](#export-level)
 - [Parallel Export](#parallel-export)
 
-## General
+## Prerequisites
 _Ensure [Authentication](getting-started.md#authentication-and-permissions) has been set up beforehand for required credentials._ For a simple config example to run quickly, refer to the one in the [Using This Application](getting-started.md#using-this-application) section.
 
 A full example is also shown below. _Optionally, look at `examples/` folder of the github repo for more examples with long descriptions_.
@@ -89,7 +89,7 @@ filters:
 ```
 
 ## Options and Descriptions
-More descriptions can be found for each section below:
+More descriptions can be found for each section below.  _Optionally, look at `examples/` folder of the github repo for more examples with long descriptions_.
 
 | Configuration Item | Type | Required | Description |
 | ------------------ | ---- | -------- | ----------- |
@@ -115,10 +115,10 @@ More descriptions can be found for each section below:
 | `http_config.backoff_factor` | `float` | `false` | Optional (default: `2.5`), set the backoff_factor for http request retries. Default backoff_factor `2.5` means we wait 5, 10, 20, and then 40 seconds (with default `http_config.retry_count: 5`) before our last retry. This should allow for per minute rate limits to be refreshed. |
 | `http_config.additional_headers` | `object` | `false` | Optional (default: `{}`), specify key/value pairs that will be added as additional headers to http requests. |
 | `keep_last` | `int` | `false` | Optional (default: `0`), if exporter can delete older archives. valid values are:<br>- set to `-1` to delete all local archives after each run — valid only when at least one `object_storage` target is configured (rejected at config load otherwise)<br>- set to `1+` if you want to retain a certain number of archives<br>- `0` will result in no action done.<br>Retention is scoped to the run's `export_level` (a `pages` run never prunes `books`/`chapters` archives, or vice versa), and within a level, complete archives and `*_partial.tgz` archives are independent `keep_last` groups — a partial run's archive can never evict a complete backup. See [Backup Behavior](backup-behavior.md#format) for details. |
-| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. |
-| `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. |
-| `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](getting-started.md#health-endpoint). |
-| `health_host` | `str` | `false` | Optional (default: `0.0.0.0`). Bind address for the `health_port` server. Set to `127.0.0.1` or a specific NIC to restrict exposure on a multi-homed host. Only used when `health_port` is set. |
+| `run_interval` | `int` | `false` | Optional (default: `0`). If specified, exporter will run as an application and pause for `{run_interval}` seconds before subsequent runs. Example: `86400` seconds = `24` hours or run once a day. Setting this property to `0` will invoke a single run and exit. Mutually exclusive with `run_schedule`. See [Run Modes](operations.md#run-modes). |
+| `run_schedule` | `str` | `false` | Optional. Cron expression for wall-clock scheduling (e.g. `"0 2 * * *"` = 2 am daily). Standard 5-field cron; croniter also accepts 6/7-field extended forms. An invalid expression is rejected at config load. Evaluated in container-local time — set `TZ` env var to control timezone (default: `UTC`). If a cycle overruns its scheduled tick, the missed tick is skipped (no catch-up). Mutually exclusive with `run_interval`. See [Run Modes](operations.md#run-modes). |
+| `health_port` | `int` | `false` | Optional (default: unset). Scheduled mode only (`run_interval` or `run_schedule`). When set, the daemon serves an opt-in `GET /healthz` endpoint on this port. No server is started unless set; ignored in one-shot mode. See [Health Endpoint](operations.md#health-endpoint). |
+| `health_host` | `str` | `false` | Optional (default: `0.0.0.0`). Bind address for the `health_port` server. Set to `127.0.0.1` or a specific NIC to restrict exposure on a multi-homed host. Only used when `health_port` is set. See [Health Endpoint](operations.md#health-endpoint). |
 | `object_storage` | `list` | `false` | Optional list of object storage upload targets. See [Object Storage Upload](remote-storage.md#object-storage-upload) for details. |
 | `notifications` | `object` | `false` | Optional [notification](notifications.md#notifications) configuration options. |
 | `filters` | `object` | `false` | Optional per-resource-type regex filters (include/exclude lists). See [Filters](filters.md#filters) for details. |

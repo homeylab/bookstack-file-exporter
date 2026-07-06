@@ -58,8 +58,9 @@ The main use case is to backup all docs in a relational directory-tree format to
 ## Documentation
 Detailed docs live under [`docs/`](docs/):
 
-- [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication
+- [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, CLI options, environment variables, authentication
 - [Configuration](docs/configuration.md) — full `config.yml` reference, all options, environment variables, export level, parallel export
+- [Operations](docs/operations.md) — run modes, scheduling, run outcomes & exit codes, graceful shutdown, health endpoint
 - [Filters](docs/filters.md) — include/exclude shelves, books, chapters, pages by name
 - [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images (incl. secure image storage), attachments, modify-links
 - [Remote Storage](docs/remote-storage.md) — MinIO / S3 upload, credential resolution, multi-target behavior, v2→v3 migration
@@ -70,9 +71,8 @@ Below are versions that have major changes to the way configuration or exporter 
 
 | Start Version | Target Version | Description |
 | ------------- | -------------- | ----------- |
+| `< 3.0.0` | `3.0.0` | For more details on exact changes see [`v3.0.0`](https://github.com/homeylab/bookstack-file-exporter/releases/tag/v3.0.0). Highlights below:<br>- `modify_markdown` key removed, use `modify_links` instead. <br>- The top-level `minio:` config block is removed. Replace it with an `object_storage:`, see [Migrating from v2](docs/remote-storage.md#migrating-from-v2).<br>- `http_config.verify_ssl` now defaults to `true` (was `false`).<br>- The legacy `assets.modify_markdown` key is removed, used `assets.modify_links` instead (HTML also supported). |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
-| `1.6.X` | `3.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key was removed in `3.0.0`. |
-| `< 3.0.0` | `3.0.0` | For more details on exact changes see [`v3.0.0`](https://github.com/homeylab/bookstack-file-exporter/releases/tag/v3.0.0). Highlights below:<br>- `modify_markdown` key removed, use `modify_links` instead. <br>- The top-level `minio:` config block is removed. Replace it with an `object_storage:`, see [Migrating from v2](docs/remote-storage.md#migrating-from-v2).<br>- `http_config.verify_ssl` now defaults to `true` (was `false`). |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
