@@ -300,7 +300,7 @@ class AssetArchiver:
             node: ImageNode | AttachmentNode) -> bytes:
         """Get raw asset bytes for one node.
 
-        Images are fetched via their legacy /uploads/... URL first, falling back
+        Images are fetched via their public /uploads/... URL first, falling back
         to the authenticated image-data API only on a login/HTML response (see
         _get_image_bytes); attachments use their base64-JSON API route.
         """
@@ -314,9 +314,9 @@ class AssetArchiver:
                 raise ValueError(f"unsupported asset type: {asset_type}")
 
     def _get_image_bytes(self, node: ImageNode) -> bytes:
-        """Fetch image bytes: legacy web URL first, authenticated API as recovery.
+        """Fetch image bytes: public web URL first, authenticated API as recovery.
 
-        The legacy /uploads/... URL is served directly by the web tier for public
+        The public /uploads/... URL is served directly by the web tier for public
         images (STORAGE_IMAGE_TYPE local or s3) — fast, and the only route that
         reaches an image stranded in the non-current storage dir on a migrated
         instance. A SECURE image (local_secure / local_secure_restricted) instead
@@ -325,8 +325,8 @@ class AssetArchiver:
         real bytes from the authenticated image-data API (GET .../{id}/data,
         BookStack v25.11+).
 
-        The API fallback fires ONLY on that login/HTML signal, never on a legacy
-        HTTPError/RetryError: a missing image (404) or a transient legacy 5xx must
+        The API fallback fires ONLY on that login/HTML signal, never on a public-URL
+        HTTPError/RetryError: a missing image (404) or a transient public-URL 5xx must
         fail cleanly to a skipped asset (-> PARTIAL), not detour into /data and its
         retry ladder. Secure images always surface as login HTML, so narrowing the
         trigger loses no coverage. On a pre-v25.11 instance the /data recovery 404s
@@ -353,7 +353,7 @@ class AssetArchiver:
               ends /login — parsed via urlparse because BookStack redirects to
               /login?intended=... and a naive endswith('/login') would miss it.
         Content-Type is deliberately NOT a trigger: a proxy/CDN can mislabel
-        correct image bytes as text/html. Runs on both API and legacy paths.
+        correct image bytes as text/html. Runs on both API and public-URL paths.
         """
         content = response.content
         # Strip a leading UTF-8 BOM before the marker check: bytes.lstrip() removes

@@ -15,7 +15,7 @@ Table of Contents
 ## Background
 _If you encounter any issues, want to request an additional feature, or provide assistance, feel free to open a Github issue._
 
-This tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, attachments, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](docs/backup-behavior.md#backup-behavior) section for more details on how pages are organized. Image and attachment links can also be modified in markdown and html exports to point to local exported paths.
+This self-admittedly, overly complicated tool provides a way to export [Bookstack](https://github.com/BookStackApp/BookStack) pages and their content (_text, images, attachments, metadata, etc._) into a relational parent-child layout locally with an option to push to remote object storage locations. See [Backup Behavior](docs/backup-behavior.md#backup-behavior) section for more details on how pages are organized. Image and attachment links can also be modified in markdown and html exports to point to local exported paths.
 
 This small project was mainly created to run as a cron job in k8s but works anywhere. This tool allows me to export my docs in markdown, or other formats like pdf. I use Bookstack's markdown editor as default instead of WYSIWYG editor and this makes my notes portable anywhere even if offline.
 
@@ -24,9 +24,9 @@ What it does:
 
 - Discover and build relationships between Bookstack `Shelves/Books/Chapters/Pages` to create a relational parent-child layout
 - Export Bookstack pages and their content to a `.tgz` archive
-- Additional page content — images, attachments, and metadata — can also be exported
+- Additional page content: images, attachments, and metadata can also be exported
 - The exporter can also [Modify Links](docs/backup-behavior.md#modify-links) to replace image and/or attachment links with local exported paths for a more portable backup
-- Fine grained filtering and selectable export levels.
+- Fine grained filtering, selectable export levels (books/chapters/pages), and parallelization to speed up download of contents and assets
 - YAML configuration file for repeatable and easy runs
 - Can be run via [Python](docs/getting-started.md#run-via-pip) or [Docker](docs/getting-started.md#run-via-docker)
 - Can push archives to remote object storage like [MinIO](https://min.io/) or [AWS S3](https://aws.amazon.com/s3/)
@@ -61,7 +61,7 @@ Detailed docs live under [`docs/`](docs/):
 - [Getting Started](docs/getting-started.md) — install via Pip/Docker/Helm, run modes, scheduling, health endpoint, authentication
 - [Configuration](docs/configuration.md) — full `config.yml` reference, all options, environment variables, export level, parallel export
 - [Filters](docs/filters.md) — include/exclude shelves, books, chapters, pages by name
-- [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images, attachments, modify-links
+- [Backup Behavior](docs/backup-behavior.md) — archive layout, file naming, images (incl. secure image storage), attachments, modify-links
 - [Remote Storage](docs/remote-storage.md) — MinIO / S3 upload, credential resolution, multi-target behavior, v2→v3 migration
 - [Notifications](docs/notifications.md) — apprise notifications on export success/failure
 
@@ -72,10 +72,7 @@ Below are versions that have major changes to the way configuration or exporter 
 | ------------- | -------------- | ----------- |
 | `< 1.4.X` | `1.5.0` | `assets.verify_ssl` has been moved to `http_config.verify_ssl` and the default value has been updated to `false`. `additional_headers` has been moved to `http_config.additional_headers` |
 | `1.6.X` | `3.0.0` | `assets.modify_markdown` is deprecated — HTML image and attachment link rewrites are now supported, so the markdown-specific name no longer fits. Use `assets.modify_links` instead. The legacy `modify_markdown` key was removed in `3.0.0`. |
-| `< 3.0.0` | `3.0.0` | The top-level `minio:` config block is removed. Replace it with an `object_storage:` list entry using the flat schema (`name`, `endpoint`, `prefix`, `ambient_auth`, etc — no `type` field). See [Migrating from v2](docs/remote-storage.md#migrating-from-v2) for the exact mapping. |
-| `< 3.0.0` | `3.0.0` | `http_config.verify_ssl` now defaults to `true` (was `false`) — the exporter verifies the BookStack server's TLS certificate by default. If your BookStack uses a self-signed or internal-CA certificate, set `http_config.verify_ssl: false`, or point the `REQUESTS_CA_BUNDLE` environment variable at your CA bundle. |
-| `< 3.0.0` | `3.0.0` | Retention pruning is now skipped on partial runs (a run that drops content): neither local nor remote archives are pruned, and such archives are named `*_partial.tgz`. Set `prune_on_partial: true` for the old unconditional behavior. See [docs/backup-behavior.md](docs/backup-behavior.md). |
-| `< 3.0.0` | `3.0.0` | With `export_workers: 1` (the default), a node that fails to export no longer aborts the whole run: it is skipped, recorded, and the run completes as `PARTIAL` (exit `3`), matching parallel behavior. Combined with v3's retention gating, a degraded run also never prunes existing backups. |
+| `< 3.0.0` | `3.0.0` | For more details on exact changes see [`v3.0.0`](https://github.com/homeylab/bookstack-file-exporter/releases/tag/v3.0.0). Highlights below:<br>- `modify_markdown` key removed, use `modify_links` instead. <br>- The top-level `minio:` config block is removed. Replace it with an `object_storage:`, see [Migrating from v2](docs/remote-storage.md#migrating-from-v2).<br>- `http_config.verify_ssl` now defaults to `true` (was `false`). |
 
 ## Future Items
 1. ~~Be able to pull images locally and place in their respective page folders for a more complete file level backup.~~
