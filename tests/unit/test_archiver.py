@@ -22,7 +22,7 @@ from bookstack_file_exporter.archiver.node_archiver import (
     PageArchiver,
     _FILE_EXTENSION_MAP,
 )
-from bookstack_file_exporter.common.util import EXPORT_BASENAME
+from bookstack_file_exporter.common.util import EXPORT_BASENAME, same_export_level
 from tests.fixtures.mock_config import make_mock_config as _make_config
 
 
@@ -409,6 +409,19 @@ def test_generate_root_folder_name_shape_matches_retention_parse():
     name = Archiver._generate_root_folder(EXPORT_BASENAME)
     assert re.fullmatch(
         rf"{EXPORT_BASENAME}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}", name)
+
+
+@pytest.mark.parametrize("level", ["pages", "books", "chapters"])
+def test_minted_name_classifies_as_its_own_level_end_to_end(level):
+    """END-TO-END CONTRACT: the base name the minter produces for a level
+    (_level_base_dir + _generate_root_folder) must be classified as THAT level by
+    same_export_level, and by no other. Locks the name<->retention coupling for BOTH
+    non-default (infix) and default (exclusion) levels -- the pages-only shape test
+    above would stay green if the books/chapters infix separator convention drifted."""
+    minted = Archiver._generate_root_folder(Archiver._level_base_dir(EXPORT_BASENAME, level))
+    assert same_export_level(minted, level) is True
+    for other in {"pages", "books", "chapters"} - {level}:
+        assert same_export_level(minted, other) is False
 
 
 def _name(level_token: str, ts: str, partial: bool = False) -> str:
