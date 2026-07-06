@@ -249,3 +249,36 @@ def test_asset_decode_failure_skips_asset_and_keeps_page(tmp_path, build_node):
     assert archiver.failed_asset_downloads == ["attachments/gallery/broken.dat"]
     assert not archiver.failed_node_exports
     assert mock_write.call_count == 1  # the page export itself still landed
+
+
+def test_image_validation_failure_skips_asset_and_keeps_page(tmp_path, build_node):
+    """A _validate_image_response failure (issue #145 login-HTML detection)
+    raises AssetDecodeError, which _archive_node_assets' asset-level
+    `except (HTTPError, RetryError, AssetDecodeError)` catches exactly like a
+    failed download: the image is recorded as failed, but the page itself
+    still exports (-> PARTIAL, not abort)."""
+    config = _make_config(formats=["markdown"], export_images=True,
+                          export_attachments=False, export_meta=False)
+    mock_asset_archiver = MagicMock()
+    archiver = PageArchiver(str(tmp_path / "bookstack-image-decode"), config, MagicMock(),
+                            asset_archiver=mock_asset_archiver)
+
+    parent_node = build_node(id=1, name="a-book", slug="a-book")
+    page = build_node(id=41, name="gallery", slug="gallery", parent=parent_node)
+
+    bad = MagicMock()
+    bad.id_ = 200
+    bad.get_relative_path.return_value = "images/gallery/broken.png"
+    mock_asset_archiver.get_asset_nodes.return_value = {41: [bad]}
+    mock_asset_archiver.get_asset_bytes.side_effect = AssetDecodeError(
+        "image request was redirected to a login page, not image bytes")
+
+    with patch(
+        "bookstack_file_exporter.archiver.node_archiver.archiver_util.get_byte_response",
+        return_value=b"page bytes",
+    ), patch("bookstack_file_exporter.archiver.util.TarStream.write") as mock_write:
+        archiver.archive({41: page})  # must not raise
+
+    assert archiver.failed_asset_downloads == ["images/gallery/broken.png"]
+    assert not archiver.failed_node_exports
+    assert mock_write.call_count == 1  # the page export itself still landed

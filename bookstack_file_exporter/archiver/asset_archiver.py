@@ -5,6 +5,7 @@ import re
 import base64
 import binascii
 from typing import Literal
+from urllib.parse import urlparse
 
 from markdown_it import MarkdownIt
 # pylint: disable=import-error
@@ -33,7 +34,8 @@ class AssetDecodeError(Exception):
     those builtins are ambiguous (they could equally be our own bug), while
     this type means specifically "the server sent something we cannot decode",
     so callers can treat it exactly like a failed download (skip the asset ->
-    PARTIAL) without a broad except masking real defects.
+    PARTIAL) without a broad except masking real defects. Also covers an image
+    fetch that returned login-page/HTML instead of image bytes (issue #145).
     """
 
 
@@ -294,18 +296,77 @@ class AssetArchiver:
             data_url)
         return asset_data_response.json()
 
-    def get_asset_bytes(self, asset_type: str, url: str) -> bytes:
-        """Get raw asset data"""
-        asset_response: Response = self.http_client.http_get_request(
-            url)
+    def get_asset_bytes(self, asset_type: str,
+            node: ImageNode | AttachmentNode) -> bytes:
+        """Get raw asset bytes for one node.
+
+        Images are fetched via their legacy /uploads/... URL first, falling back
+        to the authenticated image-data API only on a login/HTML response (see
+        _get_image_bytes); attachments use their base64-JSON API route.
+        """
         match asset_type:
             case "images":
-                asset_data = asset_response.content
+                return self._get_image_bytes(node)
             case "attachments":
-                asset_data = self._decode_attachment_response(asset_response)
+                response = self.http_client.http_get_request(node.download_url)
+                return self._decode_attachment_response(response)
             case _:
                 raise ValueError(f"unsupported asset type: {asset_type}")
-        return asset_data
+
+    def _get_image_bytes(self, node: ImageNode) -> bytes:
+        """Fetch image bytes: legacy web URL first, authenticated API as recovery.
+
+        The legacy /uploads/... URL is served directly by the web tier for public
+        images (STORAGE_IMAGE_TYPE local or s3) — fast, and the only route that
+        reaches an image stranded in the non-current storage dir on a migrated
+        instance. A SECURE image (local_secure / local_secure_restricted) instead
+        302-redirects that URL to /login and returns login HTML;
+        _validate_image_response catches that (AssetDecodeError) and we recover the
+        real bytes from the authenticated image-data API (GET .../{id}/data,
+        BookStack v25.11+).
+
+        The API fallback fires ONLY on that login/HTML signal, never on a legacy
+        HTTPError/RetryError: a missing image (404) or a transient legacy 5xx must
+        fail cleanly to a skipped asset (-> PARTIAL), not detour into /data and its
+        retry ladder. Secure images always surface as login HTML, so narrowing the
+        trigger loses no coverage. On a pre-v25.11 instance the /data recovery 404s
+        -> propagates -> PARTIAL (secure images are unfetchable there by any route).
+        """
+        try:
+            return self._validate_image_response(
+                self.http_client.http_get_request(node.download_url))
+        except AssetDecodeError:
+            api_url = f"{self.api_urls['images']}/{node.id_}/data"
+            return self._validate_image_response(
+                self.http_client.http_get_request(api_url))
+
+    @staticmethod
+    def _validate_image_response(response: Response) -> bytes:
+        """Return image bytes, or raise AssetDecodeError on login/HTML corruption.
+
+        Deny-list, NOT an image-magic allowlist: BookStack's accepted gallery
+        formats (jpeg/png/gif/webp/avif) change over time, so an allowlist would
+        flag healthy new formats. Reject only the specific #145 corruption — a
+        login page / HTML served instead of image bytes:
+          (a) body starts with <!doctype or <html (no image format starts '<');
+          (b) the request was redirected (response.history) to a URL whose path
+              ends /login — parsed via urlparse because BookStack redirects to
+              /login?intended=... and a naive endswith('/login') would miss it.
+        Content-Type is deliberately NOT a trigger: a proxy/CDN can mislabel
+        correct image bytes as text/html. Runs on both API and legacy paths.
+        """
+        content = response.content
+        # Strip a leading UTF-8 BOM before the marker check: bytes.lstrip() removes
+        # ASCII whitespace but not the BOM (\xef\xbb\xbf), and this HTML-body rule is
+        # now the primary signal that a secure image redirected to a login page.
+        head = content.removeprefix(b"\xef\xbb\xbf").lstrip()
+        if head[:9].lower().startswith((b"<!doctype", b"<html")):
+            raise AssetDecodeError(
+                "image response body is HTML (login page/error), not image bytes")
+        if response.history and urlparse(response.url).path.endswith("/login"):
+            raise AssetDecodeError(
+                "image request was redirected to a login page, not image bytes")
+        return content
 
     @staticmethod
     def _decode_attachment_response(response: Response) -> bytes:

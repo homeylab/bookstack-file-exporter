@@ -219,8 +219,8 @@ class TestPhase4PageArchiverDispatch:  # pylint: disable=too-few-public-methods
             {5: [good_node, bad_node]} if asset_type == "images" else {}
         )
 
-        def _fail_bad_node(_asset_type, url):
-            if "99" in url:
+        def _fail_bad_node(_asset_type, node):
+            if node.id_ == 99:
                 raise HTTPError("404")
             return b"img_bytes"
 
@@ -313,6 +313,10 @@ class TestE2eHtmlRewrite:  # pylint: disable=too-few-public-methods
             "url": self.IMAGE_URL,
         }]
         http_client.http_get_request.return_value.content = b"fake_png_bytes"
+        # _validate_image_response inspects response.history for a login redirect;
+        # a bare MagicMock is truthy, so an unrelated successful fetch must set it
+        # explicitly to [] (no redirect) or it would be misread as one.
+        http_client.http_get_request.return_value.history = []
 
         written: dict = {}
 

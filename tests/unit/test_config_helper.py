@@ -62,6 +62,7 @@ def test_load_yaml_config_raises_value_error_on_empty_file(tmp_path, content):
 
 
 def test_non_mapping_yaml_root_raises_clear_error(tmp_path):
+    """load_yaml_config must reject a YAML root that is not a mapping."""
     cfg = tmp_path / "config.yml"
     cfg.write_text("- just\n- a\n- list\n", encoding="utf-8")
     with pytest.raises(ValueError, match="mapping"):

@@ -5,6 +5,7 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
+from requests.exceptions import HTTPError, RetryError
 
 from bookstack_file_exporter.archiver.asset_archiver import (
     AssetDecodeError,
@@ -273,8 +274,9 @@ class TestPhase1MdFixes:
 
 
 def test_get_asset_bytes_unknown_type_raises_valueerror(asset_archiver):
+    # ValueError fires before the node is touched, so any object works as arg 2.
     with pytest.raises(ValueError, match="unsupported asset type"):
-        asset_archiver.get_asset_bytes("widgets", "https://wiki.example.com/x")
+        asset_archiver.get_asset_bytes("widgets", MagicMock())
 
 
 def test_create_attachment_map_skips_external(asset_archiver):
@@ -308,6 +310,220 @@ def test_get_asset_bytes_attachment_decode_failure_raises_asset_decode_error(
     response = MagicMock()
     response.configure_mock(**response_setup)
     asset_archiver.http_client.http_get_request.return_value = response
+    node = MagicMock(spec=AttachmentNode)
+    node.download_url = "https://wiki.example.com/api/attachments/6"
     with pytest.raises(AssetDecodeError):
-        asset_archiver.get_asset_bytes(
-            "attachments", "https://wiki.example.com/api/attachments/6")
+        asset_archiver.get_asset_bytes("attachments", node)
+
+
+# ---------------------------------------------------------------------------
+# Issue #145 — legacy-first image fetch with authenticated image-data API
+# fallback + defense-in-depth login/HTML detection.
+# ---------------------------------------------------------------------------
+
+def _make_response(content: bytes, history=None, url: str = "") -> MagicMock:
+    """Build a minimal Response-like mock for image-fetch assertions."""
+    response = MagicMock()
+    response.content = content
+    response.history = history if history is not None else []
+    response.url = url
+    return response
+
+
+def _make_http_error(status_code: int) -> HTTPError:
+    """Build an HTTPError carrying a .response with the given status_code."""
+    error = HTTPError(f"{status_code} error")
+    error.response = MagicMock(status_code=status_code)
+    return error
+
+
+class TestGetImageBytesLegacyFirst:
+    """Legacy-first fetch with authenticated /data recovery on login/HTML."""
+
+    def test_saved_filename_derives_from_content_url_not_data_route(
+            self, asset_archiver, image_node):
+        """ImageNode.name/get_relative_path come from the gallery content URL
+        (set at construction) regardless of which URL bytes were fetched from
+        — the '/data' fetch route must never leak into the saved filename."""
+        asset_archiver.http_client.http_get_request.return_value = _make_response(
+            b"real_png_bytes")
+
+        asset_archiver.get_asset_bytes("images", image_node)
+
+        assert image_node.name == "screenshot.png"
+        relative_path = image_node.get_relative_path("my-page")
+        assert relative_path == "images/my-page/screenshot.png"
+        assert not relative_path.endswith("data")
+
+    def test_public_image_uses_legacy_url_only(self, asset_archiver, image_node):
+        """Public image (STORAGE_IMAGE_TYPE local/s3): legacy 200s with real
+        bytes, so the /data API is never requested."""
+        asset_archiver.http_client.http_get_request.return_value = _make_response(
+            b"real_png_bytes")
+
+        result = asset_archiver.get_asset_bytes("images", image_node)
+
+        assert result == b"real_png_bytes"
+        asset_archiver.http_client.http_get_request.assert_called_once_with(
+            image_node.download_url)
+
+    def test_secure_image_login_html_falls_back_to_data_api(
+            self, asset_archiver, image_node):
+        """The #145 fix: legacy redirects a secure image to a login page
+        (HTML body); the detector raises AssetDecodeError internally and the
+        authenticated /data API recovers the real bytes."""
+        login_response = _make_response(b"<!DOCTYPE html><html>login</html>")
+        api_response = _make_response(b"real_bytes_from_api")
+        asset_archiver.http_client.http_get_request.side_effect = [
+            login_response, api_response,
+        ]
+
+        result = asset_archiver.get_asset_bytes("images", image_node)
+
+        assert result == b"real_bytes_from_api"
+        calls = asset_archiver.http_client.http_get_request.call_args_list
+        assert calls[0].args[0] == image_node.download_url
+        assert calls[1].args[0] == f"{asset_archiver.api_urls['images']}/{image_node.id_}/data"
+
+    def test_secure_image_login_redirect_falls_back_to_data_api(
+            self, asset_archiver, image_node):
+        """Rule (b) path: legacy 200s with non-HTML-looking bytes but the
+        request was redirected to /login — still triggers the /data fallback."""
+        redirect_response = _make_response(
+            b"not html, not empty",
+            history=[MagicMock()],
+            url="https://wiki.example.com/login?intended=%2Fx",
+        )
+        api_response = _make_response(b"real_bytes_from_api")
+        asset_archiver.http_client.http_get_request.side_effect = [
+            redirect_response, api_response,
+        ]
+
+        result = asset_archiver.get_asset_bytes("images", image_node)
+
+        assert result == b"real_bytes_from_api"
+        calls = asset_archiver.http_client.http_get_request.call_args_list
+        assert calls[0].args[0] == image_node.download_url
+        assert calls[1].args[0] == f"{asset_archiver.api_urls['images']}/{image_node.id_}/data"
+
+    def test_missing_image_legacy_404_propagates_without_api_fallback(
+            self, asset_archiver, image_node):
+        """A deleted/missing image (legacy 404) must fail cleanly — no
+        wasteful detour into the /data API on a non-login error."""
+        asset_archiver.http_client.http_get_request.side_effect = _make_http_error(404)
+
+        with pytest.raises(HTTPError):
+            asset_archiver.get_asset_bytes("images", image_node)
+
+        asset_archiver.http_client.http_get_request.assert_called_once_with(
+            image_node.download_url)
+
+    def test_transient_legacy_5xx_propagates_without_api_fallback(
+            self, asset_archiver, image_node):
+        """A transient legacy RetryError must propagate — not trigger the
+        /data fallback (that's reserved for the login/HTML signal only)."""
+        asset_archiver.http_client.http_get_request.side_effect = RetryError("max retries")
+
+        with pytest.raises(RetryError):
+            asset_archiver.get_asset_bytes("images", image_node)
+
+        asset_archiver.http_client.http_get_request.assert_called_once_with(
+            image_node.download_url)
+
+    def test_secure_image_on_pre_v25_11_data_api_404s_and_propagates(
+            self, asset_archiver, image_node):
+        """Secure image on a pre-v25.11 instance: legacy login-HTML triggers
+        the fallback attempt, but /data 404s there too (route doesn't exist
+        yet) -> propagates -> caller marks the run PARTIAL."""
+        login_response = _make_response(b"<!DOCTYPE html><html>login</html>")
+        asset_archiver.http_client.http_get_request.side_effect = [
+            login_response, _make_http_error(404),
+        ]
+
+        with pytest.raises(HTTPError):
+            asset_archiver.get_asset_bytes("images", image_node)
+
+        calls = asset_archiver.http_client.http_get_request.call_args_list
+        assert len(calls) == 2
+        assert calls[1].args[0] == f"{asset_archiver.api_urls['images']}/{image_node.id_}/data"
+
+    def test_data_api_also_returns_login_html_raises_asset_decode_error(
+            self, asset_archiver, image_node):
+        """Defense-in-depth: if the /data recovery attempt also comes back as
+        login/HTML (e.g. an odd proxy), AssetDecodeError propagates -> PARTIAL."""
+        login_response = _make_response(b"<!DOCTYPE html><html>login</html>")
+        also_login_response = _make_response(b"<!DOCTYPE html><html>login2</html>")
+        asset_archiver.http_client.http_get_request.side_effect = [
+            login_response, also_login_response,
+        ]
+
+        with pytest.raises(AssetDecodeError):
+            asset_archiver.get_asset_bytes("images", image_node)
+
+
+class TestValidateImageResponse:
+    """C. Defense-in-depth detector."""
+
+    def test_ignores_mislabeled_content_type_header(self, asset_archiver):
+        """Content-Type is not a trigger: a proxy/CDN can mislabel correct
+        image bytes as text/html."""
+        response = _make_response(b"\x89PNG\r\n\x1a\nrest-of-real-png-bytes")
+        response.headers = {"Content-Type": "text/html"}
+
+        result = asset_archiver._validate_image_response(response)
+
+        assert result == response.content
+
+    @pytest.mark.parametrize("body", [
+        b"<!DOCTYPE html><html><body>login</body></html>",
+        b"<html><head></head><body>login</body></html>",
+        b"   <!DOCTYPE html><html></html>",
+        b"  <HTML><body>login</body></html>",
+    ])
+    def test_rejects_html_body(self, asset_archiver, body):
+        response = _make_response(body)
+        with pytest.raises(AssetDecodeError):
+            asset_archiver._validate_image_response(response)
+
+    def test_rejects_html_body_with_leading_utf8_bom(self, asset_archiver):
+        """bytes.lstrip() strips ASCII whitespace but not a leading UTF-8 BOM
+        (\\xef\\xbb\\xbf); the marker check must strip it first so a
+        BOM-prefixed login page is still detected as HTML."""
+        response = _make_response(b"\xef\xbb\xbf<!DOCTYPE html><html>login</html>")
+        with pytest.raises(AssetDecodeError):
+            asset_archiver._validate_image_response(response)
+
+    def test_rejects_redirect_to_login_path_with_query_string(self, asset_archiver):
+        """BookStack redirects to /login?intended=..., so the check must parse
+        the URL (urlparse) rather than naive endswith('/login')."""
+        response = _make_response(
+            b"not html, not empty",
+            history=[MagicMock()],
+            url="https://wiki.example.com/login?intended=%2Fx",
+        )
+        with pytest.raises(AssetDecodeError):
+            asset_archiver._validate_image_response(response)
+
+    def test_login_suffixed_url_without_redirect_history_is_not_flagged(
+            self, asset_archiver):
+        """Redirect evidence (response.history) is required — a URL that merely
+        ends in /login with no redirect history is not corruption."""
+        response = _make_response(
+            b"not html, not empty", history=[], url="https://wiki.example.com/login")
+
+        result = asset_archiver._validate_image_response(response)
+
+        assert result == response.content
+
+    @pytest.mark.parametrize("body", [
+        b"RIFF\x00\x00\x00\x00WEBPVP8 \x00\x00\x00\x00",
+        b"\x00\x00\x00\x20ftypavif\x00\x00\x00\x00",
+    ])
+    def test_accepts_non_png_jpeg_formats_deny_list_not_allow_list(self, asset_archiver, body):
+        """Deny-list, not an image-magic allowlist: newer gallery formats
+        (webp/avif) must pass through untouched."""
+        response = _make_response(body)
+
+        result = asset_archiver._validate_image_response(response)
+
+        assert result == body
